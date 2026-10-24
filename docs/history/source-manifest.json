@@ -1,0 +1,346 @@
+{
+  "extracted_on": "2026-10-23",
+  "note": "Source hashes identify extraction provenance. Destination files include independent imports and documented safety changes; not a live sync manifest.",
+  "files": [
+    {
+      "source": "apps/agents/clients/codex.py",
+      "source_sha256": "aacb7dd8cf429bc86f101c009a3f46df569f0042a101ea5fd3e626adb11ba63c",
+      "destination": "src/media_mcp/adapters/codex.py"
+    },
+    {
+      "source": "apps/mcp/subtitle/providers/assrt.py",
+      "source_sha256": "828560ea2eed43161bfba8156616946b99938de8e260f50e9d402099cb460f8e",
+      "destination": "src/media_mcp/adapters/subtitle/assrt.py"
+    },
+    {
+      "source": "apps/mcp/subtitle/providers/html_tools.py",
+      "source_sha256": "7c61c2799edc41ac8c131df4d611bf05ee4f82d60ae076fdce396a912e023584",
+      "destination": "src/media_mcp/adapters/subtitle/html_tools.py"
+    },
+    {
+      "source": "apps/mcp/subtitle/providers/opensubtitles.py",
+      "source_sha256": "4ca6f5600de92d09b2c044b0be9e8acdd4bd3ac3570d2d235918342eeac55aa9",
+      "destination": "src/media_mcp/adapters/subtitle/opensubtitles.py"
+    },
+    {
+      "source": "apps/mcp/subtitle/providers/subdl.py",
+      "source_sha256": "1cb9c98db99cc12cb16e12d7b6d648a313c5d1d093907ed8bc46880d9ade7976",
+      "destination": "src/media_mcp/adapters/subtitle/subdl.py"
+    },
+    {
+      "source": "apps/mcp/subtitle/providers/subtitlecat.py",
+      "source_sha256": "a4b652060185f4ab6389be97a9d5565a838c8247972e7f7d141b34deea3f9466",
+      "destination": "src/media_mcp/adapters/subtitle/subtitlecat.py"
+    },
+    {
+      "source": "apps/media/ingest/clients/codex.py",
+      "source_sha256": "a8673be6cec999a83d59a7c0ad9ee55dae7b2b22a4ea9af20db2dfbbcf62ee68",
+      "destination": "src/media_mcp/ingest/clients/codex.py"
+    },
+    {
+      "source": "apps/media/ingest/domain/canonical_path.py",
+      "source_sha256": "989f365ce62c887cec9e70572c9d17fc5bd28878555e847a36a18316481c2511",
+      "destination": "src/media_mcp/ingest/domain/canonical_path.py"
+    },
+    {
+      "source": "apps/media/ingest/domain/classifier.py",
+      "source_sha256": "44fa853a063e0d38a7f68e51b87562f148cb91d4ff15b41d6fd0da2227411564",
+      "destination": "src/media_mcp/ingest/domain/classifier.py"
+    },
+    {
+      "source": "apps/media/ingest/domain/file_utils.py",
+      "source_sha256": "970fc124a7ef1f7cea9e56db749a3026be24bde578d8c646140c7ddb81d2ca22",
+      "destination": "src/media_mcp/ingest/domain/file_utils.py"
+    },
+    {
+      "source": "apps/media/ingest/domain/naming.py",
+      "source_sha256": "8cb682b8b89ba1757bdddfab77daafbee2d86f9e7edea6139b5cd1e5953e7cf9",
+      "destination": "src/media_mcp/ingest/domain/naming.py"
+    },
+    {
+      "source": "apps/media/ingest/domain/path_builder.py",
+      "source_sha256": "56c50036b285e7bfdace3689d351cc56bc02c2549b91bf06f9ab464858a94b44",
+      "destination": "src/media_mcp/ingest/domain/path_builder.py"
+    },
+    {
+      "source": "apps/media/ingest/domain/quality.py",
+      "source_sha256": "c7a4d5d26c849390782c3142f1a102c1e707541c71a0cd05960e2cf14ba40560",
+      "destination": "src/media_mcp/ingest/domain/quality.py"
+    },
+    {
+      "source": "apps/media/ingest/domain/result_schema.py",
+      "source_sha256": "50060adb201625f4fc336b25e6dfc01b3f3fb54110f0fec0203de8b0c39a8e5c",
+      "destination": "src/media_mcp/ingest/domain/result_schema.py"
+    },
+    {
+      "source": "apps/media/ingest/run.py",
+      "source_sha256": "a55604888389f619b9f55de7717d9c021add257f9b954e3f4324c88b71fe7330",
+      "destination": "src/media_mcp/ingest/run.py"
+    },
+    {
+      "source": "apps/media/ingest/services/linking.py",
+      "source_sha256": "42cb1620ed40a06f7fe72bec998d3c9a4d59b9c84a6465a39a38b33c7992b699",
+      "destination": "src/media_mcp/ingest/services/linking.py"
+    },
+    {
+      "source": "apps/media/ingest/services/triage_agent.py",
+      "source_sha256": "de485a8dd74117057eb7e245bb36c7682e3a8b7a3860ce3fd650f3e17152c2c6",
+      "destination": "src/media_mcp/ingest/services/triage_agent.py"
+    },
+    {
+      "source": "apps/media/ingest/services/tv_batch_service.py",
+      "source_sha256": "6aaa2446f57a73125cf3649fbb484af2026ddfbca731e1cddfd1fceb3b2502ee",
+      "destination": "src/media_mcp/ingest/services/tv_batch_service.py"
+    },
+    {
+      "source": "apps/media/ingest/tests/test_codex_client.py",
+      "source_sha256": "2be49096fe95d79853967af48f5d43de98f806caf51e6669962d73f1a588e0a5",
+      "destination": "src/media_mcp/ingest/tests/test_codex_client.py"
+    },
+    {
+      "source": "apps/media/ingest/tests/test_codex_startup.py",
+      "source_sha256": "285dd3843d5ff5e3515433a2a60086ed296b2e78f8dafce6880d8d5c72a8d6a8",
+      "destination": "src/media_mcp/ingest/tests/test_codex_startup.py"
+    },
+    {
+      "source": "apps/media/ingest/tests/test_file_utils.py",
+      "source_sha256": "a9b411bd86789831140beadb5c9e2fc242776b4f45bfccfb6d85a7950bf26db7",
+      "destination": "src/media_mcp/ingest/tests/test_file_utils.py"
+    },
+    {
+      "source": "apps/media/ingest/tests/test_monitor_delivery.py",
+      "source_sha256": "d592f36ce78db0a2a95cdf273e49cda057caf1f3595b4e2621d70eb5ed2aeb75",
+      "destination": "src/media_mcp/ingest/tests/test_monitor_delivery.py"
+    },
+    {
+      "source": "apps/media/ingest/tests/test_quality_selection.py",
+      "source_sha256": "0e8ceceebfb5451f0a12fa8821668790c22577618458c58b7dbc23cf29f052af",
+      "destination": "src/media_mcp/ingest/tests/test_quality_selection.py"
+    },
+    {
+      "source": "apps/media/ingest/tests/test_tv_extras.py",
+      "source_sha256": "f27643037c82b770b85dfc2dd90e119b164c2fed9b8bc621f8828f382cc0a7a9",
+      "destination": "src/media_mcp/ingest/tests/test_tv_extras.py"
+    },
+    {
+      "source": "apps/api/core/log.py",
+      "source_sha256": "c150387997c67206651823e3f1780a9dea0993372186842ca95028a516c2f02d",
+      "destination": "src/media_mcp/logging_utils.py"
+    },
+    {
+      "source": "apps/media/monitor/health.py",
+      "source_sha256": "93567495e39a5e7b1e2eec213fb4b4e7e9af72af114455b89800fc3f9b73d6a0",
+      "destination": "src/media_mcp/monitor/health.py"
+    },
+    {
+      "source": "apps/media/monitor/qbittorrent.py",
+      "source_sha256": "5139c6417bcc1d3accb42c6f72a86f47c5b273798180da39ce9958fef732d0ad",
+      "destination": "src/media_mcp/monitor/qbittorrent.py"
+    },
+    {
+      "source": "apps/media/monitor/run.py",
+      "source_sha256": "166fe184b07b5c37f86bb5b8410172ec141d99933a401fffea3c889e477bd514",
+      "destination": "src/media_mcp/monitor/run.py"
+    },
+    {
+      "source": "apps/shared/redaction.py",
+      "source_sha256": "308e7c7bcfb6d5b0220e8f087dda7f2bb774e87060f26bc860ff5154e0e91ce4",
+      "destination": "src/media_mcp/redaction.py"
+    },
+    {
+      "source": "apps/media/runtime/state.py",
+      "source_sha256": "845d4d1fdfb9233fca168df94dff9bab7f69c9c5dc8f53113b589cd2d7682960",
+      "destination": "src/media_mcp/runtime/state.py"
+    },
+    {
+      "source": "apps/media/runtime/version_changes.py",
+      "source_sha256": "c5dd94eac1d83174941bb3eb1b4f8bde7563133d0070c0cc3567753f64ed99ee",
+      "destination": "src/media_mcp/runtime/version_changes.py"
+    },
+    {
+      "source": "apps/media/runtime/worker.py",
+      "source_sha256": "afcaf3fa587a9ebd041ff243433b45e5ce6c7be2b3bbaf82d2e2274bcbc58ae3",
+      "destination": "src/media_mcp/runtime/worker.py"
+    },
+    {
+      "source": "apps/api/database/client.py",
+      "source_sha256": "945f11c8813ccf6be38ea16f39724d4afaf08190a3ad3068cb30ed267236c958",
+      "destination": "src/media_mcp/storage/client.py"
+    },
+    {
+      "source": "apps/api/database/media.py",
+      "source_sha256": "b44301f42d4e1a377052f1cc5fab8f81613f01dd2a48585817bb0dc1e9e8d567",
+      "destination": "src/media_mcp/storage/media.py"
+    },
+    {
+      "source": "apps/media/subtitle/clients/codex.py",
+      "source_sha256": "989d22e1dc871bf44851d64f495968a190db33568074f49fea85f0fa84b23740",
+      "destination": "src/media_mcp/subtitle/clients/codex.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/audio_transcription.py",
+      "source_sha256": "983a6cc12a459f2221a7a71f6c4ffd79497424bedf8c82c9331902f694d8f660",
+      "destination": "src/media_mcp/subtitle/domain/audio_transcription.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/embedded_subtitle.py",
+      "source_sha256": "d3bdf1faadb2b2a92982bbc173eb1473a3fae37fc0216b2bd0c45c10e8e721a1",
+      "destination": "src/media_mcp/subtitle/domain/embedded_subtitle.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/notify_summary.py",
+      "source_sha256": "1a3734733d047626b9c4ea06669e60afc3180ab6506f4203950d6387e964a5c3",
+      "destination": "src/media_mcp/subtitle/domain/notify_summary.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/online_subtitle.py",
+      "source_sha256": "b2ed6300ed3e6ce529f7e63508d8ea38aad6aa29ee81c2008907b60d84d346ee",
+      "destination": "src/media_mcp/subtitle/domain/online_subtitle.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/path_builder.py",
+      "source_sha256": "3920e0bad1e80ed2249d29bf9fd7819b72b12454ca422e3421dc42fe15db5122",
+      "destination": "src/media_mcp/subtitle/domain/path_builder.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/result_schema.py",
+      "source_sha256": "854b5b582d6e3943d0d4956ed592eb1146e59a221d04258793f2ca14e04280d7",
+      "destination": "src/media_mcp/subtitle/domain/result_schema.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/subtitle_file.py",
+      "source_sha256": "25af7835df90f695b44fd65f41e5aeb285ce243f4dff2985e73ffd8bb8f42947",
+      "destination": "src/media_mcp/subtitle/domain/subtitle_file.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/subtitle_ocr.py",
+      "source_sha256": "02c1ab0c2d687ec3e18849e4982cb578cc563417b006203da8f262c4a117e768",
+      "destination": "src/media_mcp/subtitle/domain/subtitle_ocr.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/subtitle_sync.py",
+      "source_sha256": "c062d4b3576572bf02b1dcbc400ee5414cb3011c64cb44d04d7cb46afdf2c4ab",
+      "destination": "src/media_mcp/subtitle/domain/subtitle_sync.py"
+    },
+    {
+      "source": "apps/media/subtitle/domain/translation.py",
+      "source_sha256": "9ff65586ab618b817f92386df9a5733214596b202ae33bafb295d27ddfa7db50",
+      "destination": "src/media_mcp/subtitle/domain/translation.py"
+    },
+    {
+      "source": "apps/media/subtitle/providers/base.py",
+      "source_sha256": "e040ce6c6e80a56074432ff154a3f0ca5e4a11664b09feef8b4da69de5e80888",
+      "destination": "src/media_mcp/subtitle/providers/base.py"
+    },
+    {
+      "source": "apps/media/subtitle/providers/cloud_mcp.py",
+      "source_sha256": "7ba63ab53b654871f35403cdedcb4cf54da97e4f7880d856cfcbd4f62b00f372",
+      "destination": "src/media_mcp/subtitle/providers/cloud_mcp.py"
+    },
+    {
+      "source": "apps/media/subtitle/providers/registry.py",
+      "source_sha256": "7e86baa00a48a11f04233b6a609e3639baab87e5c326967860aa1c388105d6c1",
+      "destination": "src/media_mcp/subtitle/providers/registry.py"
+    },
+    {
+      "source": "apps/media/subtitle/run.py",
+      "source_sha256": "6cc196113f871535f5a603eeff5b3060c1c48253f4fc2646cf34c2f22fc53a1c",
+      "destination": "src/media_mcp/subtitle/run.py"
+    },
+    {
+      "source": "apps/media/subtitle/services/cache.py",
+      "source_sha256": "2299aa16f6a6840002d1bbcf90627c3876e41a6d512e8eff5a50a413dedb0ff5",
+      "destination": "src/media_mcp/subtitle/services/cache.py"
+    },
+    {
+      "source": "apps/media/subtitle/services/dependencies.py",
+      "source_sha256": "3e5925385524b5b77899cf77b1cade4073b92b7d43458b793d3ff4c5813f878c",
+      "destination": "src/media_mcp/subtitle/services/dependencies.py"
+    },
+    {
+      "source": "apps/media/subtitle/services/online_subtitles.py",
+      "source_sha256": "65e6652d9c01f6484706a83b29fcee23d037a04d480b54e28aff33a7a671d3fd",
+      "destination": "src/media_mcp/subtitle/services/online_subtitles.py"
+    },
+    {
+      "source": "apps/media/subtitle/services/subtitle_agent.py",
+      "source_sha256": "fb46a182e846f1ca899ab9fb027c8a63ccffeaf0ff93d3ae6162bd431c06b7a4",
+      "destination": "src/media_mcp/subtitle/services/subtitle_agent.py"
+    },
+    {
+      "source": "apps/media/subtitle/services/translation.py",
+      "source_sha256": "3b0e9036a8938d0613b157cc8f9911a32dcdd11e444b1c9ff37df237876f1091",
+      "destination": "src/media_mcp/subtitle/services/translation.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_assrt_provider.py",
+      "source_sha256": "4db09a876979360e867680d740a909a06f0130a9436fffef8b4c6a6e6be84065",
+      "destination": "src/media_mcp/subtitle/tests/test_assrt_provider.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_audio_transcription.py",
+      "source_sha256": "9f4e125011e2f7409ae7b862514909f3fa69575ed97f8d6ed039a24bfb53aed4",
+      "destination": "src/media_mcp/subtitle/tests/test_audio_transcription.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_cloud_mcp_provider.py",
+      "source_sha256": "0348c5e204e6fe1a171e46c8d64cb924c3b25bae92c03541f06fd885758c62af",
+      "destination": "src/media_mcp/subtitle/tests/test_cloud_mcp_provider.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_embedded_subtitle.py",
+      "source_sha256": "11b21a8d717a3dac6cb6233b30b1d2f5e6216daa6f06638de72d76181450f8cb",
+      "destination": "src/media_mcp/subtitle/tests/test_embedded_subtitle.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_file_safety.py",
+      "source_sha256": "00a2b5782e8081b9408c4a20a95e40afce1993afaaaeb89b1c6a7487b26a17dd",
+      "destination": "src/media_mcp/subtitle/tests/test_file_safety.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_notify_summary.py",
+      "source_sha256": "15871815509d0a4bec5b2aff7fa792e4d703659dfdddbbf5abb0a0eb0d3463f0",
+      "destination": "src/media_mcp/subtitle/tests/test_notify_summary.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_opensubtitles_rate_limit.py",
+      "source_sha256": "45ca3d55fff80d9ebf9f0f4da1e1ceeda801e4bc6b0896d432c24495d2e5605d",
+      "destination": "src/media_mcp/subtitle/tests/test_opensubtitles_rate_limit.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_path_builder.py",
+      "source_sha256": "ce646c55215a72766ad94ddb0fd6364f1fb29a3a114b6da7343f36111dc35a26",
+      "destination": "src/media_mcp/subtitle/tests/test_path_builder.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_provider_registry.py",
+      "source_sha256": "3afa005422e14775d6c34d2e0258524bb518a139874add68214f808cbff109ab",
+      "destination": "src/media_mcp/subtitle/tests/test_provider_registry.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_run_options.py",
+      "source_sha256": "1f13d7bc751589e1e61afa287f2b98be8ea67b66db8f4d71277a6db309bf5bee",
+      "destination": "src/media_mcp/subtitle/tests/test_run_options.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_subtitlecat_provider.py",
+      "source_sha256": "5f4a178efebed2784d1d21ab9bfad241725d770ad9d97fb6407711c427c4eb6e",
+      "destination": "src/media_mcp/subtitle/tests/test_subtitlecat_provider.py"
+    },
+    {
+      "source": "apps/media/subtitle/tests/test_translation.py",
+      "source_sha256": "72f74dba4eaaf8df1b36803e2ba23550e680956b76cceed4eec785a5752a5295",
+      "destination": "src/media_mcp/subtitle/tests/test_translation.py"
+    },
+    {
+      "source": "apps/media/subtitle/tools/probe_online_providers.py",
+      "source_sha256": "4b8d9cf3fc0ff08b0b152c65dbbc1da28ddf89a5d8381b7789a6574083646c36",
+      "destination": "src/media_mcp/subtitle/tools/probe_online_providers.py"
+    },
+    {
+      "source": "apps/media/subtitle/transcribe.py",
+      "source_sha256": "8bc3611d1a12f3ab7d9894c4af4e9b863239792fd2306a1d1b55e43661e7ddeb",
+      "destination": "src/media_mcp/subtitle/transcribe.py"
+    }
+  ]
+}

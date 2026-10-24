@@ -1,0 +1,19 @@
+{
+  "verified_on": "2026-10-24",
+  "version": "0.2.0",
+  "profile": "bundled-qbittorrent-jackett-sqlite-lan-noauth",
+  "runtime_files": 83,
+  "runtime_sha256": "bc525c40b4c852cf38bc0766674629cd2d2a5385333c673fd4c2c3169ec00091",
+  "image_id": "sha256:dc228c1a8fcbd6612f547809126896ccaad81b480458449f004a14620348fb76",
+  "source_image_parity": "passed",
+  "sqlite_version": "3.40.1",
+  "journal_mode": "wal",
+  "tests": {
+    "ingest": 32,
+    "subtitle": 83,
+    "new": 25,
+    "total": 140
+  },
+  "entrypoint_sha256": "769b51c56119e30cff1c258f8c193f2da93338ffa6fa98e5f192a16d4e69ba24",
+  "compose_sha256": "b325c013070a4aeee85ab2e217e1967b5c2d9eeeda3bcb4cdde13116db8febff"
+}

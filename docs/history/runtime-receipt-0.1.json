@@ -1,0 +1,8 @@
+{
+  "runtime_files": 81,
+  "runtime_sha256": "ae23d84753b7226ed5364f0bd0115385afb5cd373705c73d926f7e96553ad50e",
+  "image_id": "sha256:315cd37f459f85bd3bbc27403a038ec63ed6b0f829c0c573d174f0f36bea1155",
+  "verified_on": "2026-10-23",
+  "source_image_parity": "passed",
+  "mysql_version": "8.4.13"
+}

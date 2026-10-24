@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+state/
+data/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+
+/services/

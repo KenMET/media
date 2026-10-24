@@ -1,0 +1,11 @@
+interface:
+  display_name: "Media Acquisition"
+  short_description: "Find media, download it, and track library and subtitles"
+  default_prompt: "Use $media-acquire to find the requested media and manage its download and subtitles."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "media-mcp"
+      description: "Connected private Media MCP server"
+policy:
+  allow_implicit_invocation: true

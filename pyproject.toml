@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "media-mcp"
+version = "0.2.0"
+description = "Private media acquisition, hardlink library and subtitle automation over MCP"
+requires-python = ">=3.11"
+dependencies = [
+  "fastmcp==2.14.7", "mcp==1.30.0", "SQLAlchemy==2.0.46",
+  "qbittorrent-api==2026.10.1", "requests==2.34.2", "websocket-client==1.9.2",
+  "defusedxml==0.7.1", "ffsubsync==0.5.1",
+]
+
+[project.scripts]
+media-mcp = "media_mcp.server:main"
+media-worker = "media_mcp.runtime.supervisor:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["*.tests", "*.tests.*"]

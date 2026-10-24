@@ -1,0 +1,11 @@
+.env
+.env.*
+state
+data
+.git
+.venv
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+
+/services
