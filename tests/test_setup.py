@@ -7,7 +7,37 @@ import unittest
 
 
 class SetupScriptTests(unittest.TestCase):
-    def test_restarting_control_api_fails_fast_with_port_and_logs_hint(self):
+    def test_worker_must_be_healthy_and_is_polled_every_five_seconds(self):
+        source=Path(__file__).resolve().parents[1]
+        for ready_after in (3,0):
+            with self.subTest(ready_after=ready_after),tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                shutil.copyfile(source/'setup.sh',root/'setup.sh')
+                (root/'.env').write_text('QBITTORRENT_URL=http://192.0.2.10:8080\n')
+                binary=root/'bin';binary.mkdir()
+                docker=binary/'docker'
+                docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALL_LOG"\ncase "$*" in\n'
+                    '*"--entrypoint python3"*) printf "%s\\n" "synthetic-control-token-12345678901234567890";;\n'
+                    '*"exec -T worker python3 -m media_mcp.monitor.health"*)\n'
+                    ' count=0; if [ -f "$COUNT_FILE" ]; then count=$(cat "$COUNT_FILE"); fi\n'
+                    ' count=$((count+1)); printf "%s" "$count" > "$COUNT_FILE"\n'
+                    ' if [ "$READY_AFTER" -gt 0 ] && [ "$count" -ge "$READY_AFTER" ]; then exit 0; fi; exit 1;;\n'
+                    'esac\nexit 0\n')
+                docker.chmod(0o755)
+                (binary/'sleep').write_text('#!/bin/sh\nprintf "sleep %s\\n" "$*" >> "$CALL_LOG"\nexit 0\n')
+                (binary/'sleep').chmod(0o755)
+                environment={key:value for key,value in os.environ.items()
+                             if not key.startswith(('MEDIA_','QBITTORRENT_','JACKETT_'))}
+                environment.update(PATH=str(binary)+':'+os.environ['PATH'],CALL_LOG=str(root/'calls'),
+                                   COUNT_FILE=str(root/'count'),READY_AFTER=str(ready_after))
+                result=subprocess.run(['sh',str(root/'setup.sh'),'local'],env=environment,capture_output=True,text=True)
+                self.assertEqual(result.returncode,0 if ready_after else 1,result.stderr)
+                self.assertEqual(int((root/'count').read_text()),ready_after or 60)
+                self.assertIn('sleep 5',(root/'calls').read_text())
+                self.assertIn('media_mcp.monitor.dependencies',(root/'calls').read_text())
+                self.assertEqual('检查全部通过' in result.stdout,bool(ready_after))
+
+    def test_restarting_control_api_polls_every_five_seconds_then_fails(self):
         source=Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
@@ -21,6 +51,8 @@ class SetupScriptTests(unittest.TestCase):
                 '*"ps --all --quiet web"*) printf "%s\\n" "fixture-container";;\n'
                 '*"inspect --format"*) printf "%s\\n" "restarting:3";;\nesac\nexit 0\n')
             docker.chmod(0o755)
+            (binary/'sleep').write_text('#!/bin/sh\nprintf "sleep %s\\n" "$*" >> "$CALL_LOG"\nexit 0\n')
+            (binary/'sleep').chmod(0o755)
             environment={key:value for key,value in os.environ.items()
                          if not key.startswith(('MEDIA_','QBITTORRENT_','JACKETT_'))}
             environment.update(PATH=str(binary)+':'+os.environ['PATH'],CALL_LOG=str(root/'calls'))
@@ -29,7 +61,8 @@ class SetupScriptTests(unittest.TestCase):
             self.assertIn('restarting:3',result.stderr)
             self.assertIn('19613',result.stderr)
             self.assertIn('sh setup.sh local logs',result.stderr)
-            self.assertEqual((root/'calls').read_text().count('exec -T web'),1)
+            self.assertEqual((root/'calls').read_text().count('exec -T web'),60)
+            self.assertIn('sleep 5',(root/'calls').read_text())
             self.assertNotIn('synthetic-control-token',result.stdout+result.stderr)
 
     def test_cloud_port_only_proxy_setup_automatically_pairs_without_printing_secret(self):
@@ -50,7 +83,7 @@ class SetupScriptTests(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stderr)
             recorded=(root/'calls').read_text()
             self.assertIn('-m media_mcp.platform.pairing',recorded)
-            self.assertIn('mode=proxy bind=127.0.0.1',recorded)
+            self.assertIn('mode=proxy bind=0.0.0.0',recorded)
             self.assertIn('control_port=29213',recorded)
             self.assertIn('19514/healthz',recorded)
             self.assertNotIn('synthetic-private',result.stdout+result.stderr)
@@ -117,7 +150,7 @@ class SetupScriptTests(unittest.TestCase):
                 (root/'.env').chmod(0o644)
                 binary=root/'bin';binary.mkdir()
                 docker=binary/'docker'
-                docker.write_text('#!/bin/sh\ncase "$*" in\n*"--entrypoint python3"*) printf "%s\\n" "test-generated-control-token-32-characters"; exit 0;;\n*"compose version"*) exit 0;;\n*"exec -T mcp"*) exit '+('0' if healthy else '1')+';;\n*"exec -T worker"*) exit 1;;\n*) exit 0;;\nesac\n')
+                docker.write_text('#!/bin/sh\ncase "$*" in\n*"--entrypoint python3"*) printf "%s\\n" "test-generated-control-token-32-characters"; exit 0;;\n*"compose version"*) exit 0;;\n*"exec -T mcp"*) exit '+('0' if healthy else '1')+';;\n*"exec -T worker"*) exit 0;;\n*) exit 0;;\nesac\n')
                 docker.chmod(0o755)
                 (binary/'sleep').write_text('#!/bin/sh\nexit 0\n');(binary/'sleep').chmod(0o755)
                 env={**os.environ,'PATH':str(binary)+':'+os.environ['PATH']}
@@ -137,7 +170,7 @@ class SetupScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             shutil.copyfile(source/'setup.sh', root/'setup.sh')
-            (root/'.env').write_text('QBITTORRENT_URL=http://192.0.2.10:8080\nMEDIA_LOCAL_CONTROL_PORT=19613\nMEDIA_GATEWAY_PORT=19614\n')
+            (root/'.env').write_text('QBITTORRENT_URL=http://192.0.2.10:8080\nMEDIA_LOCAL_CONTROL_BIND=192.168.8.1\nMEDIA_LOCAL_CONTROL_PORT=19613\nMEDIA_GATEWAY_PORT=19614\n')
             binary = root/'bin'
             binary.mkdir()
             docker = binary/'docker'
@@ -154,6 +187,7 @@ class SetupScriptTests(unittest.TestCase):
             self.assertIn('up -d worker web',local)
             self.assertIn('compose.local.yml',local)
             self.assertIn('19613/healthz',local)
+            self.assertIn('192.168.8.1:19613/healthz',local)
             self.assertNotIn('up -d mcp',local)
             self.assertNotIn('init-jackett',local)
             calls.unlink()

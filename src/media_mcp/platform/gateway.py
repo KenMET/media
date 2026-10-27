@@ -212,7 +212,7 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
         ('/',asset,['GET']),('/assets/{name}',asset,['GET']),
     )]
     from media_mcp.lan import lan_middleware
-    middleware = ([Middleware(LoopbackProxyMiddleware),Middleware(SameOriginMiddleware)] if proxied else
+    middleware = ([Middleware(LoopbackProxyMiddleware,allow_authenticated_web=True),Middleware(SameOriginMiddleware)] if proxied else
                   [Middleware(TrustedHostMiddleware,allowed_hosts=hosts)] if public else lan_middleware())
     return Starlette(routes=routes, middleware=middleware)
 
@@ -227,7 +227,7 @@ class dict_input(RootModel[dict]):
 
 def main():
     import uvicorn
-    uvicorn.run(create_gateway(), host=os.environ.get('MEDIA_WEB_BIND_HOST','127.0.0.1'),
+    uvicorn.run(create_gateway(), host=os.environ.get('MEDIA_WEB_BIND_HOST','0.0.0.0'),
                 port=int(os.environ.get('MEDIA_WEB_PORT','18213')), proxy_headers=False)
 
 

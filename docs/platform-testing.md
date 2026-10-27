@@ -102,4 +102,4 @@ nice -n 15 .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 未来真正拆到新加坡时，复用已有 HTTPS 反代与受保护 FRP 隧道，使用两端精简模板；无需重复填写域名 allowlist。直接暴露后端的旧高级模式另有要求。不要转发免登录的传统单机 MCP。
 # 关于新默认值
 
-拆机正式部署优先看 [两端精简部署](split-deployment.md)。本文件的同机 LAN 网页访问需显式 `MEDIA_WEB_MODE=lan`、`MEDIA_WEB_BIND_HOST=0.0.0.0`；cloud 新默认仅供本机反代访问。已有显式 `MEDIA_WEB_PUBLIC=false` 的旧同机配置继续按原 LAN 模式运行。
+拆机正式部署优先看 [两端精简部署](split-deployment.md)。本文件的同机 LAN HTTP 网页测试使用 `MEDIA_WEB_MODE=lan`；正式 cloud 网站默认 `MEDIA_GATEWAY_BIND=0.0.0.0`，通过已有 HTTPS 反代访问并保留账号认证。已有显式 `MEDIA_WEB_PUBLIC=false` 的旧同机配置继续按原 LAN 模式运行。

@@ -129,12 +129,12 @@ services:
     env_file: .env
     environment:
       <<: *media-environment
-      MEDIA_WEB_BIND_HOST: ${MEDIA_WEB_BIND_HOST:-0.0.0.0}
+      MEDIA_WEB_BIND_HOST: ${MEDIA_LOCAL_CONTROL_BIND:-${MEDIA_WEB_BIND_HOST:-0.0.0.0}}
       MEDIA_WEB_PORT: ${MEDIA_LOCAL_CONTROL_PORT:-${MEDIA_WEB_PORT:-18213}}
     volumes: *media-volumes
     command: ["media-web"]
     healthcheck:
-      test: ["CMD", "python3", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('MEDIA_WEB_PORT','18213')+'/healthz',timeout=3)"]
+      test: ["CMD", "python3", "-c", "import os,urllib.request;h=os.environ.get('MEDIA_WEB_BIND_HOST','127.0.0.1');h='127.0.0.1' if h in ('0.0.0.0','::') else h;h='['+h+']' if ':' in h else h;urllib.request.urlopen('http://'+h+':'+os.environ.get('MEDIA_WEB_PORT','18213')+'/healthz',timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 3

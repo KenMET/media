@@ -38,15 +38,22 @@ class ProxyDeploymentTests(unittest.TestCase):
     setUp=test_gateway.GatewayTests.setUp
 
     def test_only_explicit_proxy_container_ip_is_allowed(self):
-        with patch.dict(os.environ,{'MEDIA_WEB_MODE':'proxy','MEDIA_PROXY_IPS':'172.18.0.3'}):
-            app=create_gateway(self.remote,catalog=Mock(),http_request=self.transport.request)
-            for peer,status in (('172.18.0.3',200),('172.18.0.4',403),('198.51.100.5',403)):
-                with TestClient(app,base_url='http://existing-proxy.test',client=(peer,9000)) as client:
-                    self.assertEqual(client.get('/healthz',headers={'x-forwarded-for':'172.18.0.3'}).status_code,status)
+        for proxy,other in (('172.18.0.3','172.18.0.4'),('10.3.0.7','10.3.0.8')):
+            with patch.dict(os.environ,{'MEDIA_WEB_MODE':'proxy','MEDIA_PROXY_IPS':proxy}):
+                app=create_gateway(self.remote,catalog=Mock(),http_request=self.transport.request)
+                for peer,status in ((proxy,200),(other,403),('198.51.100.5',403)):
+                    with TestClient(app,base_url='http://existing-proxy.test',client=(peer,9000)) as client:
+                        self.assertEqual(client.get('/healthz',headers={'x-forwarded-for':proxy}).status_code,status)
         with patch.dict(os.environ,{'MEDIA_WEB_MODE':'proxy','MEDIA_PROXY_IPS':'172.18.0.0/16'}):
             with self.assertRaisesRegex(ValueError,'exact_ip_addresses'):
                 with TestClient(create_gateway(self.remote,catalog=Mock(),http_request=self.transport.request)):
                     pass
+
+    def test_cloud_gateway_default_listener_accepts_host_interfaces(self):
+        from media_mcp.platform.gateway import main
+        with patch.dict(os.environ,{},clear=True),patch('media_mcp.platform.gateway.create_gateway',return_value=Mock()),patch('uvicorn.run') as run:
+            main()
+        self.assertEqual(run.call_args.kwargs['host'],'0.0.0.0')
 
     def test_cloud_mcp_proxy_keeps_user_token_auth_without_domain_configuration(self):
         from media_mcp.server import main
@@ -60,7 +67,7 @@ class ProxyDeploymentTests(unittest.TestCase):
             self.assertIsInstance(factory.call_args.args[1],RemoteTokenVerifier)
             self.assertEqual(server.run.call_args.kwargs['middleware'][0].cls,LoopbackProxyMiddleware)
 
-    def test_proxy_without_domain_keeps_login_secure_and_denies_external_peers(self):
+    def test_proxy_without_domain_keeps_network_web_access_authenticated(self):
         with patch.dict(os.environ,{'MEDIA_WEB_MODE':'proxy','MEDIA_ALLOWED_HOSTS':'',
                 'MEDIA_WEB_PUBLIC_URL':'','MEDIA_WEB_SECURE_COOKIE':'true'}):
             app=create_gateway(self.remote,catalog=Mock(),http_request=self.transport.request)
@@ -75,7 +82,13 @@ class ProxyDeploymentTests(unittest.TestCase):
                 self.assertEqual(client.get('/internal/pairing').status_code,404)
                 self.assertEqual(client.get('/api/internal/pairing').status_code,400)
             with TestClient(app,base_url='https://my-existing-proxy.test',client=('192.168.8.50',9001)) as outsider:
-                self.assertEqual(outsider.get('/healthz',headers={'x-forwarded-for':'127.0.0.1'}).status_code,403)
+                self.assertEqual(outsider.get('/healthz',headers={'x-forwarded-for':'127.0.0.1'}).status_code,200)
+                self.assertEqual(outsider.get('/api/auth/me').status_code,401)
+                self.assertEqual(outsider.post('/api/command',json={'operation':'jobs'}).status_code,401)
+                from media_mcp.platform.network import browser_peer
+                from starlette.requests import Request
+                self.assertEqual(browser_peer(Request({'type':'http','client':('192.168.8.50',9001),
+                    'headers':[(b'x-forwarded-for',b'127.0.0.1')]})),'192.168.8.50')
 
     def test_first_pairing_writes_private_file_then_seals_and_resumes(self):
         with tempfile.TemporaryDirectory() as cloud,patch.dict(os.environ,{
@@ -105,6 +118,17 @@ class ProxyDeploymentTests(unittest.TestCase):
                 self.assertEqual(client.get('/internal/pairing',headers={'x-forwarded-for':'127.0.0.1'}).status_code,403)
             with TestClient(self.local_app,base_url='http://127.0.0.1',client=('127.0.0.1',9000)) as client:
                 self.assertEqual(client.post('/internal/pairing',json={}).status_code,403)
+
+    def test_private_lan_binding_pairs_only_from_the_same_host_socket(self):
+        with patch.dict(os.environ,{'MEDIA_SERVICE_PAIRING':'true','MEDIA_WEB_BIND_HOST':'192.168.8.1'}):
+            with TestClient(self.local_app,base_url='http://192.168.8.1',client=('192.168.8.1',9000)) as local_frpc:
+                self.assertEqual(local_frpc.get('/internal/pairing').status_code,200)
+            for peer in ('192.168.8.50','127.0.0.1','203.0.113.5'):
+                with TestClient(self.local_app,base_url='http://192.168.8.1',client=(peer,9000)) as other:
+                    self.assertEqual(other.get('/internal/pairing',headers={
+                        'x-forwarded-for':'192.168.8.1','x-real-ip':'192.168.8.1'}).status_code,403)
+            with TestClient(self.local_app,base_url='http://192.168.8.2',client=('192.168.8.1',9000)) as different_listener:
+                self.assertEqual(different_listener.get('/internal/pairing').status_code,403)
 
     def test_auto_pairing_never_fetches_non_loopback_or_redirect_targets(self):
         for url in ('http://192.168.8.1:18213','http://example.com','https://127.0.0.1',

@@ -29,13 +29,14 @@ def proxy_addresses():
 
 
 class LoopbackProxyMiddleware:
-    """Only loopback or exact operator-selected proxy container IPs may connect."""
-    def __init__(self,app):
+    """Restrict MCP proxies; the authenticated web app may opt into network access."""
+    def __init__(self,app,allow_authenticated_web=False):
         self.app=app
         self.addresses=proxy_addresses()
+        self.allow_authenticated_web=allow_authenticated_web and not self.addresses
 
     async def __call__(self,scope,receive,send):
-        allowed=loopback_peer(scope)
+        allowed=self.allow_authenticated_web or loopback_peer(scope)
         if not allowed:
             try:
                 allowed=ipaddress.ip_address(scope['client'][0]) in self.addresses

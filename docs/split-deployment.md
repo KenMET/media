@@ -10,15 +10,15 @@
 
 | 用途 | 默认行为 | 仅需要修改时填写 |
 | --- | --- | --- |
-| cloud 网站 | 127.0.0.1:18214 | `MEDIA_GATEWAY_PORT` |
+| cloud 网站 | 0.0.0.0:18214 | `MEDIA_GATEWAY_BIND`、`MEDIA_GATEWAY_PORT` |
 | cloud MCP | 127.0.0.1:18210 | `MEDIA_MCP_PORT` |
 | cloud 访问 FRP 本机映射 | 127.0.0.1:28213 | `MEDIA_CONTROL_PORT` |
-| NAS 控制端 | 127.0.0.1:18213 | `MEDIA_LOCAL_CONTROL_PORT` |
+| NAS 控制端 | 模板 192.168.8.1:18213 | `MEDIA_LOCAL_CONTROL_BIND`、`MEDIA_LOCAL_CONTROL_PORT` |
 | NAS 模型服务 | ws://127.0.0.1:8108 | `CODEX_APP_SERVER_URL` |
 | 下载 / 硬链接 | `MEDIA_DATA_DIR` 下的 downloads / media_hub | 通常无需修改容器内部根路径 |
 | NAS / cloud 状态 | 部署目录 ./state / ./state-cloud | 仅已有自定义状态目录时保留原设置 |
 
-仅有两类常见条件项：已有下载器要求登录时，添加真实 `QBITTORRENT_USERNAME` 和 `QBITTORRENT_PASSWORD`；已有反代运行在 Docker bridge 网络时，添加其固定 IP 的 `MEDIA_PROXY_IPS`。省略下载器账号密码表示免认证访问，不表示尝试默认密码。
+已有下载器要求登录时，添加真实 `QBITTORRENT_USERNAME` 和 `QBITTORRENT_PASSWORD`；省略表示免认证访问，不表示尝试默认密码。网站默认允许容器反代连接，仍要求用户认证。需要按真实客户端 IP 区分登录限流时，可额外指定反代实际来源 `MEDIA_PROXY_IPS`；未指定时忽略非回环来源提供的客户端 IP 头，使用真实 socket 来源限流，不信任可伪造的头。
 
 媒体 key 与字幕 key 仍在 `.env` 配置，当前网页不提供编辑这些凭据的功能。`TMDB_API_KEY` 放 cloud，用于作品搜索、详情和 TMDB 榜单；`OPENSUBTITLES_API_KEY`、`SUBDL_API_KEY`、`ASSRT_API_KEY` 放 NAS，由字幕 worker 使用。三个字幕来源可按需选择，留空仅跳过相应来源，不影响本地字幕复用/提取、其他来源或已有文本的模型翻译。OpenSubtitles 适配器还支持 `OPENSUBTITLES_USERNAME`、`OPENSUBTITLES_PASSWORD`，按所用账号及下载接口要求添加；Media 不生成第三方 key。在线字幕获取当前仍由本地字幕处理流程执行，不属于已迁至云端的 TMDB/Jackett 搜索链路。
 
@@ -36,7 +36,7 @@ cp .env.example .env
 sh setup.sh local
 ```
 
-local 默认只监听 `127.0.0.1`，内部认证文件自动生成。新配置默认启用本地执行模式：仅运行 worker 与控制服务、按需启动下载器，不启动 Jackett，不执行搜索。下载、入库和字幕使用云端下发的冻结信息，仍核对文件身份。不自动接管旧下载器任务、不导入 MySQL。正式接管旧目录前仍要完成 [数据迁移](production-cutover-plan.md)，不能用启动命令代替迁移。
+local 按 `MEDIA_LOCAL_CONTROL_BIND` 监听 NAS 的明确地址，模板为 `192.168.8.1`；需要使用其他 NAS 地址时修改这一项。内部认证文件自动生成。新配置默认启用本地执行模式：仅运行 worker 与控制服务、按需启动下载器，不启动 Jackett，不执行搜索。下载、入库和字幕使用云端下发的冻结信息，仍核对文件身份。不自动接管旧下载器任务、不导入 MySQL。正式接管旧目录前仍要完成 [数据迁移](production-cutover-plan.md)，不能用启动命令代替迁移。
 
 ## 云端
 
@@ -48,19 +48,21 @@ cp .env.example .env
 sh setup.sh cloud
 ```
 
-先启动 local 并接通现有 FRP（NAS `127.0.0.1:18213` → 云端本机 `127.0.0.1:28213`），再启动 cloud。云端自动通过该端口建立内部认证，保存 0600 凭据，确认成功后 NAS 关闭初次配对入口。原来的 API 身份认证仍然保留；不是删除 token 校验，也不是自动信任任意远程地址。已有内部凭据文件会沿用，不打印或覆盖。
+先启动 local 并接通现有 FRP（NAS `192.168.8.1:18213` → 云端本机 `127.0.0.1:28213`），再启动 cloud。云端自动通过该端口建立内部认证，保存 0600 凭据，确认成功后 NAS 关闭初次配对入口。原来的 API 身份认证仍然保留；不是删除 token 校验，也不是自动信任任意远程地址。已有内部凭据文件会沿用，不打印或覆盖。
+
+FRPC 的 `localIP` 应与 `MEDIA_LOCAL_CONTROL_BIND` 一致，`localPort` 等于 `MEDIA_LOCAL_CONTROL_PORT`，`remotePort` 等于 cloud 的 `MEDIA_CONTROL_PORT`。此方案要求 FRPC 与控制 API 使用同一宿主机网络；当前不自动修改共享 FRP 服务的其他映射。未填写新监听项的旧配置仍回退到原 `MEDIA_WEB_BIND_HOST` 或 local 的回环默认值。
 
 网页和 MCP 的中英文搜索、榜单、详情、Jackett 查询及种子内容获取均在 cloud 执行。云端按用户隔离搜索结果，选定后把有大小限制的种子字节或 magnet、媒体身份和集数交给 NAS；NAS 检查权限、过期时间、infohash、已有媒体、计划版本和幂等键，再生成本地任务。worker 直接消费已冻结材料，不访问云端 Jackett 地址。下载过程中 BT tracker/peer 与字幕/模型服务仍由对应本地执行组件按需访问；“不回调云端 Provider”不等于 NAS 完全断网。
 
-此自动配对信任你已配置好的私有 FRP 通道以及两台主机的本机进程。**云端映射端口必须仅本机可达**，不能公开；自动配对拒绝非回环 HTTP 地址。配对接口只存在于 local 控制端，要求显式开启及回环监听/来源；云端网站不会将该接口转发给公网。若云端凭据丢失，在 NAS 执行 `sh setup.sh local pair` 重新允许连接，再在云端执行启动命令；不要删除正式数据库。
+此自动配对信任你已配置好的私有 FRP 通道以及两台主机的本机进程。**云端映射端口必须仅本机可达**，不能公开；云端自动配对拒绝非回环 HTTP 地址。配对接口只存在于 local 控制端并要求显式开启：回环监听仅接受回环来源；明确的 NAS 私网监听地址仅接受来源 IP 与实际监听 IP 均等于该 NAS 地址的本机自连接，不接受其他 LAN 设备或伪造来源头。通配/公网监听不能进行自动配对。云端网站不会将该接口转发给公网。若云端凭据丢失，在 NAS 执行 `sh setup.sh local pair` 重新允许连接，再在云端执行启动命令；不要删除正式数据库。
 
 跨公网的 FRP 传输仍须使用已有认证和加密配置；只把映射端口绑定回环并不等于传输加密。Media 不修改你现有的 FRP 配置。
 
-默认云端是已有反代模式：网站 `127.0.0.1:18214`，MCP `127.0.0.1:18210`。你的 HTTPS 反代网站上游指向前者；使用 AI 时把 `/mcp` 指向后者。反代需保留 Host、覆盖 X-Real-IP 为真实客户端地址；例如 Nginx 的 `proxy_set_header Host $http_host;`、`proxy_set_header X-Real-IP $remote_addr;`。同源检查、登录/CSRF 和 MCP 用户令牌仍启用，网站会设置 Secure cookie，外部 HTTPS 由现有反代提供。
+云端网站默认监听 `0.0.0.0:18214`，不再只监听回环。Docker bridge 反代的上游填写容器可达的云主机 IP 和 `MEDIA_GATEWAY_PORT`，例如本次 `10.3.0.7:8800`，不要填写反代容器自己的 `127.0.0.1`，也不要填 FRP 控制映射口 `8802`。反代需保留 Host，覆盖或追加真实客户端来源。同源检查、登录/CSRF 和 MCP 用户令牌仍启用，网站会设置 Secure cookie，外部 HTTPS 由现有反代提供。
 
 已有反代若已按标准追加/覆盖 `X-Forwarded-For`，无需再加 X-Real-IP：应用优先读取该链末端由本机代理追加的实际来源，不使用客户端可伪造的第一个值。只有回环代理来源才有此权限；反代不能原样透传客户端的来源头而不追加/覆盖。
 
-默认只允许回环 socket 来源，不能靠伪造转发头绕过。如果 NPM 等反代在 Docker bridge 网络，补一项 `MEDIA_PROXY_IPS=反代容器的固定IP`，反代上游使用它可达的宿主机 IP 和网站端口（不能填反代容器自己的 127.0.0.1）。启动器会调整监听，但应用仍只允许回环和这些准确的代理 IP，不信任整个私网。容器 IP 变化时需要更新配置并重启；可给代理分配固定 IP。此选项也用于 MCP 入口。
+网站的网络监听与代理来源头信任分别处理：不设置 `MEDIA_PROXY_IPS` 时允许正常访问登录入口，所有业务仍需身份认证；设置后额外限制为回环和指定的准确代理 IP，并信任这些代理提供的来源头。`MEDIA_PROXY_IPS` 指代理连接到应用时的真实来源地址，不能把上游云主机 `10.3.0.7` 当作代理 IP 填入。MCP 仍保持回环或显式代理来源限制；Docker 反代 `/mcp` 时需指定代理来源 IP，其监听会相应调整。未配置可信代理时，经过同一代理的请求共享该 socket IP 的限流桶。
 
 新模式只有 cloud → NAS 的应用连接，NAS 不需要 `MEDIA_CATALOG_URL`。FRPC 自身与 FRPS 的连接配置继续由你管理；Media 不替它配置服务器地址。
 
@@ -97,3 +99,7 @@ NAS 标准模板只保留 `MEDIA_DATA_DIR`：宿主机该目录整体挂载到�
 本轮不改动用户现有 `.env`、FRP、反代或生产数据；只交付部署入口、模板及隔离验证。
 
 本轮验证结果见 [云端搜索重构验收](history/cloud-execution-goal.md)。尚未在真实新加坡服务器执行部署。
+
+## 启动状态检查
+
+local 启动时会只读调用 qBittorrent 版本 API，核对下载器服务和认证，不创建分类、不提交下载、不修改已有任务；失败会明确提示地址或认证检查。控制 API 就绪之后，worker 仍需完成模型连接、目录/硬链接检查及子进程初始化。脚本每 5 秒检查一次，最多检查 60 次；全部健康检查通过后才成功退出，持续未就绪则超时并非零退出。排错使用 `sh setup.sh local logs`。

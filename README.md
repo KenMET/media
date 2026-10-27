@@ -15,7 +15,7 @@
 需要 Linux、Docker 与 Compose、本地磁盘，以及可用的模型服务和匹配的凭据文件。
 
 1. **NAS**：复制统一的 [.env.example](.env.example) 为 `.env`，填写 local / NAS 分组，核对控制端口、下载器、媒体目录、模型地址与凭据文件，然后执行 `sh setup.sh local`。
-2. **FRP**：例如将 NAS `127.0.0.1:18213` 转发到云端仅本机可达的 `127.0.0.1:28213`。
+2. **FRP**：例如将 NAS `192.168.8.1:18213` 转发到云端仅本机可达的 `127.0.0.1:28213`；FRPC 的 `localIP` 与 `MEDIA_LOCAL_CONTROL_BIND` 保持一致，使用 NAS 本机 host 网络。
 3. **云端**：同样复制 [.env.example](.env.example) 为该主机的 `.env`，填写 cloud 分组，核对网站/MCP/映射端口、TMDB key 与已有 Jackett 地址，然后执行 `sh setup.sh cloud`。
 4. **反代**：网站指向本机 `18214`，可选 `/mcp` 指向本机 `18210`。创建网站管理员后使用；云端 MCP 使用可撤销的用户令牌。
 

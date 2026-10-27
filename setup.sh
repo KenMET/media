@@ -58,14 +58,20 @@ fi
 case "$MEDIA_WEB_MODE" in lan|proxy) ;; *) echo 'MEDIA_WEB_MODE 只支持 lan 或 proxy。' >&2; exit 1 ;; esac
 MEDIA_WEB_BIND_HOST="${MEDIA_WEB_BIND_HOST-$(setting MEDIA_WEB_BIND_HOST)}"
 MEDIA_SERVICE_PAIRING="${MEDIA_SERVICE_PAIRING-$(setting MEDIA_SERVICE_PAIRING)}"
-if [ "$topology" = local ]; then
-    MEDIA_WEB_BIND_HOST="${MEDIA_WEB_BIND_HOST:-127.0.0.1}"
-    if [ "$MEDIA_WEB_BIND_HOST" = 127.0.0.1 ]; then MEDIA_SERVICE_PAIRING="${MEDIA_SERVICE_PAIRING:-true}"; fi
+if [ "$topology" = local ] || [ "$topology" = standalone ]; then
+    local_control_bind="${MEDIA_LOCAL_CONTROL_BIND-$(setting MEDIA_LOCAL_CONTROL_BIND)}"
+    default_control_bind=0.0.0.0
+    if [ "$topology" = local ]; then default_control_bind=127.0.0.1; fi
+    MEDIA_WEB_BIND_HOST="${local_control_bind:-${MEDIA_WEB_BIND_HOST:-$default_control_bind}}"
+    if [ "$topology" = local ] && [ "$MEDIA_WEB_BIND_HOST" != 0.0.0.0 ] && [ "$MEDIA_WEB_BIND_HOST" != :: ]; then
+        MEDIA_SERVICE_PAIRING="${MEDIA_SERVICE_PAIRING:-true}"
+    fi
 elif [ "$topology" = cloud ] && [ "$MEDIA_WEB_MODE" = proxy ]; then
     proxy_ips="${MEDIA_PROXY_IPS-$(setting MEDIA_PROXY_IPS)}"
     proxy_bind=127.0.0.1
     if [ -n "$proxy_ips" ]; then proxy_bind=0.0.0.0; fi
-    MEDIA_WEB_BIND_HOST="${MEDIA_WEB_BIND_HOST:-$proxy_bind}"
+    gateway_bind="${MEDIA_GATEWAY_BIND-$(setting MEDIA_GATEWAY_BIND)}"
+    MEDIA_WEB_BIND_HOST="${gateway_bind:-${MEDIA_WEB_BIND_HOST:-0.0.0.0}}"
     MEDIA_BIND_HOST="${MEDIA_BIND_HOST-$(setting MEDIA_BIND_HOST)}"; MEDIA_BIND_HOST="${MEDIA_BIND_HOST:-$proxy_bind}"
     export MEDIA_BIND_HOST
 fi
@@ -97,7 +103,7 @@ case "$command" in
     stop) compose stop $stop_services $managed_services; exit 0 ;;
     pair)
         if [ "$topology" != local ] || [ "$MEDIA_SERVICE_PAIRING" != true ]; then
-            echo '重新连接只用于本机监听的 local 控制端。' >&2; exit 1
+            echo '重新连接只用于显式本机地址监听的 local 控制端。' >&2; exit 1
         fi
         rm -f "$state_path/control-pairing.sealed"
         echo '已允许云端重新连接；确认 FRP 仅本机可达后，运行 setup.sh cloud。'; exit 0 ;;
@@ -199,18 +205,22 @@ for service in $managed_services; do
         if [ "$attempt" -ge 60 ]; then
             printf '%s 尚未就绪，请查看相应部署的 setup.sh logs。\n' "$service" >&2; exit 1
         fi
-        sleep 2
+        sleep 5
     done
 done
 compose up -d $app_services
 wait_for_entry() {
     entry_service="$1"; entry_port="$2"; entry_label="$3"
+    entry_host="${4:-127.0.0.1}"
+    case "$entry_host" in 0.0.0.0|::) entry_host=127.0.0.1 ;; esac
+    case "$entry_host" in *:*) entry_host="[$entry_host]" ;; esac
+    entry_url="http://$entry_host:$entry_port/healthz"
     entry_logs_command='sh setup.sh logs'
     if [ "$topology" != standalone ]; then entry_logs_command="sh setup.sh $topology logs"; fi
     printf '正在等待%s就绪（本机端口 %s）...\n' "$entry_label" "$entry_port"
     entry_attempt=0
     while [ "$entry_attempt" -lt 60 ]; do
-        if compose exec -T "$entry_service" python3 -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:$entry_port/healthz',timeout=2)" >/dev/null 2>&1; then
+        if compose exec -T "$entry_service" python3 -c 'import sys,urllib.request;urllib.request.urlopen(sys.argv[1],timeout=2)' "$entry_url" >/dev/null 2>&1; then
             printf '%s已就绪。\n' "$entry_label"
             return 0
         fi
@@ -219,22 +229,24 @@ wait_for_entry() {
             entry_state="$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$entry_container" 2>/dev/null || true)"
             case "$entry_state" in
                 restarting:*|exited:*|dead:*)
-                    printf '%s启动失败，容器状态 %s。请检查端口 %s 是否已被占用，并查看 %s。\n' "$entry_label" "$entry_state" "$entry_port" "$entry_logs_command" >&2
-                    return 1 ;;
+                    printf '%s尚未就绪，容器状态 %s。请检查端口 %s 是否已被占用，并查看 %s。\n' "$entry_label" "$entry_state" "$entry_port" "$entry_logs_command" >&2
+                    printf '继续每 5 秒检查，等待服务恢复。\n' >&2 ;;
             esac
         fi
         entry_attempt=$((entry_attempt+1))
         if [ $((entry_attempt % 5)) -eq 0 ]; then
             printf '%s仍未就绪，已检查 %s 次；端口 %s。\n' "$entry_label" "$entry_attempt" "$entry_port"
         fi
-        sleep 2
+        sleep 5
     done
     printf '%s等待超时，请查看相应部署的 setup.sh logs。\n' "$entry_label" >&2
     return 1
 }
 entry_label='MCP'
+entry_bind=127.0.0.1
 if [ "$topology" = local ]; then entry_label='本地控制 API'; fi
-if ! wait_for_entry "$health_service" "$health_port" "$entry_label"; then exit 1; fi
+if [ "$topology" = local ]; then entry_bind="$MEDIA_WEB_BIND_HOST"; fi
+if ! wait_for_entry "$health_service" "$health_port" "$entry_label" "$entry_bind"; then exit 1; fi
 web_port="$(setting MEDIA_WEB_PORT)"
 if [ "$topology" = cloud ]; then
     gateway_port="$(setting MEDIA_GATEWAY_PORT)"; web_port="${gateway_port:-${web_port:-18214}}"
@@ -244,13 +256,16 @@ else
 fi
 case "$web_port" in ''|*[!0-9]*) echo '网页端口必须是数字。' >&2; exit 1 ;; esac
 if [ "$health_service" != web ]; then
-    if ! wait_for_entry web "$web_port" '网页入口'; then exit 1; fi
+    if ! wait_for_entry web "$web_port" '网页入口' "$MEDIA_WEB_BIND_HOST"; then exit 1; fi
 fi
 lan_ip="$(setting MEDIA_LAN_IP)"
 if [ -z "$lan_ip" ] && command -v ip >/dev/null 2>&1; then
     lan_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([^ ]*\).*/\1/p' | head -n 1)"
 fi
 lan_ip="${lan_ip:-<主机局域网IP>}"
+if [ "$topology" = local ] && [ "$MEDIA_WEB_BIND_HOST" != 0.0.0.0 ] && [ "$MEDIA_WEB_BIND_HOST" != :: ]; then
+    lan_ip="$MEDIA_WEB_BIND_HOST"
+fi
 if [ "$topology" = cloud ]; then
     printf 'cloud 已启动：网站端口 %s，MCP 端口 %s；域名和 HTTPS 使用你已有的反向代理。\n' "$web_port" "$health_port"
 elif [ "$topology" = local ]; then
@@ -265,9 +280,21 @@ if [ "$topology" = standalone ] && [ "$auth_mode" = none ]; then
     echo '当前为可信个人 LAN MCP；网页用户权限不约束此免认证入口，请限制端口可达范围。'
 fi
 if [ "$topology" != cloud ]; then
-    if compose exec -T worker python3 -m media_mcp.monitor.health >/dev/null 2>&1; then
-        echo '后台 worker：已就绪。'
-    else
-        echo '后台 worker：尚未就绪，请检查模型连接、目录权限与日志。'
-    fi
+    echo '正在检查下载器 API（只读取版本，不提交下载）...'
+    if ! compose exec -T worker python3 -m media_mcp.monitor.dependencies; then exit 1; fi
+    echo '正在等待后台 worker 初始化（模型连接与目录检查）...'
+    worker_ready=false; worker_attempt=0
+    while [ "$worker_attempt" -lt 60 ]; do
+        if compose exec -T worker python3 -m media_mcp.monitor.health >/dev/null 2>&1; then
+            worker_ready=true; break
+        fi
+        worker_attempt=$((worker_attempt+1))
+        if [ $((worker_attempt % 5)) -eq 0 ]; then
+            printf '后台 worker 仍在初始化或重试，已检查 %s 次。\n' "$worker_attempt"
+        fi
+        sleep 5
+    done
+    if [ "$worker_ready" = true ]; then echo '后台 worker：已就绪。'
+    else echo '后台 worker 等待超时：部署尚未就绪，请查看 setup.sh logs 中的模型和目录错误。' >&2; exit 1; fi
+    echo '本地控制 API、下载器和后台 worker 检查全部通过。'
 fi

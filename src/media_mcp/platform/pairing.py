@@ -30,14 +30,26 @@ def loopback_url(base):
     return base.rstrip('/')
 
 
-def pairing_response(request, directory):
+def local_pairing_peer(request):
+    """Only a local socket may enroll: loopback, or the explicitly bound LAN IP itself."""
     try:
-        bind=ipaddress.ip_address(os.environ.get('MEDIA_WEB_BIND_HOST','127.0.0.1')).is_loopback
-    except ValueError:
-        bind=False
+        bind=ipaddress.ip_address(os.environ.get('MEDIA_WEB_BIND_HOST','127.0.0.1'))
+        if bind.is_loopback:
+            return loopback_peer(request.scope)
+        ranges=('10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','fc00::/7')
+        if not any(bind in ipaddress.ip_network(network) for network in ranges):
+            return False
+        peer=ipaddress.ip_address(request.scope['client'][0])
+        server=ipaddress.ip_address(request.scope['server'][0])
+        return peer==bind and server==bind
+    except (ValueError,TypeError,KeyError,IndexError):
+        return False
+
+
+def pairing_response(request, directory):
     token=service_token()
-    if (os.environ.get('MEDIA_SERVICE_PAIRING')!='true' or not bind
-            or not loopback_peer(request.scope) or not token):
+    if (os.environ.get('MEDIA_SERVICE_PAIRING')!='true'
+            or not local_pairing_peer(request) or not token):
         raise ValueError('permission_denied')
     marker=Path(directory)/'control-pairing.sealed'
     identity=hashlib.sha256(token.encode()).hexdigest()
@@ -94,13 +106,34 @@ def connect(base, destination, session=None):
         raise ValueError('pairing_not_completed')
 
 
+def pairing_error_message(error):
+    """Explain bounded failure categories without echoing URLs or response bodies."""
+    if isinstance(error,requests.Timeout):
+        reason='连接控制端超时；检查云端 FRP 映射端口及 FRPC 到本地控制 API 的连接'
+    elif isinstance(error,requests.ConnectionError):
+        reason='无法连接控制端；检查云端 MEDIA_CONTROL_PORT，并将本机 FRPC 的 localIP 指向 127.0.0.1、localPort 指向 MEDIA_LOCAL_CONTROL_PORT'
+    elif isinstance(error,requests.HTTPError):
+        status=getattr(error.response,'status_code',None)
+        if status==403:
+            reason='控制端拒绝配对（HTTP 403）；检查首次配对是否启用，以及请求是否来自本机 FRPC'
+        elif status==400:
+            reason='控制端拒绝请求（HTTP 400）；若首次配对已关闭且云端凭据丢失，可在 NAS 执行 sh setup.sh local pair'
+        else:
+            reason='控制端 HTTP 响应异常；确认 FRP 映射指向 Media 控制 API，而非其他服务'
+    elif isinstance(error,OSError):
+        reason='无法读写云端内部凭据文件；检查宿主机状态目录和文件权限'
+    else:
+        reason='控制端响应或凭据校验失败；检查映射服务及私有凭据文件，不要直接删除或覆盖已有密钥'
+    return '自动连接未完成：'+reason+'。已有密钥不会被覆盖。'
+
+
 def main():
     try:
         from media_mcp.platform.transport import control_url
         connect(control_url(),sys.argv[1])
-    except Exception:
+    except Exception as error:
         # Never echo response bodies, headers, credentials or connection objects.
-        raise SystemExit('自动连接未完成：请先启动 local，并确认 FRP 映射仅在云端本机可达；已有密钥不会被覆盖。') from None
+        raise SystemExit(pairing_error_message(error)) from None
     print('内部认证已自动配置，无需手工填写 control token。')
 
 
