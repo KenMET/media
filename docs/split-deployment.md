@@ -13,7 +13,7 @@
 | cloud 网站 | 127.0.0.1:18214 | `MEDIA_GATEWAY_PORT` |
 | cloud MCP | 127.0.0.1:18210 | `MEDIA_MCP_PORT` |
 | cloud 访问 FRP 本机映射 | 127.0.0.1:28213 | `MEDIA_CONTROL_PORT` |
-| NAS 控制端 | 127.0.0.1:18213 | `MEDIA_WEB_PORT` |
+| NAS 控制端 | 127.0.0.1:18213 | `MEDIA_LOCAL_CONTROL_PORT` |
 | NAS 模型服务 | ws://127.0.0.1:8108 | `CODEX_APP_SERVER_URL` |
 | 下载 / 硬链接 | `MEDIA_DATA_DIR` 下的 downloads / media_hub | 通常无需修改容器内部根路径 |
 | NAS / cloud 状态 | 部署目录 ./state / ./state-cloud | 仅已有自定义状态目录时保留原设置 |
@@ -28,7 +28,7 @@
 
 ## NAS
 
-保留现有 `/data/downloads`、`/data/media_hub`。填写已有下载器地址及认证、现有模型连接。`MEDIA_WEB_PORT=18213` 是本地控制端口，交给已有 FRPC 转发。NAS 不填写云端域名、URL 或地址，不主动连接云端 Provider。
+保留现有 `/data/downloads`、`/data/media_hub`。填写已有下载器地址及认证、现有模型连接。`MEDIA_LOCAL_CONTROL_PORT=18213` 是本地控制端口，交给已有 FRPC 转发。NAS 不填写云端域名、URL 或地址，不主动连接云端 Provider。
 
 ```sh
 cp .env.example .env
@@ -40,7 +40,7 @@ local 默认只监听 `127.0.0.1`，内部认证文件自动生成。新配置�
 
 ## 云端
 
-填写 cloud 分组的端口、TMDB key 和已有 Jackett（留空则启动内置）。网站使用 `MEDIA_GATEWAY_PORT`，NAS 控制端使用 `MEDIA_WEB_PORT`，避免统一模板的同名参数相互覆盖。本机 FRP 映射入口使用 `MEDIA_CONTROL_PORT`。内部固定连接 `127.0.0.1`，不用填写两端 URL。无需在 Media 配置域名、证书、`MEDIA_WEB_PUBLIC_URL` 或 `MEDIA_ALLOWED_HOSTS`。
+填写 cloud 分组的端口、TMDB key 和已有 Jackett（留空则启动内置）。网站使用 `MEDIA_GATEWAY_PORT`，NAS 控制端使用 `MEDIA_LOCAL_CONTROL_PORT`，避免统一模板的同名参数相互覆盖。本机 FRP 映射入口使用 `MEDIA_CONTROL_PORT`。内部固定连接 `127.0.0.1`，不用填写两端 URL。无需在 Media 配置域名、证书、`MEDIA_WEB_PUBLIC_URL` 或 `MEDIA_ALLOWED_HOSTS`。
 
 ```sh
 cp .env.example .env
@@ -86,7 +86,7 @@ NAS 标准模板只保留 `MEDIA_DATA_DIR`：宿主机该目录整体挂载到�
 
 ## 兼容和端口
 
-- 统一模板使用 `MEDIA_GATEWAY_PORT` 表示 cloud 网站、`MEDIA_WEB_PORT` 表示 NAS 控制端。旧 cloud 配置仅填写 `MEDIA_WEB_PORT` 仍兼容；同时填写时 `MEDIA_GATEWAY_PORT` 优先。
+- 统一模板使用 `MEDIA_GATEWAY_PORT` 表示 cloud 网站、`MEDIA_LOCAL_CONTROL_PORT` 表示 NAS 控制端。旧 local 的 `MEDIA_WEB_PORT` 仍作兼容回退，新控制端口优先；旧 cloud 仅填写 `MEDIA_WEB_PORT` 仍兼容，`MEDIA_GATEWAY_PORT` 优先。
 - `MEDIA_CONTROL_PORT` 优先于旧 `MEDIA_CONTROL_URL`；只允许 1–65535 的数字并固定使用回环 HTTP。未设置端口时旧 URL 保留兼容；新 cloud 配置默认端口 28213。同机、不经过 FRP 的隔离测试可设为本地控制端口，例如 18213。
 - 已显式设置旧 `MEDIA_CATALOG_URL` 的 local 配置保留原兼容模式；切换时移除它并重启 local，即默认启用 `MEDIA_EXECUTION_ONLY=true`，拒绝 Provider 网络访问。旧单机不受影响。不要只改模板而误以为已修改自己的 `.env`。
 - 需要直接用 NAS IP 访问同机测试网页时，显式设置 `MEDIA_WEB_MODE=lan`、`MEDIA_WEB_BIND_HOST=0.0.0.0`；仍使用原有 LAN 边界。非回环监听不会开放自动配对。不是推荐的公网部署方式。

@@ -82,7 +82,9 @@ if [ "$topology" = cloud ]; then
     if [ -z "$JACKETT_URL" ]; then managed_services='jackett'; fi
 elif [ "$topology" = local ]; then
     app_services='worker web'; stop_services='worker web'; health_service=web
-    health_port="$(setting MEDIA_WEB_PORT)"; health_port="${health_port:-18213}"
+    legacy_web_port="$(setting MEDIA_WEB_PORT)"
+    health_port="${MEDIA_LOCAL_CONTROL_PORT-$(setting MEDIA_LOCAL_CONTROL_PORT)}"
+    health_port="${health_port:-${legacy_web_port:-18213}}"
     if [ -z "$QBITTORRENT_URL" ]; then managed_services='qbittorrent'; fi
     if [ "$MEDIA_EXECUTION_ONLY" != true ] && [ -z "$JACKETT_URL" ] && [ -z "$MEDIA_CATALOG_URL" ]; then managed_services="$managed_services jackett"; fi
 else
@@ -213,7 +215,8 @@ web_port="$(setting MEDIA_WEB_PORT)"
 if [ "$topology" = cloud ]; then
     gateway_port="$(setting MEDIA_GATEWAY_PORT)"; web_port="${gateway_port:-${web_port:-18214}}"
 else
-    web_port="${web_port:-18213}"
+    local_control_port="${MEDIA_LOCAL_CONTROL_PORT-$(setting MEDIA_LOCAL_CONTROL_PORT)}"
+    web_port="${local_control_port:-${web_port:-18213}}"
 fi
 case "$web_port" in ''|*[!0-9]*) echo '网页端口必须是数字。' >&2; exit 1 ;; esac
 if [ "$health_service" != web ]; then

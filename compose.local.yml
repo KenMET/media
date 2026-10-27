@@ -130,7 +130,7 @@ services:
     environment:
       <<: *media-environment
       MEDIA_WEB_BIND_HOST: ${MEDIA_WEB_BIND_HOST:-0.0.0.0}
-      MEDIA_WEB_PORT: ${MEDIA_WEB_PORT:-18213}
+      MEDIA_WEB_PORT: ${MEDIA_LOCAL_CONTROL_PORT:-${MEDIA_WEB_PORT:-18213}}
     volumes: *media-volumes
     command: ["media-web"]
     healthcheck:

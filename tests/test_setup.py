@@ -112,7 +112,7 @@ class SetupScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             shutil.copyfile(source/'setup.sh', root/'setup.sh')
-            (root/'.env').write_text('QBITTORRENT_URL=http://192.0.2.10:8080\n')
+            (root/'.env').write_text('QBITTORRENT_URL=http://192.0.2.10:8080\nMEDIA_LOCAL_CONTROL_PORT=19613\nMEDIA_GATEWAY_PORT=19614\n')
             binary = root/'bin'
             binary.mkdir()
             docker = binary/'docker'
@@ -128,6 +128,7 @@ class SetupScriptTests(unittest.TestCase):
             local = calls.read_text()
             self.assertIn('up -d worker web',local)
             self.assertIn('compose.local.yml',local)
+            self.assertIn('19613/healthz',local)
             self.assertNotIn('up -d mcp',local)
             self.assertNotIn('init-jackett',local)
             calls.unlink()
@@ -135,6 +136,7 @@ class SetupScriptTests(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stderr)
             cloud = calls.read_text()
             self.assertIn('compose.cloud.yml',cloud)
+            self.assertIn('19614/healthz',cloud)
             self.assertIn('up -d mcp web',cloud)
             self.assertIn('init-jackett',cloud)
             self.assertNotIn('worker',cloud)

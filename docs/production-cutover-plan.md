@@ -40,7 +40,7 @@ MEDIA_DOWNLOAD_ROOT=/data/downloads
 MEDIA_LIBRARY_ROOT=/data/media_hub
 QBITTORRENT_URL=http://你的已有下载器地址:端口
 MEDIA_WEB_BIND_HOST=127.0.0.1
-MEDIA_WEB_PORT=18213
+MEDIA_LOCAL_CONTROL_PORT=18213
 ```
 
 下载器认证、模型凭据与 control-token 留在私有 `.env`/文件中。`MEDIA_STATE_PATH` 必须在 NAS 本机磁盘上，不能指向 Windows SMB 挂载的 SQLite。
