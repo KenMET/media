@@ -51,9 +51,15 @@ class ProxyDeploymentTests(unittest.TestCase):
 
     def test_cloud_gateway_default_listener_accepts_host_interfaces(self):
         from media_mcp.platform.gateway import main
-        with patch.dict(os.environ,{},clear=True),patch('media_mcp.platform.gateway.create_gateway',return_value=Mock()),patch('uvicorn.run') as run:
-            main()
-        self.assertEqual(run.call_args.kwargs['host'],'0.0.0.0')
+        for configuration,expected in (
+            ({},'0.0.0.0'),
+            ({'MEDIA_WEB_BIND_HOST':'127.0.0.1'},'0.0.0.0'),
+            ({'MEDIA_WEB_BIND_HOST':'127.0.0.1','MEDIA_GATEWAY_BIND':'0.0.0.0'},'0.0.0.0'),
+            ({'MEDIA_GATEWAY_BIND':'127.0.0.1'},'127.0.0.1'),
+        ):
+            with self.subTest(configuration=configuration),patch.dict(os.environ,configuration,clear=True),patch('media_mcp.platform.gateway.create_gateway',return_value=Mock()),patch('uvicorn.run') as run:
+                main()
+                self.assertEqual(run.call_args.kwargs['host'],expected)
 
     def test_cloud_mcp_proxy_keeps_user_token_auth_without_domain_configuration(self):
         from media_mcp.server import main

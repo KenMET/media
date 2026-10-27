@@ -45,7 +45,8 @@ services:
       MEDIA_CONTROL_TOKEN_FILE: /run/secrets/media-control-token
       MEDIA_BIND_HOST: ${MEDIA_BIND_HOST:-0.0.0.0}
       MEDIA_MCP_PORT: ${MEDIA_MCP_PORT:-18210}
-      MEDIA_WEB_BIND_HOST: ${MEDIA_GATEWAY_BIND:-${MEDIA_WEB_BIND_HOST:-0.0.0.0}}
+      MEDIA_GATEWAY_BIND: ${MEDIA_GATEWAY_BIND:-0.0.0.0}
+      MEDIA_WEB_BIND_HOST: ${MEDIA_GATEWAY_BIND:-0.0.0.0}
       MEDIA_WEB_PORT: ${MEDIA_GATEWAY_PORT:-${MEDIA_WEB_PORT:-18214}}
       MEDIA_WEB_MODE: ${MEDIA_WEB_MODE:-lan}
       MEDIA_WEB_PUBLIC: ${MEDIA_WEB_PUBLIC:-false}
@@ -79,7 +80,7 @@ services:
     volumes: *cloud-volumes
     command: ["media-gateway"]
     healthcheck:
-      test: ["CMD", "python3", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('MEDIA_WEB_PORT','18213')+'/healthz',timeout=3)"]
+      test: ["CMD", "python3", "-c", "import os,urllib.request;h=os.environ.get('MEDIA_GATEWAY_BIND') or '0.0.0.0';h='127.0.0.1' if h in ('0.0.0.0','::') else h;h='['+h+']' if ':' in h else h;urllib.request.urlopen('http://'+h+':'+os.environ.get('MEDIA_WEB_PORT','18213')+'/healthz',timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 3

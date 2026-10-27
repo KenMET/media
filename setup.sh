@@ -66,12 +66,15 @@ if [ "$topology" = local ] || [ "$topology" = standalone ]; then
     if [ "$topology" = local ] && [ "$MEDIA_WEB_BIND_HOST" != 0.0.0.0 ] && [ "$MEDIA_WEB_BIND_HOST" != :: ]; then
         MEDIA_SERVICE_PAIRING="${MEDIA_SERVICE_PAIRING:-true}"
     fi
-elif [ "$topology" = cloud ] && [ "$MEDIA_WEB_MODE" = proxy ]; then
+elif [ "$topology" = cloud ]; then
     proxy_ips="${MEDIA_PROXY_IPS-$(setting MEDIA_PROXY_IPS)}"
-    proxy_bind=127.0.0.1
+    proxy_bind=0.0.0.0
+    if [ "$MEDIA_WEB_MODE" = proxy ]; then proxy_bind=127.0.0.1; fi
     if [ -n "$proxy_ips" ]; then proxy_bind=0.0.0.0; fi
-    gateway_bind="${MEDIA_GATEWAY_BIND-$(setting MEDIA_GATEWAY_BIND)}"
-    MEDIA_WEB_BIND_HOST="${gateway_bind:-${MEDIA_WEB_BIND_HOST:-0.0.0.0}}"
+    MEDIA_GATEWAY_BIND="${MEDIA_GATEWAY_BIND-$(setting MEDIA_GATEWAY_BIND)}"
+    MEDIA_GATEWAY_BIND="${MEDIA_GATEWAY_BIND:-0.0.0.0}"
+    MEDIA_WEB_BIND_HOST="$MEDIA_GATEWAY_BIND"
+    export MEDIA_GATEWAY_BIND
     MEDIA_BIND_HOST="${MEDIA_BIND_HOST-$(setting MEDIA_BIND_HOST)}"; MEDIA_BIND_HOST="${MEDIA_BIND_HOST:-$proxy_bind}"
     export MEDIA_BIND_HOST
 fi

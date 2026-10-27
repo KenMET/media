@@ -70,7 +70,7 @@ class SetupScriptTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             shutil.copyfile(source/'setup.sh',root/'setup.sh')
-            (root/'.env').write_text('MEDIA_WEB_PORT=19514\nMEDIA_CONTROL_PORT=29213\nJACKETT_URL=http://127.0.0.1:19117\n')
+            (root/'.env').write_text('MEDIA_WEB_PORT=19514\nMEDIA_WEB_BIND_HOST=127.0.0.1\nMEDIA_CONTROL_PORT=29213\nJACKETT_URL=http://127.0.0.1:19117\n')
             binary=root/'bin';binary.mkdir()
             docker=binary/'docker'
             docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALL_LOG"\n'

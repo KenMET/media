@@ -227,7 +227,7 @@ class dict_input(RootModel[dict]):
 
 def main():
     import uvicorn
-    uvicorn.run(create_gateway(), host=os.environ.get('MEDIA_WEB_BIND_HOST','0.0.0.0'),
+    uvicorn.run(create_gateway(), host=os.environ.get('MEDIA_GATEWAY_BIND') or '0.0.0.0',
                 port=int(os.environ.get('MEDIA_WEB_PORT','18213')), proxy_headers=False)
 
 
