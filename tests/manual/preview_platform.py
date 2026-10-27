@@ -72,6 +72,16 @@ if __name__ == '__main__':
             MEDIA_DOWNLOAD_ROOT=str(root/'downloads'), MEDIA_LIBRARY_ROOT=str(root/'library'),
             MEDIA_HEALTH_DIR=str(root/'health'), MEDIA_WEB_PUBLIC='false', MEDIA_ALLOWED_HOSTS='localhost',
             MEDIA_WEB_SECURE_COOKIE='false')
+        # Existing-file discovery fixtures; these bytes are never playable media.
+        downloads, library = root/'downloads', root/'library'
+        downloads.mkdir(); library.mkdir()
+        (downloads/'Letters.from.the.Mountain.2025.mkv').write_bytes(b'disposable-preview-video')
+        os.link(downloads/'Letters.from.the.Mountain.2025.mkv', library/'远山来信 (2025).mkv')
+        (library/'远山来信 (2025).zh.srt').write_text('1\n00:00:01,000 --> 00:00:02,000\n测试字幕\n')
+        (downloads/'Midnight.Route.S01E01.1080p.mkv').write_bytes(b'unorganized-preview-video')
+        (library/'岛屿漫游 (2024).mp4').write_bytes(b'library-only-preview-video')
+        (library/'尚未匹配的字幕.ass').write_text('[Script Info]\nTitle: Preview')
+        (downloads/'失效的软链接.mkv').symlink_to(downloads/'missing.mkv')
         records = Records(_client(None))
         records.initialize()
         accounts = Accounts(records.db)
@@ -86,4 +96,4 @@ if __name__ == '__main__':
             catalog_type.return_value = Catalog(records.db, tmdb=PreviewTMDB())
             app = create_app(accounts, records, lambda actor:PlatformService(
                 actor, accounts, records, tmdb=PreviewTMDB(), indexer=PreviewIndexer()))
-        uvicorn.run(app, host='0.0.0.0', port=18293, proxy_headers=False)
+        uvicorn.run(app, host='127.0.0.1', port=18293, proxy_headers=False)

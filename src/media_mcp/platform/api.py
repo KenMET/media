@@ -116,6 +116,19 @@ class Allocation(Input):
     permission: Literal['read', 'manage', 'none']
 
 
+class InventoryPage(Input):
+    after: int = Field(default=0, ge=0)
+    limit: int = Field(default=50, ge=1, le=100)
+
+
+class InventoryPreview(InventoryPage):
+    scan_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+
+
+class InventoryImport(Input):
+    scan_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+
+
 class TokenName(Input):
     name: str = Field(min_length=1, max_length=80)
 
@@ -123,6 +136,8 @@ class TokenName(Input):
 COMMANDS = {
     'search_titles':Search, 'library':Title, 'search_releases':Releases, 'plan':Plan,
     'start':Start, 'job':Job, 'jobs':Jobs, 'retry':Retry, 'subtitles':Subtitles, 'media':Media,
+    'inventory_scan':Input, 'inventory_preview':InventoryPreview,
+    'inventory_import':InventoryImport, 'inventory':InventoryPage,
 }
 READ_COMMANDS = {'search_titles', 'library', 'job', 'jobs', 'media'}
 

@@ -144,10 +144,42 @@ class PlatformService:
                          for row in rows if self._media_allowed(row)],
                 'next_cursor':rows[-1]['id'] if len(rows) == limit else None}
 
+    def _inventory(self):
+        if not self.actor.admin:
+            raise ValueError('permission_denied')
+        from media_mcp.storage.inventory import Inventory
+        return Inventory(self.records)
+
+    def inventory_scan(self):
+        result = self._inventory().scan(self.actor.id)
+        self.accounts.event(self.actor, 'inventory_scanned', 'inventory', result['scan_id'])
+        return result
+
+    def inventory_preview(self, scan_id, after=0, limit=50):
+        return self._inventory().preview(scan_id, self.actor.id, after, limit)
+
+    def inventory_import(self, scan_id):
+        result = self._inventory().adopt(scan_id, self.actor.id)
+        self.accounts.event(self.actor, 'inventory_imported', 'inventory', scan_id)
+        return result
+
+    def inventory(self, after=0, limit=50):
+        return self._inventory().list(after, limit)
+
     def _subtitle_records(self, media):
-        return [dict(row) for row in self.records.db.execute('''SELECT language,status,format
+        rows = [dict(row) for row in self.records.db.execute('''SELECT language,status,format,target_subtitle_path
             FROM media_subtitle WHERE matched_video_target_path=:target ORDER BY id''',
             {'target':media['target_path']}).mappings()]
+        known = {row.pop('target_subtitle_path') for row in rows}
+        if self.records.db.table_exists('media_inventory'):
+            observed = self.records.db.execute('''SELECT path FROM media_inventory WHERE
+                scan_id=(SELECT id FROM media_mcp_record WHERE kind='inventory_scan' AND state='imported'
+                         ORDER BY updated_at DESC,rowid DESC LIMIT 1)
+                AND json_extract(data,'$.kind')='subtitle' AND json_extract(data,'$.video_path')=:target''',
+                {'target':media['target_path']}).mappings()
+            rows.extend({'language':None, 'status':'discovered', 'format':path['path'].rsplit('.',1)[-1]}
+                        for path in observed if path['path'] not in known)
+        return rows
 
     def subtitles(self, media_id, idempotency_key):
         row = self.records.db.execute('SELECT * FROM media_link WHERE id=:id',
