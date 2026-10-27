@@ -203,14 +203,38 @@ for service in $managed_services; do
     done
 done
 compose up -d $app_services
-ready=false; attempt=0
-while [ "$attempt" -lt 60 ]; do
-    if compose exec -T "$health_service" python3 -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:$health_port/healthz',timeout=2)" >/dev/null 2>&1; then
-        ready=true; break
-    fi
-    attempt=$((attempt+1)); sleep 2
-done
-if [ "$ready" != true ]; then echo '入口尚未就绪，请查看相应部署的 setup.sh logs。' >&2; exit 1; fi
+wait_for_entry() {
+    entry_service="$1"; entry_port="$2"; entry_label="$3"
+    entry_logs_command='sh setup.sh logs'
+    if [ "$topology" != standalone ]; then entry_logs_command="sh setup.sh $topology logs"; fi
+    printf '正在等待%s就绪（本机端口 %s）...\n' "$entry_label" "$entry_port"
+    entry_attempt=0
+    while [ "$entry_attempt" -lt 60 ]; do
+        if compose exec -T "$entry_service" python3 -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:$entry_port/healthz',timeout=2)" >/dev/null 2>&1; then
+            printf '%s已就绪。\n' "$entry_label"
+            return 0
+        fi
+        entry_container="$(compose ps --all --quiet "$entry_service" 2>/dev/null | head -n 1)"
+        if [ -n "$entry_container" ]; then
+            entry_state="$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$entry_container" 2>/dev/null || true)"
+            case "$entry_state" in
+                restarting:*|exited:*|dead:*)
+                    printf '%s启动失败，容器状态 %s。请检查端口 %s 是否已被占用，并查看 %s。\n' "$entry_label" "$entry_state" "$entry_port" "$entry_logs_command" >&2
+                    return 1 ;;
+            esac
+        fi
+        entry_attempt=$((entry_attempt+1))
+        if [ $((entry_attempt % 5)) -eq 0 ]; then
+            printf '%s仍未就绪，已检查 %s 次；端口 %s。\n' "$entry_label" "$entry_attempt" "$entry_port"
+        fi
+        sleep 2
+    done
+    printf '%s等待超时，请查看相应部署的 setup.sh logs。\n' "$entry_label" >&2
+    return 1
+}
+entry_label='MCP'
+if [ "$topology" = local ]; then entry_label='本地控制 API'; fi
+if ! wait_for_entry "$health_service" "$health_port" "$entry_label"; then exit 1; fi
 web_port="$(setting MEDIA_WEB_PORT)"
 if [ "$topology" = cloud ]; then
     gateway_port="$(setting MEDIA_GATEWAY_PORT)"; web_port="${gateway_port:-${web_port:-18214}}"
@@ -220,14 +244,7 @@ else
 fi
 case "$web_port" in ''|*[!0-9]*) echo '网页端口必须是数字。' >&2; exit 1 ;; esac
 if [ "$health_service" != web ]; then
-    ready=false; attempt=0
-    while [ "$attempt" -lt 60 ]; do
-        if compose exec -T web python3 -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:$web_port/healthz',timeout=2)" >/dev/null 2>&1; then
-            ready=true; break
-        fi
-        attempt=$((attempt+1)); sleep 2
-    done
-    if [ "$ready" != true ]; then echo '网页入口尚未就绪，请查看 setup.sh logs。' >&2; exit 1; fi
+    if ! wait_for_entry web "$web_port" '网页入口'; then exit 1; fi
 fi
 lan_ip="$(setting MEDIA_LAN_IP)"
 if [ -z "$lan_ip" ] && command -v ip >/dev/null 2>&1; then

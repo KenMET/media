@@ -7,6 +7,31 @@ import unittest
 
 
 class SetupScriptTests(unittest.TestCase):
+    def test_restarting_control_api_fails_fast_with_port_and_logs_hint(self):
+        source=Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            shutil.copyfile(source/'setup.sh',root/'setup.sh')
+            (root/'.env').write_text('MEDIA_LOCAL_CONTROL_PORT=19613\nQBITTORRENT_URL=http://192.0.2.10:8080\n')
+            binary=root/'bin';binary.mkdir()
+            docker=binary/'docker'
+            docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALL_LOG"\ncase "$*" in\n'
+                '*"--entrypoint python3"*) printf "%s\\n" "synthetic-control-token-12345678901234567890";;\n'
+                '*"exec -T web"*) exit 1;;\n'
+                '*"ps --all --quiet web"*) printf "%s\\n" "fixture-container";;\n'
+                '*"inspect --format"*) printf "%s\\n" "restarting:3";;\nesac\nexit 0\n')
+            docker.chmod(0o755)
+            environment={key:value for key,value in os.environ.items()
+                         if not key.startswith(('MEDIA_','QBITTORRENT_','JACKETT_'))}
+            environment.update(PATH=str(binary)+':'+os.environ['PATH'],CALL_LOG=str(root/'calls'))
+            result=subprocess.run(['sh',str(root/'setup.sh'),'local'],env=environment,capture_output=True,text=True)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('restarting:3',result.stderr)
+            self.assertIn('19613',result.stderr)
+            self.assertIn('sh setup.sh local logs',result.stderr)
+            self.assertEqual((root/'calls').read_text().count('exec -T web'),1)
+            self.assertNotIn('synthetic-control-token',result.stdout+result.stderr)
+
     def test_cloud_port_only_proxy_setup_automatically_pairs_without_printing_secret(self):
         source=Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory:
