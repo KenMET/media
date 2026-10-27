@@ -22,6 +22,8 @@
 
 媒体 key 与字幕 key 仍在 `.env` 配置，当前网页不提供编辑这些凭据的功能。`TMDB_API_KEY` 放 cloud，用于作品搜索、详情和 TMDB 榜单；`OPENSUBTITLES_API_KEY`、`SUBDL_API_KEY`、`ASSRT_API_KEY` 放 NAS，由字幕 worker 使用。三个字幕来源可按需选择，留空仅跳过相应来源，不影响本地字幕复用/提取、其他来源或已有文本的模型翻译。OpenSubtitles 适配器还支持 `OPENSUBTITLES_USERNAME`、`OPENSUBTITLES_PASSWORD`，按所用账号及下载接口要求添加；Media 不生成第三方 key。在线字幕获取当前仍由本地字幕处理流程执行，不属于已迁至云端的 TMDB/Jackett 搜索链路。
 
+`BARK_URL` 是可选的完整设备推送地址，放 NAS 使用；已有通知配置可以继续保留，留空时只记录本地通知。该地址包含私有设备 key，不要提交或公开。
+
 既有 `.env` 的自定义端口、媒体根和状态目录不要机械删除。模板精简不会搬迁已有数据库或改变正在运行的容器；新安装直接使用最小模板，旧安装核对路径后合并。
 
 ## NAS
