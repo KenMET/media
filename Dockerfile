@@ -30,6 +30,5 @@ COPY pyproject.toml /app/
 RUN python3 -c "import subprocess,tomllib; subprocess.check_call(['pip','install','--no-cache-dir',*tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']])"
 COPY src /app/src
 COPY skills /app/skills
-COPY tests /app/tests
 RUN pip install --no-cache-dir --no-deps .
 CMD ["media-mcp"]

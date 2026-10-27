@@ -1,17 +1,33 @@
 name: media-standalone
+x-media-logging: &media-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 services:
-  init:
+  init-qbittorrent:
     image: ${MEDIA_IMAGE:-media-mcp:local}
     profiles: [setup]
     env_file: .env
     environment:
       MEDIA_TORRENT_PORT: ${MEDIA_TORRENT_PORT:-48181}
-    command: ["python3", "-m", "media_mcp.bootstrap"]
+      QBITTORRENT_CONFIG_DIR: /services/qbittorrent
+      MEDIA_DATA_ROOT: /data
+    command: ["python3", "-m", "media_mcp.bootstrap", "qbittorrent"]
     volumes:
       - ${MEDIA_DATA_DIR:-./data}:/data
       - ${MEDIA_SERVICES_DIR:-./services}/qbittorrent:/services/qbittorrent
-      - ${MEDIA_SERVICES_DIR:-./services}/jackett:/services/jackett
+  init-jackett:
+    image: ${MEDIA_IMAGE:-media-mcp:local}
+    profiles: [setup]
+    env_file: .env
+    environment:
+      JACKETT_CONFIG_FILE: /services/jackett/Jackett/ServerConfig.json
+    command: ["python3", "-m", "media_mcp.bootstrap", "jackett"]
+    volumes:
+      - ${MEDIA_JACKETT_CONFIG_DIR:-${MEDIA_SERVICES_DIR:-./services}/jackett}:/services/jackett
   qbittorrent:
+    profiles: [bundled-qbittorrent]
     image: ${QBITTORRENT_IMAGE:-linuxserver/qbittorrent:latest}
     restart: unless-stopped
     environment:
@@ -21,7 +37,7 @@ services:
       WEBUI_PORT: "8080"
       TORRENTING_PORT: ${MEDIA_TORRENT_PORT:-48181}
     ports:
-      - "${MEDIA_LAN_BIND:-0.0.0.0}:${MEDIA_QBITTORRENT_PORT:-18211}:8080"
+      - "${MEDIA_ADMIN_BIND:-127.0.0.1}:${MEDIA_QBITTORRENT_PORT:-18211}:8080"
       - "${MEDIA_TORRENT_PORT:-48181}:${MEDIA_TORRENT_PORT:-48181}"
       - "${MEDIA_TORRENT_PORT:-48181}:${MEDIA_TORRENT_PORT:-48181}/udp"
     volumes:
@@ -33,12 +49,9 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
-    logging: &media-logging
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *media-logging
   jackett:
+    profiles: [bundled-jackett]
     image: ${JACKETT_IMAGE:-linuxserver/jackett:latest}
     restart: unless-stopped
     environment:
@@ -47,9 +60,9 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       AUTO_UPDATE: "false"
     ports:
-      - "${MEDIA_LAN_BIND:-0.0.0.0}:${MEDIA_JACKETT_PORT:-18212}:9117"
+      - "${MEDIA_ADMIN_BIND:-127.0.0.1}:${MEDIA_JACKETT_PORT:-18212}:9117"
     volumes:
-      - ${MEDIA_SERVICES_DIR:-./services}/jackett:/config
+      - ${MEDIA_JACKETT_CONFIG_DIR:-${MEDIA_SERVICES_DIR:-./services}/jackett}:/config
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9117/UI/Dashboard >/dev/null"]
       interval: 10s
@@ -72,33 +85,57 @@ services:
       MEDIA_BIND_HOST: ${MEDIA_LAN_BIND:-0.0.0.0}
       MEDIA_MCP_PORT: ${MEDIA_MCP_PORT:-18210}
       MEDIA_DB_PATH: /state/media.sqlite3
-      QBITTORRENT_URL: http://127.0.0.1:${MEDIA_QBITTORRENT_PORT:-18211}
-      QBITTORRENT_USERNAME: ""
-      QBITTORRENT_PASSWORD: ""
-      JACKETT_URL: http://127.0.0.1:${MEDIA_JACKETT_PORT:-18212}
-      JACKETT_API_KEY: ""
+      MEDIA_SERVICE_PAIRING: ${MEDIA_SERVICE_PAIRING:-false}
+      QBITTORRENT_URL: ${QBITTORRENT_URL:-http://127.0.0.1:${MEDIA_QBITTORRENT_PORT:-18211}}
+      QBITTORRENT_USERNAME: ${QBITTORRENT_USERNAME:-}
+      QBITTORRENT_PASSWORD: ${QBITTORRENT_PASSWORD:-}
+      JACKETT_URL: ${JACKETT_URL:-http://127.0.0.1:${MEDIA_JACKETT_PORT:-18212}}
+      JACKETT_API_KEY: ${JACKETT_API_KEY:-}
       JACKETT_CONFIG_FILE: /services/jackett/Jackett/ServerConfig.json
       CODEX_APP_SERVER_TOKEN_FILE: /run/secrets/codex-app-server-token
+      MEDIA_CONTROL_TOKEN_FILE: /run/secrets/media-control-token
+      MEDIA_CATALOG_URL: ${MEDIA_CATALOG_URL:-}
+      MEDIA_EXECUTION_ONLY: ${MEDIA_EXECUTION_ONLY:-false}
+      MEDIA_CONTROL_URL: ""
     volumes: &media-volumes
       - ${MEDIA_DATA_DIR:-./data}:/data
       - ${MEDIA_STATE_PATH:-./state}:/state
-      - ${MEDIA_SERVICES_DIR:-./services}/jackett:/services/jackett:ro
+      - ${MEDIA_JACKETT_CONFIG_DIR:-${MEDIA_SERVICES_DIR:-./services}/jackett}:/services/jackett:ro
       - type: bind
         source: ${CODEX_TOKEN_FILE:-./state/codex-token}
         target: /run/secrets/codex-app-server-token
         read_only: true
         bind:
           create_host_path: false
-    depends_on:
-      qbittorrent:
-        condition: service_healthy
-      jackett:
-        condition: service_healthy
+      - type: bind
+        source: ${MEDIA_CONTROL_TOKEN_FILE:-./state/control-token}
+        target: /run/secrets/media-control-token
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
       test: ["CMD", "python3", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('MEDIA_MCP_PORT','18210')+'/healthz',timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 12
+      start_period: 30s
+    logging: *media-logging
+  web:
+    image: ${MEDIA_IMAGE:-media-mcp:local}
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment:
+      <<: *media-environment
+      MEDIA_WEB_BIND_HOST: ${MEDIA_WEB_BIND_HOST:-0.0.0.0}
+      MEDIA_WEB_PORT: ${MEDIA_WEB_PORT:-18213}
+    volumes: *media-volumes
+    command: ["media-web"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('MEDIA_WEB_PORT','18213')+'/healthz',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
       start_period: 30s
     logging: *media-logging
   worker:
@@ -109,9 +146,6 @@ services:
     environment: *media-environment
     volumes: *media-volumes
     command: ["media-worker"]
-    depends_on:
-      mcp:
-        condition: service_healthy
     stop_grace_period: 30s
     cpus: 1
     healthcheck:

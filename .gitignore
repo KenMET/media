@@ -1,7 +1,14 @@
 .env
 .env.*
 !.env.example
+!.env.local.example
+!.env.cloud.example
 state/
+state-cloud/
+state-test/
+state-cloud-test/
+data-test/
+services-test/
 data/
 __pycache__/
 *.pyc

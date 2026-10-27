@@ -1,0 +1,86 @@
+name: media-cloud
+x-media-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+services:
+  init-jackett:
+    image: ${MEDIA_CLOUD_IMAGE:-media-mcp-cloud:local}
+    profiles: [setup]
+    env_file: .env
+    environment:
+      JACKETT_CONFIG_FILE: /services/jackett/Jackett/ServerConfig.json
+    command: ["python3", "-m", "media_mcp.bootstrap", "jackett"]
+    volumes:
+      - /root/container_cache/jackett/config:/services/jackett
+  jackett:
+    image: ${JACKETT_IMAGE:-linuxserver/jackett:latest}
+    profiles: [bundled-jackett]
+    restart: unless-stopped
+    environment:
+      PUID: ${PUID:-0}
+      PGID: ${PGID:-0}
+      TZ: ${TZ:-Asia/Shanghai}
+      AUTO_UPDATE: "false"
+    ports:
+      - "${MEDIA_ADMIN_BIND:-127.0.0.1}:${MEDIA_JACKETT_PORT:-18212}:9117"
+    volumes:
+      - /root/container_cache/jackett/config:/config
+      - /root/container_cache/jackett/downloads:/downloads
+    logging: *logging
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.cloud
+      args:
+        MEDIA_BASE_IMAGE: ${MEDIA_BASE_IMAGE:-python:3.12-slim-bookworm}
+    image: ${MEDIA_CLOUD_IMAGE:-media-mcp-cloud:local}
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment: &cloud-env
+      MEDIA_CONTROL_URL: ${MEDIA_CONTROL_URL:-http://127.0.0.1:18213}
+      MEDIA_CONTROL_PORT: ${MEDIA_CONTROL_PORT:-}
+      MEDIA_CONTROL_TOKEN_FILE: /run/secrets/media-control-token
+      MEDIA_BIND_HOST: ${MEDIA_BIND_HOST:-0.0.0.0}
+      MEDIA_MCP_PORT: ${MEDIA_MCP_PORT:-18210}
+      MEDIA_WEB_BIND_HOST: ${MEDIA_WEB_BIND_HOST:-0.0.0.0}
+      MEDIA_WEB_PORT: ${MEDIA_GATEWAY_PORT:-${MEDIA_WEB_PORT:-18214}}
+      MEDIA_WEB_MODE: ${MEDIA_WEB_MODE:-lan}
+      MEDIA_WEB_PUBLIC: ${MEDIA_WEB_PUBLIC:-false}
+      MEDIA_MCP_PUBLIC: ${MEDIA_WEB_PUBLIC:-false}
+      MEDIA_DB_PATH: /state/catalog.sqlite3
+      MEDIA_CATALOG_URL: ""
+      JACKETT_URL: ${JACKETT_URL:-http://127.0.0.1:${MEDIA_JACKETT_PORT:-18212}}
+      JACKETT_API_KEY: ${JACKETT_API_KEY:-}
+      JACKETT_CONFIG_FILE: /services/jackett/Jackett/ServerConfig.json
+    volumes: &cloud-volumes
+      - ${MEDIA_CLOUD_STATE_PATH:-./state-cloud}:/state
+      - /root/container_cache/jackett/config:/services/jackett:ro
+      - type: bind
+        source: ${MEDIA_CONTROL_TOKEN_FILE:-./state/control-token}
+        target: /run/secrets/media-control-token
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('MEDIA_MCP_PORT','18210')+'/healthz',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging: *logging
+  web:
+    image: ${MEDIA_CLOUD_IMAGE:-media-mcp-cloud:local}
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment: *cloud-env
+    volumes: *cloud-volumes
+    command: ["media-gateway"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('MEDIA_WEB_PORT','18213')+'/healthz',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging: *logging

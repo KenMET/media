@@ -1,7 +1,10 @@
 .env
 .env.*
 state
+state-*
 data
+data-*
+services-*
 .git
 .venv
 **/__pycache__
@@ -9,3 +12,7 @@ data
 **/*.egg-info
 
 /services
+tests/
+docs/
+build/
+dist/

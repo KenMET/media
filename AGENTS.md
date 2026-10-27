@@ -2,7 +2,7 @@
 
 This directory is independently installable and deployable. Keep all runtime
 imports under media_mcp; do not import the parent repository's apps package.
-Use start.sh as the supported Docker entrypoint. Default MCP access is unauthenticated on private LAN addresses only. Do not add
+Use setup.sh as the sole supported Docker entrypoint. Default MCP access is unauthenticated on private LAN addresses only. Do not add
 login requirements to the LAN profile; optional OAuth/bearer modes are explicit choices.
 
 Run tests serially at low CPU priority. SQLite acceptance requires a disposable state directory and media mount. Never point acceptance at real media.
