@@ -4,7 +4,7 @@ set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 umask 077
 topology=standalone
-compose_file=compose.yml
+compose_file=compose.local.yml
 case "${1:-up}" in
     cloud) topology=cloud; compose_file=compose.cloud.yml; shift ;;
     local) topology=local; shift ;;

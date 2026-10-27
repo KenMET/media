@@ -127,6 +127,7 @@ class SetupScriptTests(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stderr)
             local = calls.read_text()
             self.assertIn('up -d worker web',local)
+            self.assertIn('compose.local.yml',local)
             self.assertNotIn('up -d mcp',local)
             self.assertNotIn('init-jackett',local)
             calls.unlink()

@@ -47,6 +47,8 @@ sh setup.sh cloud stop
 
 更新代码后再次执行对应的 `sh setup.sh local` 或 `sh setup.sh cloud`；仅重启容器不会加载新代码。部署入口只有 `setup.sh`。
 
+两端构建文件统一命名：本地使用 `compose.local.yml`、`Dockerfile.local`，云端使用 `compose.cloud.yml`、`Dockerfile.cloud`。不带分组的传统单机入口仍使用 local 文件。
+
 ## 目录与文档
 
 ```text

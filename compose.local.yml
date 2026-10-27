@@ -73,6 +73,7 @@ services:
   mcp:
     build:
       context: .
+      dockerfile: Dockerfile.local
       args:
         MEDIA_BASE_IMAGE: ${MEDIA_BASE_IMAGE:-python:3.12-slim-bookworm}
         INSTALL_OCR: ${INSTALL_OCR:-true}
