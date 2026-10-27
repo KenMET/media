@@ -7,7 +7,7 @@ from media_mcp.config import download_root
 class Downloader:
     def __init__(self, client=None):
         self.client = client or qbittorrentapi.Client(
-            host=os.environ.get('QBITTORRENT_URL', 'http://127.0.0.1:18211'),
+            host=os.environ.get('QBITTORRENT_URL') or 'http://127.0.0.1:18211',
             username=os.environ.get('QBITTORRENT_USERNAME', ''),
             password=os.environ.get('QBITTORRENT_PASSWORD', ''), REQUESTS_ARGS={'timeout': 15})
 
@@ -32,7 +32,9 @@ class Downloader:
         row = rows[0]
         return {'hash': row.hash, 'progress': float(row.progress), 'state': str(row.state),
                 'content_path': str(row.content_path), 'category': row.category,
-                'tags': str(row.tags), 'save_path': str(row.save_path)}
+                'tags': str(row.tags), 'save_path': str(row.save_path),
+                'download_speed':getattr(row, 'dlspeed', None),
+                'eta':getattr(row, 'eta', None), 'total_bytes':getattr(row, 'total_size', None)}
 
     def add(self, *, hash_value, job_id, torrent=None, magnet=None):
         if self.find(hash_value):

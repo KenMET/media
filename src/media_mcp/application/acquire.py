@@ -17,7 +17,7 @@ def normalize_title(value):
 
 def title_matches(name, identity):
     normalized = normalize_title(name)
-    for title in (identity.get('original_title'), identity.get('title')):
+    for title in (identity.get('original_title'), identity.get('title'), identity.get('english_title')):
         if not title:
             continue
         title = normalize_title(title)
@@ -38,7 +38,7 @@ def rejection_reason(candidate, identity):
     if identity['kind'] == 'movie':
         # Numbers in the title (e.g. Blade Runner 2049) are not release years.
         name = normalize_title(candidate.get('name', ''))
-        for title in (identity.get('original_title'), identity.get('title')):
+        for title in (identity.get('original_title'), identity.get('title'), identity.get('english_title')):
             if title:
                 name = name.replace(normalize_title(title), ' ')
         years = re.findall(r'(?<!\d)(?:19|20)\d{2}(?!\d)', name)
@@ -88,8 +88,10 @@ class MediaService:
                 suffix += f'E{episodes[0]:02d}'
         if resolution:
             suffix += f' {resolution}p'
-        queries = list(dict.fromkeys(title.strip() + suffix for title in
-                       (identity.get('original_title'), identity.get('title')) if title and title.strip()))
+        titles = list(dict.fromkeys(title.strip() for title in
+            (identity.get('original_title'), identity.get('title'), identity.get('english_title'))
+            if isinstance(title, str) and title.strip()))
+        queries = [title + suffix for title in titles]
         scope = {'season': season, 'episodes': episodes, 'resolution': resolution}
         if kind == 'tv':
             metadata = self.tmdb.get(f'tv/{ident}/season/{season}')
@@ -103,7 +105,13 @@ class MediaService:
             if not episodes:
                 scope['episodes'] = sorted(known)
         results, diagnostics, seen = [], [], set()
-        for query in queries:
+        scoped_count = len(queries)
+        deadline = time.monotonic() + 30
+        for query_index, query in enumerate(queries):
+            if time.monotonic() >= deadline:
+                diagnostics.append({'query':query,'sites':[{'site':None,'status':'budget_exhausted',
+                    'raw_count':0,'accepted_count':0,'filtered_count':0,'duplicate_count':0,'reasons':{}}]})
+                break
             report = self.indexer.search(query, kind=kind)
             counts = {}
             for candidate in report['releases']:
@@ -130,6 +138,11 @@ class MediaService:
             diagnostics.append({'query': query, 'sites': [{**item, **counts.get(item['site'],
                 {'accepted_count': 0, 'filtered_count': 0, 'duplicate_count': 0, 'reasons': {}})}
                 for item in report['diagnostics']]})
+            if query_index == scoped_count-1 and suffix and not results:
+                # Public sites often use episode numbers or localized season names,
+                # rather than SxxExx. Broaden discovery only; the frozen scope and
+                # post-download file/identity checks remain unchanged.
+                queries.extend(title for title in titles if title not in queries)
         statuses = [s['status'] for d in diagnostics for s in d['sites']]
         search_status = 'complete' if statuses and all(s == 'ok' for s in statuses) else (
             'partial' if 'ok' in statuses else 'failed')
@@ -189,7 +202,8 @@ class MediaService:
         return {'job_id': row['id'], 'stage': row['state'], 'revision': row['revision'],
                 'identity': data.get('identity'), 'scope': data.get('scope'),
                 'release': cls.public_release(data.get('release', {})),
-                **{key: data.get(key) for key in ('progress','error_code','retry_at','processing','result')},
+                **{key: data.get(key) for key in ('progress','error_code','retry_at','processing','result',
+                    'download_speed','eta','total_bytes','sampled_at')},
                 'submission_outcome_unknown': row['state'] == 'submission_unknown'}
 
     def job(self, job_id):

@@ -34,7 +34,14 @@ class Controller:
         if state == 'queued':
             try:
                 url = data['release']['download_url']
-                torrent = self.indexer.torrent(url)
+                if 'cloud_payload' in data:
+                    from media_mcp.platform.cloud import decode_payload
+                    torrent, magnet = decode_payload(data['cloud_payload'], data['release'].get('claimed_infohash'))
+                    url = magnet or url
+                elif url == 'cloud-prepared':
+                    raise ValueError('cloud_download_payload_missing')
+                else:
+                    torrent = self.indexer.torrent(url)
                 if isinstance(torrent, str):
                     # Jackett may hand off its trusted proxy URL to a magnet.
                     url, torrent = torrent, None
@@ -50,6 +57,7 @@ class Controller:
                 if self.downloader.find(hash_value):
                     self.records.update(row, 'needs_review', {**data, 'error_code': 'torrent_already_exists'})
                     return
+                data.pop('cloud_payload', None)
                 row = self.records.update(row, 'submitting', {**data, 'submission_attempted': True})
             except ValueError as exc:
                 self.records.update(row, 'needs_review', {**data, 'error_code': str(exc)})
@@ -83,6 +91,8 @@ class Controller:
                 self.records.update(row, 'needs_review', {**data, 'error_code': 'torrent_owner_mismatch'})
                 return
             data.update({'progress': torrent['progress'], 'error_code': None, 'retry_at': None, 'torrent_base64': None})
+            data.update({key:torrent.get(key) for key in ('download_speed','eta','total_bytes')})
+            data['sampled_at'] = time.time()
             if torrent['progress'] < 1 or torrent['state'] in ('moving','checkingDL','checkingUP','checkingResumeData'):
                 self.records.update(row, 'downloading', data)
                 return

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "media-mcp"
-version = "0.2.0"
-description = "Private media acquisition, hardlink library and subtitle automation over MCP"
+version = "0.3.0"
+description = "Private web and MCP media platform with local download and subtitle workers"
 requires-python = ">=3.11"
 dependencies = [
   "fastmcp==2.14.7", "mcp==1.30.0", "SQLAlchemy==2.0.46",
@@ -16,7 +16,12 @@ dependencies = [
 [project.scripts]
 media-mcp = "media_mcp.server:main"
 media-worker = "media_mcp.runtime.supervisor:main"
+media-web = "media_mcp.platform.api:main"
+media-gateway = "media_mcp.platform.gateway:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 exclude = ["*.tests", "*.tests.*"]
+
+[tool.setuptools.package-data]
+"media_mcp.platform" = ["static/*.html", "static/*.css", "static/*.js"]

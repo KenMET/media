@@ -11,13 +11,18 @@ import requests
 
 
 class Jackett:
-    def __init__(self, session=None):
+    def __init__(self, session=None, *, remote=True):
         self.session = session or requests.Session()
-        self.base = os.environ.get('JACKETT_URL', 'http://127.0.0.1:18212').rstrip('/')
+        self.base = (os.environ.get('JACKETT_URL') or 'http://127.0.0.1:18212').rstrip('/')
         self.key = os.environ.get('JACKETT_API_KEY', '')
+        from media_mcp.platform.transport import provider_remote
+        self.remote = provider_remote() if remote else None
 
     @property
     def configured(self):
+        if self.remote:
+            from media_mcp.platform.transport import service_token
+            return bool(service_token())
         if not self.key:
             try:
                 config=json.loads(Path(os.environ.get('JACKETT_CONFIG_FILE','/services/jackett/Jackett/ServerConfig.json')).read_text())
@@ -27,6 +32,11 @@ class Jackett:
 
     def search(self, query, kind=None):
         """Query each configured site separately; one failed site must not hide others."""
+        if os.environ.get('MEDIA_EXECUTION_ONLY') == 'true':
+            raise ValueError('cloud_search_only')
+        if self.remote:
+            return self.remote.call('/internal/provider', {'operation':'jackett_search',
+                'arguments':{'query':query,'kind':kind}})
         if not self.configured:
             raise RuntimeError('jackett_not_configured')
         config = Path(os.environ.get('JACKETT_CONFIG_FILE', '/services/jackett/Jackett/ServerConfig.json'))
@@ -101,6 +111,14 @@ class Jackett:
 
     def torrent(self, url):
         """Return torrent bytes, a validated redirected magnet, or None for a direct magnet."""
+        if os.environ.get('MEDIA_EXECUTION_ONLY') == 'true':
+            raise ValueError('cloud_search_only')
+        if self.remote:
+            import base64
+            result = self.remote.call('/internal/provider', {'operation':'jackett_torrent','arguments':{'url':url}})
+            if result.get('kind') == 'bytes':
+                return base64.b64decode(result['data'], validate=True)
+            return result.get('data')
         if url.startswith('magnet:?'):
             return None
         # Follow only same-origin proxy hops. A magnet is data, never an HTTP request.

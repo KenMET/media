@@ -23,6 +23,12 @@ def make_auth():
     mode = os.environ.get('MEDIA_AUTH_MODE','none')
     if mode == 'none':
         return None
+    if mode == 'platform':
+        from media_mcp.platform.accounts import Accounts
+        from media_mcp.platform.mcp import PlatformTokenVerifier
+        accounts = Accounts()
+        accounts.initialize()
+        return PlatformTokenVerifier(accounts)
     if mode == 'oauth':
         from media_mcp.auth import OwnerOAuth
         return OwnerOAuth(os.environ.get('MEDIA_PUBLIC_URL','http://127.0.0.1:18210'),
@@ -69,12 +75,16 @@ def create_server(service=None, auth=None):
     @mcp.tool(annotations=readonly)
     def media_status() -> dict:
         """Check MCP and worker readiness; this does not prove external sources are available."""
+        if hasattr(service, 'status'):
+            result = invoke(service.status)
+            return result['data'] if result['success'] else {
+                'service':'media-mcp','worker_ready':False,'error_code':result['error_code']}
         from media_mcp.monitor.health import healthy
         config=Path(os.environ.get('JACKETT_CONFIG_FILE','/services/jackett/Jackett/ServerConfig.json'))
         sites=len(list((config.parent/'Indexers').glob('*.json'))) if config.is_file() else None
         return {'service':'media-mcp','worker_ready':healthy(), 'auth_mode':os.environ.get('MEDIA_AUTH_MODE','none'),
                 'indexer_configured':Jackett().configured,
-                'tmdb_configured':bool(os.environ.get('TMDB_API_KEY')),'configured_sites':sites}
+                'tmdb_configured':bool(os.environ.get('TMDB_API_KEY') or os.environ.get('MEDIA_CATALOG_URL')),'configured_sites':sites}
 
     @mcp.tool(annotations=external)
     def media_search_titles(query: Annotated[str,Field(min_length=1,max_length=200)], kind: Literal['movie','tv'],
@@ -142,13 +152,49 @@ def create_server(service=None, auth=None):
 
 
 def main():
+    from media_mcp.platform.transport import control_url
+    remote_url = control_url()
+    if (os.environ.get('MEDIA_MULTI_USER') == 'true' and not remote_url
+            and os.environ.get('MEDIA_AUTH_MODE','none') != 'platform'):
+        raise ValueError('multi_user_requires_platform_auth')
+    if remote_url:
+        from media_mcp.platform.transport import Remote
+        from media_mcp.platform.remote_mcp import RemoteMCPService, RemoteTokenVerifier
+        from starlette.middleware import Middleware
+        from starlette.middleware.trustedhost import TrustedHostMiddleware
+        from media_mcp.platform.network import SameOriginMiddleware, LoopbackProxyMiddleware, proxy_mode
+        remote = Remote(remote_url)
+        hosts = [h.strip() for h in os.environ.get('MEDIA_ALLOWED_HOSTS','').split(',') if h.strip()]
+        public = os.environ.get('MEDIA_MCP_PUBLIC', 'false') == 'true'
+        proxied=proxy_mode()
+        if public and not proxied and (not hosts or any('*' in h or '/' in h for h in hosts)):
+            raise ValueError('cloud_mcp_requires_exact_allowed_hosts')
+        if public and not proxied:
+            from media_mcp.platform.network import validate_public_origin
+            validate_public_origin(hosts)
+        server = create_server(RemoteMCPService(remote), RemoteTokenVerifier(remote))
+        server.run(transport='http', host=os.environ.get('MEDIA_BIND_HOST','127.0.0.1'),
+            port=int(os.environ.get('MEDIA_MCP_PORT','18210')), path='/mcp', stateless_http=True,
+            json_response=True, show_banner=False,
+            middleware=([Middleware(LoopbackProxyMiddleware),Middleware(SameOriginMiddleware)] if proxied else [Middleware(SameOriginMiddleware), Middleware(TrustedHostMiddleware,
+                allowed_hosts=list(set(hosts+['127.0.0.1','localhost'])))] if public else lan_middleware()),
+            uvicorn_config={'proxy_headers':False})
+        return
     from media_mcp.storage.media import _client
     from media_mcp.runtime.state import MediaJobs
     records = Records()
     records.initialize()
     _client(None)
     MediaJobs().initialize()
-    server = create_server(MediaService(records=records), make_auth())
+    if os.environ.get('MEDIA_AUTH_MODE') == 'platform':
+        from media_mcp.platform.accounts import Accounts
+        from media_mcp.platform.mcp import PlatformMCPService
+        accounts = Accounts(records.db)
+        accounts.initialize()
+        service = PlatformMCPService(accounts, records)
+    else:
+        service = MediaService(records=records)
+    server = create_server(service, make_auth())
     server.run(transport='http',host=os.environ.get('MEDIA_BIND_HOST','0.0.0.0'),port=int(os.environ.get('MEDIA_MCP_PORT','18210')),
                path='/mcp',stateless_http=True,json_response=True,show_banner=False,
                middleware=lan_middleware(),uvicorn_config={'proxy_headers':False})
