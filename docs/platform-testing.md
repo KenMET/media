@@ -6,7 +6,7 @@
 
 ## 启动与端口
 
-唯一部署入口是 `setup.sh`。正式拆机使用各自目录与角色模板。同机也可以用两个目录；若为开发测试共用一个目录和私有 `.env`，先在该文件明确以下端口及 LAN 模式（只用于可信局域网、隔离数据）：
+唯一部署入口是 `setup.sh`。正式拆机使用各自目录，从统一 `.env.example` 复制并填写所属分组。同机也可以用两个目录；若为开发测试共用一个目录和私有 `.env`，先在该文件明确以下端口及 LAN 模式（只用于可信局域网、隔离数据）：
 
 ```dotenv
 MEDIA_WEB_PORT=18213
@@ -38,7 +38,7 @@ sh setup.sh cloud
 
 新配置由 cloud 完成搜索和种子获取；local 不再请求云端 Provider，也不需要云端地址。同机测试显式设 `MEDIA_CONTROL_PORT=18213`，cloud 即连接本机 local 控制端；真实 FRP 部署填写映射端口（默认 28213）。旧 `MEDIA_CATALOG_URL` / `MEDIA_CONTROL_URL` 仅保留兼容，已有测试配置不会自动被改写。
 
-cloud 与 local 分开 `.env` 时各自用 `MEDIA_WEB_PORT`；旧同目录共享配置可继续用 `MEDIA_GATEWAY_PORT` 指定 cloud 端口。local 控制端改端口后，同机测试同步 `MEDIA_CONTROL_PORT`；真实部署则同步 FRPC 的目标端口。
+统一 `.env.example` 使用 `MEDIA_GATEWAY_PORT` 指定 cloud 网站端口、`MEDIA_WEB_PORT` 指定 local 控制端口。local 控制端改端口后，同机测试同步 `MEDIA_CONTROL_PORT`；真实部署则同步 FRPC 的目标端口。
 
 ## 测试目录与已有服务
 

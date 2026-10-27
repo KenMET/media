@@ -21,9 +21,7 @@ else
     echo '没有找到 Docker Compose。' >&2; exit 1
 fi
 if [ ! -f .env ]; then
-    template=".env.$topology.example"
-    if [ ! -f "$template" ]; then template=.env.example; fi
-    cp "$template" .env
+    cp .env.example .env
     echo '已创建 .env；请按部署位置填写已有依赖地址和凭据。'
 fi
 chmod 600 .env

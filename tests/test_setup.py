@@ -88,7 +88,7 @@ class SetupScriptTests(unittest.TestCase):
             with self.subTest(healthy=healthy),tempfile.TemporaryDirectory() as directory:
                 root=Path(directory)
                 for name in ('setup.sh','.env.example'):shutil.copyfile(source/name,root/name)
-                (root/'.env').write_text((root/'.env.example').read_text()+'\n# preserved private configuration\n')
+                (root/'.env').write_text((root/'.env.example').read_text()+'\nCODEX_TOKEN_FILE=./state/codex-token\n# preserved private configuration\n')
                 (root/'.env').chmod(0o644)
                 binary=root/'bin';binary.mkdir()
                 docker=binary/'docker'

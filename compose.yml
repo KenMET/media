@@ -97,6 +97,7 @@ services:
       MEDIA_CATALOG_URL: ${MEDIA_CATALOG_URL:-}
       MEDIA_EXECUTION_ONLY: ${MEDIA_EXECUTION_ONLY:-false}
       MEDIA_CONTROL_URL: ""
+      MEDIA_CONTROL_PORT: ""
     volumes: &media-volumes
       - ${MEDIA_DATA_DIR:-./data}:/data
       - ${MEDIA_STATE_PATH:-./state}:/state

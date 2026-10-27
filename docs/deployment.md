@@ -2,7 +2,7 @@
 
 快速首次使用按 [README](../README.md) 顺序执行。本页所有命令默认在服务器的 `media/` 目录执行，不在 Windows 客户端执行 Linux 部署命令。
 
-已有反向代理和私有 FRP 时，优先使用 [两端精简部署](split-deployment.md) 与角色专用 `.env` 模板；新 cloud 默认只接受本机反代，不需要重复域名配置，并自动建立内部认证。两端连接只填 `MEDIA_CONTROL_PORT`，NAS 不配置云端地址；搜索和种子获取全部在 cloud。本页下方依赖组合与显式 `MEDIA_WEB_PUBLIC=true` 的域名/TLS 校验是保留的传统单机/高级模式，并非新模板必填项。
+已有反向代理和私有 FRP 时，优先使用 [两端精简部署](split-deployment.md) 与统一 `.env.example` 中的 cloud / local 分组；新 cloud 默认只接受本机反代，不需要重复域名配置，并自动建立内部认证。两端连接只填 `MEDIA_CONTROL_PORT`，NAS 不配置云端地址；搜索和种子获取全部在 cloud。本页下方依赖组合与显式 `MEDIA_WEB_PUBLIC=true` 的域名/TLS 校验是保留的传统单机/高级模式，并非新模板必填项。
 
 ## 配置表
 

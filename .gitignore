@@ -1,8 +1,6 @@
 .env
 .env.*
 !.env.example
-!.env.local.example
-!.env.cloud.example
 state/
 state-cloud/
 state-test/
