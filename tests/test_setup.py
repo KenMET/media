@@ -87,6 +87,8 @@ class SetupScriptTests(unittest.TestCase):
             self.assertIn('control_port=29213',recorded)
             self.assertIn('19514/healthz',recorded)
             self.assertNotIn('synthetic-private',result.stdout+result.stderr)
+            self.assertIn('初始化令牌在 NAS',result.stdout)
+            self.assertIn('不在云端 state-cloud',result.stdout)
             self.assertEqual((root/'state/control-token').stat().st_mode&0o777,0o600)
             self.assertNotIn('MEDIA_WEB_PUBLIC_URL',(root/'.env').read_text())
             (root/'calls').write_text('')

@@ -50,6 +50,8 @@ sh setup.sh cloud
 
 先启动 local 并接通现有 FRP（NAS `192.168.8.1:18213` → 云端本机 `127.0.0.1:28213`），再启动 cloud。云端自动通过该端口建立内部认证，保存 0600 凭据，确认成功后 NAS 关闭初次配对入口。原来的 API 身份认证仍然保留；不是删除 token 校验，也不是自动信任任意远程地址。已有内部凭据文件会沿用，不打印或覆盖。
 
+网站管理员、密码和会话保存在 NAS。首次初始化令牌也由 NAS 控制 API 生成，默认在 NAS 项目目录的 `state/web-bootstrap-token`；云端 `find` 不会找到它。可在 NAS 项目目录运行 `docker compose -f compose.local.yml exec -T web cat /state/web-bootstrap-token`，仅在自己的终端读取，再填入云端网站初始化页面。不要把令牌发到聊天或日志中，也不需要将文件复制到云端。已有管理员时初始化入口关闭，不能靠重建 token 文件重置账户。
+
 FRPC 的 `localIP` 应与 `MEDIA_LOCAL_CONTROL_BIND` 一致，`localPort` 等于 `MEDIA_LOCAL_CONTROL_PORT`，`remotePort` 等于 cloud 的 `MEDIA_CONTROL_PORT`。此方案要求 FRPC 与控制 API 使用同一宿主机网络；当前不自动修改共享 FRP 服务的其他映射。未填写新监听项的旧配置仍回退到原 `MEDIA_WEB_BIND_HOST` 或 local 的回环默认值。
 
 网页和 MCP 的中英文搜索、榜单、详情、Jackett 查询及种子内容获取均在 cloud 执行。云端按用户隔离搜索结果，选定后把有大小限制的种子字节或 magnet、媒体身份和集数交给 NAS；NAS 检查权限、过期时间、infohash、已有媒体、计划版本和幂等键，再生成本地任务。worker 直接消费已冻结材料，不访问云端 Jackett 地址。下载过程中 BT tracker/peer 与字幕/模型服务仍由对应本地执行组件按需访问；“不回调云端 Provider”不等于 NAS 完全断网。

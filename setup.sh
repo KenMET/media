@@ -277,7 +277,12 @@ else
     printf '\nMCP 已启动：http://%s:%s/mcp（认证模式：%s）\n' "$lan_ip" "$health_port" "$auth_mode"
     printf 'Media 网页：http://%s:%s\n' "$lan_ip" "$web_port"
 fi
-echo '首次使用网页：在本地状态目录 web-bootstrap-token 文件取得初始化令牌，创建管理员；不要分享令牌。'
+if [ "$topology" = cloud ]; then
+    echo '首次创建网站管理员：初始化令牌在 NAS 的 local 状态目录 web-bootstrap-token，不在云端 state-cloud。'
+    echo '请在 NAS 的项目目录执行：docker compose -f compose.local.yml exec -T web cat /state/web-bootstrap-token；只在自己的终端查看，不要分享令牌。'
+else
+    printf '首次创建网站管理员：初始化令牌位于本机 %s/web-bootstrap-token；不要分享令牌。\n' "$state_path"
+fi
 echo '依赖服务：已配置 URL 的复用已有服务，未配置的仅在所属部署端启动对应容器。'
 if [ "$topology" = standalone ] && [ "$auth_mode" = none ]; then
     echo '当前为可信个人 LAN MCP；网页用户权限不约束此免认证入口，请限制端口可达范围。'
