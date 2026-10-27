@@ -32,7 +32,7 @@
 | 真实 TCP OAuth + MCP | 11 个工具可用，撤销后 401；worker_ready 从 false 到真实门禁通过后的 true |
 | 隔离 MySQL/文件链路 | completed，视频硬链接数 2，字幕记录/文件 1 |
 
-`tests/acceptance_mysql.py` 与 `tests/acceptance_http.py` 仅允许标记的隔离环境：`MEDIA_ACCEPTANCE=isolated-container`、`MEDIA_DB_NAME=media_acceptance_*`、`/state/.acceptance`。数据库测试还要求 fresh acquisition 表。不要对真实库或真实挂载运行。
+`tests/acceptance_mysql.py` 与 `tests/manual/acceptance_http.py` 仅允许标记的隔离环境：`MEDIA_ACCEPTANCE=isolated-container`、`MEDIA_DB_NAME=media_acceptance_*`、`/state/.acceptance`。数据库测试还要求 fresh acquisition 表。不要对真实库或真实挂载运行。
 
 验收端口曾使用 `127.0.0.1:18219/mcp`，数据库仅 loopback `18316`，Compose 项目名 `media-mcp-acceptance`，文件挂载均在独立测试目录。此端口是测试入口，不是给 ChatGPT 的公网地址。隔离实例在验收结束后清理，不作为生产部署保留。
 

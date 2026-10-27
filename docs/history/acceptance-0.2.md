@@ -40,7 +40,7 @@ SQLite 多进程测试是为任务领取和 OS 锁竞争而设的小范围测试
 
 验收项目名 `media-lan-acceptance`，临时入口为 MCP 19210、qBittorrent 19211、Jackett 19212，torrent 端口 49181；持久数据和两个软件的配置均位于独立测试目录。验收后清理此实例，不把临时地址作为生产服务保留。
 
-`tests/acceptance_sqlite.py` 只允许 `MEDIA_ACCEPTANCE=isolated-container`、容器内数据库路径 `/state/media.sqlite3` 与 `/state/.acceptance` 标记，且要求 fresh acquisition 表。`MEDIA_ACCEPTANCE_QBIT=real` 使用专用验收下载器，不对生产实例运行。
+`tests/manual/acceptance_sqlite.py` 只允许 `MEDIA_ACCEPTANCE=isolated-container`、容器内数据库路径 `/state/media.sqlite3` 与 `/state/.acceptance` 标记，且要求 fresh acquisition 表。`MEDIA_ACCEPTANCE_QBIT=real` 使用专用验收下载器，不对生产实例运行。
 
 ## 仍需实际使用时配置/验证
 

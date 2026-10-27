@@ -1,168 +1,64 @@
-# Media：局域网个人媒体助手
+# Media
 
-一句话发起找片，后台完成下载、识别、规范命名、硬链接入库、字幕处理和通知。`media/` 可独立迁仓，运行代码不依赖父仓 `apps.*`。
+通过网页或 MCP 搜索媒体、选择资源并提交下载；后台完成文件校验、规范命名、硬链接入库和字幕处理。项目独立运行，不依赖父仓的 `apps` 包。
 
-本目录启动 **Media MCP、worker、qBittorrent、Jackett** 四个服务。SQLite 本地存储，不需要 MySQL；默认 MCP 局域网免登录。**模型服务、TMDB 凭据、资源站和客户端网络连接仍需准备**，启动器不会代办。
+## 服务分工
 
-## 先准备这些
-
-- Linux / OpenWrt 主机，Docker 和 Compose 可用，镜像支持主机 CPU 架构。命令在服务器执行，Windows 上编辑代码不等于已部署。
-- 本机磁盘有下载、做种及字幕空间。下载和媒体库在同一个文件系统；SQLite 的 `state/` 不放 SMB/NFS。客户端通过共享目录编辑代码不影响服务器用本地路径运行。
-- TMDB API key。没有它不能正常定位作品。
-- 已运行的、与本项目适配的 **Codex App Server WebSocket 端点及其 bearer token**。默认 `ws://127.0.0.1:8108`；本项目不安装、不登录、不启动该模型服务。这个 token 不是 Media MCP 登录 token，也不是直接拿 OpenAI API key 替代。
-- 一个能到达主机局域网地址的 MCP 客户端。客户端是否支持 HTTP MCP、是否允许调用写入工具，需要在客户端确认。
-
-先检查：
-
-```sh
-docker version
-docker compose version
-```
-
-只有旧版 `docker-compose` 时启动器也支持。配置路径、端口与模型依赖见 [部署与运维](docs/deployment.md)。
-
-## 5 步快速开始
-
-### 1. 准备配置
-
-在服务器进入此目录（若在父仓根目录，先 `cd media`）：
-
-```sh
-cp -n .env.example .env
-chmod 600 .env
-mkdir -p state
-```
-
-已有 `.env` 时保留它，不覆盖。编辑 `.env`，最少填写：
-
-```dotenv
-TMDB_API_KEY=你的TMDB_APIKey
-CODEX_APP_SERVER_URL=ws://127.0.0.1:8108
-CODEX_TOKEN_FILE=./state/codex-token
-```
-
-将**与该模型端点匹配的现有 token 文件**保存到 `CODEX_TOKEN_FILE` 指向的位置；它是服务器上的宿主机文件，不是容器内路径。通过本地文件编辑器或已有凭据文件复制，不在聊天、命令参数或日志中展示内容：
-
-```sh
-chmod 600 state/codex-token
-```
-
-如果使用其他路径，对那个文件设置权限。文件内容必须是原始 bearer token 文本，而不是 JSON、文件路径或带 `Bearer ` 前缀的请求头。该文件会只读挂载给 MCP/worker。
-
-可选填写 `BARK_URL`（完整设备推送地址，包含私有 key）和字幕 Provider keys。没有 Bark 时只写本地通知日志，没有字幕 key 时仍可能使用已有/内嵌字幕及翻译，但不能保证每部作品都能找到中文。
-
-### 2. 启动
-
-```sh
-sh start.sh
-sh start.sh status
-```
-
-首次构建需要下载镜像、依赖和 OCR 工具，耗时取决于网络与主机。成功启动 MCP 不等于 worker 就绪；模型认证与硬链接探针通过后 worker 才开始提交下载和处理。
-
-| 入口 | 默认地址 |
+| 云端 | NAS / 本地 |
 | --- | --- |
-| Media MCP | `http://主机局域网IP:18210/mcp` |
-| qBittorrent 网页 | `http://主机局域网IP:18211` |
-| Jackett 网页 | `http://主机局域网IP:18212` |
+| 网页、MCP、TMDB/SIMKL 榜单与搜索、Jackett、种子获取 | 控制 API、下载器、worker、AI 处理、媒体和任务数据库 |
 
-`主机局域网IP` 要换成实际地址，不是浏览器所在电脑的 localhost。默认 `MEDIA_LAN_BIND=0.0.0.0` 表示监听，不是访问地址；先保留默认值，用防火墙限制访问网段。
+云端通过已有 FRP 的本机映射端口连接 NAS；NAS 不需要云端地址。反向代理、证书和 FRP 继续由现有服务管理。
 
-### 3. 配置 Jackett
+## 两端部署
 
-打开 `18212` 页面，选择 **Add indexer / 添加索引器**，添加你有权限使用且支持所需媒体类型的站点。逐站点填写必要的账号、cookie 或其他设置，保存后执行 **Test**，再用 **Manual Search** 搜索一个确切片名和原名。
+需要 Linux、Docker 与 Compose、本地磁盘，以及可用的模型服务和匹配的凭据文件。
 
-**Test 返回最近资源，不等于片名搜索有效。** 新 Jackett 没有站点；不会自动迁入旧 Jackett 配置。添加成功后 Media 自动读取，无需复制 API key 或 Torznab URL，也无需重启 Media。详细步骤、代理和挑战页面排错见 [Jackett 配置](docs/jackett.md)。
+1. **NAS**：复制 [.env.local.example](.env.local.example) 为 `.env`，核对控制端口、下载器、媒体目录、模型地址与凭据文件，然后执行 `sh setup.sh local`。
+2. **FRP**：例如将 NAS `127.0.0.1:18213` 转发到云端仅本机可达的 `127.0.0.1:28213`。
+3. **云端**：复制 [.env.cloud.example](.env.cloud.example) 为 `.env`，核对网站/MCP/映射端口、TMDB key 与已有 Jackett 地址，然后执行 `sh setup.sh cloud`。
+4. **反代**：网站指向本机 `18214`，可选 `/mcp` 指向本机 `18210`。创建网站管理员后使用；云端 MCP 使用可撤销的用户令牌。
 
-### 4. 连接 MCP 并验证
+已有 `.env` 不要覆盖。内部凭据首次自动配对，不需要手工填写 token 或重复配置域名。默认值和 Docker 反代条件项见[两端部署说明](docs/split-deployment.md)。同机先测试见[本地测试](docs/platform-testing.md)。
 
-在客户端添加上述 `/mcp` HTTP 地址，默认选择无认证。首次连接或更新后说：
+已有 qBittorrent / Jackett 地址非空就复用；留空才在其所属部署端启动内置服务。云端 Jackett 固定持久化到 `/root/container_cache/jackett/config` 和 `downloads`。
 
-> 请先调用 media_status 检查服务，再调用 media_get_workflow 读取流程。
+`TMDB_API_KEY` 在 cloud 配置；OpenSubtitles、SubDL、ASSRT 的可选字幕 key 在 NAS 模板中配置，留空跳过对应来源。网页目前不编辑这些部署凭据。
 
-正常应看到 `worker_ready=true`、`tmdb_configured=true`、`indexer_configured=true`、`configured_sites>0`。这些只是就绪信息，不保证外部站点搜索、字幕和手机推送均有效。
+## 数据与安全
 
-云端客户端不能仅凭你的局域网 IP 直接访问服务。需要自行建立受保护的网络通路；本目录不创建隧道，也不要直接把免登录端口映射到公网。使用自定义主机名时将其加入 `MEDIA_ALLOWED_HOSTS`，详见部署文档。
+- `MEDIA_DATA_DIR` 下的 `downloads`、`media_hub` 分别保存源文件和媒体硬链接；硬链接目录须与下载目录位于同一文件系统，且下载器与 worker 的容器内路径一致。
+- NAS 的用户、任务和恢复记录默认在 `./state`，云端缓存与搜索快照默认在 `./state-cloud`。容器重建保留绑定目录；换部署目录时不要丢弃原状态。
+- 不自动接管下载器的其他任务。`submission_unknown` 必须按原任务核对，不换 key 重复下单；重试不提供删除能力。
+- 旧 MySQL 和已有媒体须按[正式接管方案](docs/production-cutover-plan.md)迁移，启动命令不会自动导入。不要将隔离测试状态当作生产数据库。
+- 私有 `.env`、凭据和运行目录不提交 Git。个人 LAN 免认证的[传统单机模式](docs/standalone.md)仍支持，不应转发到公网。
 
-### 5. 开始使用
+## 日常命令
 
-只查看资源，不下载：
+```sh
+sh setup.sh local status
+sh setup.sh local logs
+sh setup.sh local stop
 
-> 帮我找《星际穿越》（2014）的电影资源，列出来看看，先不要下载。
+sh setup.sh cloud status
+sh setup.sh cloud logs
+sh setup.sh cloud stop
+```
 
-自动下载并处理：
+更新代码后再次执行对应的 `sh setup.sh local` 或 `sh setup.sh cloud`；仅重启容器不会加载新代码。部署入口只有 `setup.sh`。
 
-> 帮我下载《星际穿越》（2014），自动选择合适资源，完成规范命名、硬链接入库、中文字幕处理后推送通知。
-
-剧集范围：
-
-> 帮我下载《某剧》第二季第 1–3 集，要求 1080p，并处理中文字幕。
-
-查进度：
-
-> 检查刚才任务的进度，分别说明下载、入库和字幕状态。
-
-为已入库作品补字幕：
-
-> 检查《星际穿越》的媒体库记录，用返回的 media_id 调用 media_run_subtitles，重新处理并核验中文字幕，不要重新下载电影。
-
-不要沿用其他安装实例的 `media_id`。已有版本冲突、同名歧义或关键错误会要求复核。只有明确要求下载时才提交；仅请求列资源不会授权下载。提交后会返回 `job_id`，聊天关闭也会继续，但这不等于已经完成。
-
-## 文件保存在哪里
+## 目录与文档
 
 ```text
-media/
-  .env                         私有部署配置
-  state/media.sqlite3          任务、映射、字幕和恢复记录（含 WAL/SHM）
-  state/codex-token            模型连接凭据
-  state/notifications.jsonl    本地通知记录
-  services/qbittorrent/        下载器配置及任务恢复状态
-  services/jackett/            索引器、登录信息和内部 API key
-  data/downloads/              原始下载与做种文件
-  data/media_hub/              规范路径的视频硬链接和字幕
+src/media_mcp/     运行源码和网页资源
+tests/            自动化回归
+tests/manual/     隔离环境的手工验收工具
+docs/             当前部署、使用、迁移与安全说明
+docs/history/     历史报告和提取记录
+skills/           MCP 使用流程
 ```
 
-默认不接管父项目或其他下载器的任务。硬链接共享视频字节，不等于又复制了一份视频；字幕会单独写入。不要原地编辑硬链接视频，否则做种源文件也会变化。
-
-字幕优先复用/提取中文，再在线搜索、同步，按流程 OCR 或翻译。中文文本候选检查对白覆盖率；来源标签与文件名不能证明语言正确。没有可用素材、额度不足或翻译失败会报告缺失/复核，不能保证每次成功。历史完成任务不会自动重查；重处理不需要重下视频。
-
-## 更新、重启与排错
-
-更新代码后仍运行：
-
-```sh
-sh start.sh
-```
-
-它重建 Media 镜像、运行初始化、更新使用该镜像的 MCP/worker；已有配置和数据保留。仅重启容器不会加载新代码。本命令不是更新第三方镜像的保证；升级方法和备份见部署文档。更新后重新读取 workflow。
-
-```sh
-sh start.sh status
-sh start.sh logs
-sh start.sh stop
-```
-
-停止会暂停下载及处理，不删除持久状态。`logs` 只用于本机排错，分享前脱敏。若发生 `submission_unknown`，不能更换请求 key 重复下单。
-
-- [部署与运维：配置表、网络、备份恢复、常见错误](docs/deployment.md)
-- [Jackett：添加站点、验证搜索、代理与挑战页面](docs/jackett.md)
-- [安全检查：已修复问题、默认信任边界、尚存风险](docs/security-review.md)
-- [Skill](skills/media-acquire/SKILL.md) · [迁移边界](docs/migration.md) · [历史隔离验收](docs/acceptance.md)
-
-## 哪些文件可以清理
-
-- `src/`、`tests/` 中的 `__pycache__/` 和 `.pyc` 是可再生成缓存，不是源码或任务状态；忽略规则已排除它们。
-- 根目录的旧交付目标、提取清单及旧验收收据已归入 `docs/history/`，不参与运行，目录索引见 [历史记录](docs/acceptance.md)。
-- `tests/`、`skills/`、`src/`、构建/启动文件、`.env.example`、忽略规则和 `AGENTS.md` 保留；可选认证、诊断 CLI 和测试引用的旧入口不能仅因默认未使用就删除。
-- `.env`、`state/`、`services/`、`data/` 是私有配置和持久数据，不能当作缓存清空。`.rejected-language` 是字幕原件备份，确认替换正确后才能另行决定清理。
-
-## 开发验证
-
-运行环境是 Linux、Python 3.11+。在独立虚拟环境安装 `pip install -e . PyYAML`；测试串行、低优先级执行。运行有文件/数据库操作的测试时使用可丢弃的临时状态与媒体目录，不连接真实媒体库。
-
-```sh
-nice -n 15 .venv/bin/python -m unittest discover -s tests -p 'test_lan_boundary.py'
-nice -n 15 .venv/bin/python -m unittest discover -s tests -p 'test_start.py'
-```
-
-详细检查记录见安全检查文档；历史验收数字不代表当前版本已重新执行所有测试。
+- [部署与运维](docs/deployment.md) · [Jackett 站点配置](docs/jackett.md)
+- [测试说明](tests/README.md) · [历史验收索引](docs/acceptance.md)
+- [安全边界](docs/security-review.md) · [迁移边界](docs/migration.md)
+- [AI 使用流程](skills/media-acquire/SKILL.md)
