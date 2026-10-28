@@ -29,6 +29,42 @@ class InventoryTests(unittest.TestCase):
         self.inventory = Inventory(self.records)
         return self.inventory
 
+    def test_empty_scan_is_explicit_and_cannot_be_imported(self):
+        Path(os.environ['MEDIA_DOWNLOAD_ROOT']).mkdir()
+        Path(os.environ['MEDIA_LIBRARY_ROOT']).mkdir()
+        inv=Inventory(self.records)
+        scan=inv.scan(self.admin.id)
+        self.assertEqual(scan['state'],'empty')
+        self.assertEqual(scan['total'],0)
+        self.assertEqual(scan['summary'],{})
+        with self.assertRaisesRegex(ValueError,'inventory_empty_scan'):
+            inv.adopt(scan['scan_id'],self.admin.id)
+        self.assertEqual(inv.list()['total'],0)
+        self.assertIsNone(inv.list()['scan_id'])
+
+    def test_empty_scan_cannot_replace_previously_imported_resources(self):
+        inv=self.fixture();scan=inv.scan(self.admin.id)
+        receipt=inv.adopt(scan['scan_id'],self.admin.id)
+        self.assertEqual(receipt['indexed_count'],6)
+        self.assertEqual(receipt['media_links_created'],1)
+        stored=self.records.get(scan['scan_id'])['data']['receipt']
+        self.assertEqual(stored['indexed_count'],6)
+        # A mount of entirely different, empty directories must not clear the saved inventory.
+        source=self.source.parent/'empty-downloads';source.mkdir()
+        target=self.target.parent/'empty-library';target.mkdir()
+        with patch.dict(os.environ,MEDIA_DOWNLOAD_ROOT=str(source),MEDIA_LIBRARY_ROOT=str(target)):
+            # Existing mappings are historical observations; isolate an actually empty snapshot.
+            discovery=inv._discover();discovery['mappings']=[]
+            with patch.object(inv,'_discover',return_value=discovery):
+                empty=inv.scan(self.admin.id)
+                self.assertEqual(empty['state'],'empty')
+                with self.assertRaisesRegex(ValueError,'inventory_empty_scan'):
+                    inv.adopt(empty['scan_id'],self.admin.id)
+        saved=inv.list()
+        self.assertEqual(saved['total'],6)
+        self.assertEqual(saved['scan_id'],scan['scan_id'])
+        self.assertIsNotNone(saved['imported_at'])
+
     def test_preview_adoption_idempotency_preserves_all_bytes_and_task_identity(self):
         inv = self.fixture()
         before = {str(p): (p.read_bytes(),p.stat().st_ino) for root in (self.source,self.target)

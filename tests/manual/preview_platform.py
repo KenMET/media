@@ -75,13 +75,17 @@ if __name__ == '__main__':
         # Existing-file discovery fixtures; these bytes are never playable media.
         downloads, library = root/'downloads', root/'library'
         downloads.mkdir(); library.mkdir()
-        (downloads/'Letters.from.the.Mountain.2025.mkv').write_bytes(b'disposable-preview-video')
-        os.link(downloads/'Letters.from.the.Mountain.2025.mkv', library/'远山来信 (2025).mkv')
-        (library/'远山来信 (2025).zh.srt').write_text('1\n00:00:01,000 --> 00:00:02,000\n测试字幕\n')
-        (downloads/'Midnight.Route.S01E01.1080p.mkv').write_bytes(b'unorganized-preview-video')
-        (library/'岛屿漫游 (2024).mp4').write_bytes(b'library-only-preview-video')
-        (library/'尚未匹配的字幕.ass').write_text('[Script Info]\nTitle: Preview')
-        (downloads/'失效的软链接.mkv').symlink_to(downloads/'missing.mkv')
+        if os.environ.get('MEDIA_PREVIEW_EMPTY') != 'true':
+            (downloads/'Letters.from.the.Mountain.2025.mkv').write_bytes(b'disposable-preview-video')
+            if os.environ.get('MEDIA_PREVIEW_NO_LINKS') == 'true':
+                (library/'远山来信 (2025).mkv').write_bytes(b'independent-library-file')
+            else:
+                os.link(downloads/'Letters.from.the.Mountain.2025.mkv', library/'远山来信 (2025).mkv')
+            (library/'远山来信 (2025).zh.srt').write_text('1\n00:00:01,000 --> 00:00:02,000\n测试字幕\n')
+            (downloads/'Midnight.Route.S01E01.1080p.mkv').write_bytes(b'unorganized-preview-video')
+            (library/'岛屿漫游 (2024).mp4').write_bytes(b'library-only-preview-video')
+            (library/'尚未匹配的字幕.ass').write_text('[Script Info]\nTitle: Preview')
+            (downloads/'失效的软链接.mkv').symlink_to(downloads/'missing.mkv')
         records = Records(_client(None))
         records.initialize()
         accounts = Accounts(records.db)

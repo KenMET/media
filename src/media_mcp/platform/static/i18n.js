@@ -150,6 +150,20 @@ const english = {
   '第 ':'Season ', ' 季':'', '季':'Season', ' 集':' episodes', '。':'. ',
 };
 Object.assign(english, {
+  "本次扫描为 0 项，未导入任何资源。请检查宿主机媒体目录及容器挂载。":"This scan found 0 items. Nothing was imported. Check the host media directory and container mount.",
+  "导入结果校验失败，请刷新检查已保存资源。":"Import verification failed. Refresh to check saved resources.",
+  "空扫描结果":"Empty scan",
+  "未发现可导入资源":"No files found to import",
+  "扫描结果为 0 项，没有导入任何资源。":"The scan found 0 items. Nothing was imported.",
+  "请核对宿主机媒体目录。容器内的 /data 可能映射到了项目内的空 data 目录，而不是真实媒体目录。":"Check the host media directory. Container /data may point to the project's empty data folder instead of your real media.",
+  "宿主机媒体目录：":"Host media directory: ",
+  "未收到有效的入库数量，请刷新检查已保存资源。":"No valid import count received. Refresh to check saved resources.",
+  " 项资源索引，原文件保持不变。":" inventory items. Original files are unchanged.",
+  "已保存 ":"Saved ",
+  "已导入的磁盘资源":"Imported disk resources",
+  "这些文件已保存索引，尚未确认的映射会保留原状态。":"These files are indexed. Unverified mappings keep their original status.",
+  "查看全部磁盘资源":"View all disk resources",
+
   "映射包含跳过的文件":"Mapping includes excluded files",
   "路径不在当前目录范围":"Outside configured folders",
   "已有文件也能入库": "Bring existing files into your library",

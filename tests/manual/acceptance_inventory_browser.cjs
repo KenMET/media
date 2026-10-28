@@ -15,13 +15,28 @@ const artifacts=process.env.MEDIA_BROWSER_ARTIFACTS||'/tmp/media-ui-acceptance';
  async function check(label){const sizes=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));if(sizes.scroll>sizes.width)throw new Error(label+' overflows '+JSON.stringify(sizes));}
  await check('discover');
  await page.locator('.nav [data-page=library]').click();await page.getByRole('button',{name:'扫描与导入'}).click();
- await page.getByRole('button',{name:'扫描已有资源',exact:true}).click();await page.getByRole('button',{name:'确认导入索引'}).waitFor();
+ await page.getByRole('button',{name:'扫描已有资源',exact:true}).click();
+ if(process.env.MEDIA_BROWSER_EMPTY==='true'){
+   await page.getByRole('heading',{name:'未发现可导入资源',exact:true}).waitFor();
+   if(await page.getByRole('button',{name:'确认导入索引',exact:true}).count())throw new Error('Empty import button must not exist');
+   if(!await page.getByText('扫描结果为 0 项，没有导入任何资源。',{exact:true}).isVisible())throw new Error('Empty scan must be explicit');
+   const rejected=await page.evaluate(async()=>{
+     const r=await fetch('/api/command',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':sessionStorage.getItem('media-csrf')},body:JSON.stringify({operation:'inventory_import',arguments:{scan_id:sessionStorage.getItem('media-inventory-scan')}})});
+     return {status:r.status,body:await r.json()};
+   });
+   if(rejected.status!==400||rejected.body.error_code!=='inventory_empty_scan')throw new Error('Empty import was not rejected');
+   await page.screenshot({path:artifacts+'/empty-scan.png',fullPage:true});
+   console.log('Empty scan browser acceptance passed.');await browser.close();return;
+ }
+ await page.getByRole('button',{name:'确认导入索引'}).waitFor();
  await page.screenshot({path:artifacts+'/mobile-scan-preview.png',fullPage:true});await check('scan preview');
  if(await page.locator('.disk-card').count()!==6)throw new Error('Expected six preview items');
  await page.getByRole('button',{name:'确认导入索引'}).click();await page.getByRole('heading',{name:'已保存的资源'}).waitFor();
  await page.screenshot({path:artifacts+'/mobile-imported.png',fullPage:true});
  await page.reload();await page.locator('.nav [data-page=library]').click();await page.getByRole('heading',{name:'远山来信 (2025)',exact:true}).waitFor();
- if(!await page.getByText('未知语言 · 已发现 · 未校验').isVisible())throw new Error('Subtitle discovery state missing');
+ if(process.env.MEDIA_BROWSER_NO_LINKS==='true'){
+   if(!await page.getByRole('heading',{name:'已导入的磁盘资源',exact:true}).isVisible())throw new Error('Unpaired resources disappeared from library');
+ }else if(!await page.getByText('未知语言 · 已发现 · 未校验').isVisible())throw new Error('Subtitle discovery state missing');
  await page.screenshot({path:artifacts+'/mobile-library.png',fullPage:true});await check('library');
  for(const width of [320,375,430,768,1440]){await page.setViewportSize({width,height:900});await check('library '+width);await page.screenshot({path:`${artifacts}/library-${width}.png`,fullPage:true});}
  await page.setViewportSize({width:390,height:844});
@@ -39,5 +54,5 @@ const artifacts=process.env.MEDIA_BROWSER_ARTIFACTS||'/tmp/media-ui-acceptance';
  await page.screenshot({path:artifacts+'/mobile-inventory-en.png',fullPage:true});
  if(errors.length)throw new Error(errors.join('\n'));
  fs.writeFileSync(artifacts+'/result.json',JSON.stringify({passed:true,widths:[320,375,390,430,768,1440],checks:['login','discovery','disk preview','confirmed import','reload persistence','unverified subtitles','downloads','search','title detail','account','admin','users','English inventory','no horizontal overflow','no JS errors']},null,2));
- console.log('Browser acceptance passed; screenshots: /tmp/media-ui-acceptance');await browser.close();
+ console.log('Browser acceptance passed; screenshots: '+artifacts);await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});

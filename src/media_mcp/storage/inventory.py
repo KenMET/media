@@ -70,7 +70,8 @@ class Inventory:
         files.sort(key=lambda item:item['path'])
         mappings = [dict(row) for row in self.db.execute('''SELECT id, source_path, target_path,
             status, updated_at FROM media_link ORDER BY id''').mappings()]
-        return {'roots':[str(p) for p in roots], 'files':files, 'skipped':sorted(skipped), 'mappings':mappings}
+        return {'roots':[str(p) for p in roots], 'data_directory':os.environ.get('MEDIA_DATA_DIR', './data'),
+                'files':files, 'skipped':sorted(skipped), 'mappings':mappings}
 
     @staticmethod
     def _digest(value):
@@ -162,8 +163,9 @@ class Inventory:
         if data['owner'] != owner:
             raise ValueError('permission_denied')
         items = data['items']
-        return {'scan_id':row['id'], 'state':row['state'], 'summary':data['summary'],
+        return {'scan_id':row['id'], 'state':'empty' if not items else row['state'], 'summary':data['summary'],
                 'total':len(items), 'roots':data['discovery']['roots'],
+                'data_directory':data['discovery'].get('data_directory'),
                 'skipped':data['discovery']['skipped'][:50], 'skipped_count':len(data['discovery']['skipped']),
                 'items':items[after:after+limit], 'next_cursor':after+limit if after+limit < len(items) else None}
 
@@ -173,8 +175,11 @@ class Inventory:
             data = row['data']
             if data['owner'] != owner:
                 raise ValueError('permission_denied')
+            if not data['items']:
+                raise ValueError('inventory_empty_scan')
             if row['state'] == 'imported':
-                return {'scan_id':scan_id, 'state':'imported', 'total':len(data['items'])}
+                return {'scan_id':scan_id, 'state':'imported', 'total':len(data['items']),
+                        **data.get('receipt', {})}
             if data['expires_at'] < time.time():
                 raise ValueError('inventory_preview_expired')
             if self._digest(self._discover()) != data['digest']:
@@ -183,6 +188,7 @@ class Inventory:
             # No filesystem writes, task submissions, or metadata-provider requests.
             with self.db.begin() as conn:
                 refreshed = set()
+                links_created = 0
                 for item in data['items']:
                     conn.execute(text('''INSERT INTO media_inventory(path,data,scan_id) VALUES(:path,:data,:scan)
                         ON CONFLICT(path) DO UPDATE SET data=excluded.data,scan_id=excluded.scan_id,updated_at=CURRENT_TIMESTAMP'''),
@@ -210,15 +216,27 @@ class Inventory:
                             upsert_media_link(None, source, target, filename=Path(source).name,
                                               media_name=Path(target).stem, status='linked',
                                               reason='disk_inventory_import; identity_unverified', _connection=conn)
+                            links_created += 1
+                indexed = conn.execute(text('SELECT COUNT(*) FROM media_inventory WHERE scan_id=:id'),
+                                       {'id':scan_id}).scalar_one()
+                if indexed != len({item['path'] for item in data['items']}):
+                    raise RuntimeError('inventory_import_verification_failed')
+                data['receipt'] = {'indexed_count':indexed, 'media_links_created':links_created}
                 # Retain older inventory as history; only the latest complete import is displayed.
                 assert_mutation_lock()
-                conn.execute(text('''UPDATE media_mcp_record SET state='imported',revision=revision+1,
-                    updated_at=CURRENT_TIMESTAMP WHERE id=:id'''), {'id':scan_id})
-            return {'scan_id':scan_id, 'state':'imported', 'total':len(data['items'])}
+                conn.execute(text('''UPDATE media_mcp_record SET state='imported',data=:data,revision=revision+1,
+                    updated_at=CURRENT_TIMESTAMP WHERE id=:id'''), {'id':scan_id, 'data':json.dumps(data,ensure_ascii=False)})
+            return {'scan_id':scan_id, 'state':'imported', 'total':len(data['items']), **data['receipt']}
 
     def list(self, after=0, limit=50):
-        latest = self.db.execute("SELECT id FROM media_mcp_record WHERE kind='inventory_scan' AND state='imported' ORDER BY updated_at DESC,rowid DESC LIMIT 1").scalar()
+        latest = self.db.execute("SELECT id,data,updated_at FROM media_mcp_record WHERE kind='inventory_scan' AND state='imported' ORDER BY updated_at DESC,rowid DESC LIMIT 1").mappings().first()
+        scan_id = latest['id'] if latest else ''
+        data = json.loads(latest['data']) if latest else {}
         rows = self.db.execute('''SELECT id,data FROM media_inventory WHERE scan_id=:scan AND id>:after ORDER BY id LIMIT :limit''',
-                               {'scan':latest or '', 'after':after, 'limit':limit}).mappings().all()
+                               {'scan':scan_id, 'after':after, 'limit':limit}).mappings().all()
+        total = self.db.execute('SELECT COUNT(*) FROM media_inventory WHERE scan_id=:scan', {'scan':scan_id}).scalar()
         return {'items':[json.loads(row['data']) for row in rows],
-                'next_cursor':rows[-1]['id'] if len(rows) == limit else None, 'scan_id':latest}
+                'next_cursor':rows[-1]['id'] if len(rows) == limit else None, 'scan_id':scan_id or None,
+                'total':total, 'summary':data.get('summary', {}), 'roots':data.get('discovery',{}).get('roots',[]),
+                'data_directory':data.get('discovery',{}).get('data_directory'),
+                'imported_at':latest['updated_at'] if latest else None, **data.get('receipt',{})}
