@@ -1,5 +1,6 @@
 """ChatGPT-facing Streamable HTTP MCP, scoped to a single private owner."""
 import os
+from media_mcp.config import env_value
 from pathlib import Path
 from typing import Annotated, Literal
 from pydantic import Field
@@ -151,9 +152,11 @@ def create_server(service=None, auth=None):
     return mcp
 
 
-def main():
+def main(role=None):
     from media_mcp.platform.transport import control_url
-    remote_url = control_url()
+    remote_url = control_url() if role != 'local' else ''
+    if role == 'cloud' and not remote_url:
+        raise ValueError('cloud_control_url_required')
     if (os.environ.get('MEDIA_MULTI_USER') == 'true' and not remote_url
             and os.environ.get('MEDIA_AUTH_MODE','none') != 'platform'):
         raise ValueError('multi_user_requires_platform_auth')
@@ -173,8 +176,8 @@ def main():
             from media_mcp.platform.network import validate_public_origin
             validate_public_origin(hosts)
         server = create_server(RemoteMCPService(remote), RemoteTokenVerifier(remote))
-        server.run(transport='http', host=os.environ.get('MEDIA_BIND_HOST','127.0.0.1'),
-            port=int(os.environ.get('MEDIA_MCP_PORT','18210')), path='/mcp', stateless_http=True,
+        server.run(transport='http', host=env_value('MEDIA_CLOUD_MCP_BIND','MEDIA_BIND_HOST',default='127.0.0.1'),
+            port=int(env_value('MEDIA_CLOUD_MCP_PORT', 'MEDIA_MCP_PORT', default='18210')), path='/mcp', stateless_http=True,
             json_response=True, show_banner=False,
             middleware=([Middleware(LoopbackProxyMiddleware),Middleware(SameOriginMiddleware)] if proxied else [Middleware(SameOriginMiddleware), Middleware(TrustedHostMiddleware,
                 allowed_hosts=list(set(hosts+['127.0.0.1','localhost'])))] if public else lan_middleware()),
@@ -195,9 +198,17 @@ def main():
     else:
         service = MediaService(records=records)
     server = create_server(service, make_auth())
-    server.run(transport='http',host=os.environ.get('MEDIA_BIND_HOST','0.0.0.0'),port=int(os.environ.get('MEDIA_MCP_PORT','18210')),
+    server.run(transport='http',host=env_value('MEDIA_LOCAL_MCP_BIND','MEDIA_BIND_HOST',default='0.0.0.0'),port=int(env_value('MEDIA_LOCAL_MCP_PORT', 'MEDIA_MCP_PORT', default='18210')),
                path='/mcp',stateless_http=True,json_response=True,show_banner=False,
                middleware=lan_middleware(),uvicorn_config={'proxy_headers':False})
+
+
+def local_main():
+    main(role='local')
+
+
+def cloud_main():
+    main(role='cloud')
 
 
 if __name__=='__main__':

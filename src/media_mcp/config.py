@@ -4,6 +4,11 @@ import re
 from pathlib import Path
 
 
+def env_value(name, *legacy, default=''):
+    """Prefer a role-specific setting; retain old names for existing deployments."""
+    return next((os.environ[key] for key in (name, *legacy) if os.environ.get(key)), default)
+
+
 def parse_title_id(value):
     if not re.fullmatch(r'(movie|tv):[1-9][0-9]{0,11}', value):
         raise ValueError('invalid_title_id')

@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from media_mcp.runtime.state import media_mutation_lock, assert_mutation_lock
 from media_mcp.storage.media import upsert_media_link
+from media_mcp.config import env_value
 
 VIDEO = {'.mkv', '.mp4', '.avi', '.mov', '.m4v', '.ts', '.m2ts', '.wmv', '.webm'}
 SUBTITLE = {'.srt', '.ass', '.ssa', '.vtt', '.sup', '.sub', '.idx'}
@@ -70,7 +71,7 @@ class Inventory:
         files.sort(key=lambda item:item['path'])
         mappings = [dict(row) for row in self.db.execute('''SELECT id, source_path, target_path,
             status, updated_at FROM media_link ORDER BY id''').mappings()]
-        return {'roots':[str(p) for p in roots], 'data_directory':os.environ.get('MEDIA_DATA_DIR', './data'),
+        return {'roots':[str(p) for p in roots], 'data_directory':env_value('MEDIA_LOCAL_DATA_DIR', 'MEDIA_DATA_DIR', default='./data'),
                 'files':files, 'skipped':sorted(skipped), 'mappings':mappings}
 
     @staticmethod

@@ -66,7 +66,7 @@ sh setup.sh status
 | qBittorrent 网页 | `http://主机局域网IP:18211` |
 | Jackett 网页 | `http://主机局域网IP:18212` |
 
-`主机局域网IP` 要换成实际地址，不是浏览器所在电脑的 localhost。默认 `MEDIA_LAN_BIND=0.0.0.0` 表示监听，不是访问地址；先保留默认值，用防火墙限制访问网段。
+`主机局域网IP` 要换成实际地址，不是浏览器所在电脑的 localhost。默认 `MEDIA_LOCAL_MCP_BIND=0.0.0.0` 表示监听，不是访问地址；先保留默认值，用防火墙限制访问网段。
 
 ### 3. 配置 Jackett
 

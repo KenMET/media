@@ -14,6 +14,12 @@ dependencies = [
 ]
 
 [project.scripts]
+media-local-control = "media_mcp.platform.api:main"
+media-local-worker = "media_mcp.runtime.supervisor:main"
+media-local-mcp = "media_mcp.server:local_main"
+media-cloud-web = "media_mcp.platform.gateway:main"
+media-cloud-mcp = "media_mcp.server:cloud_main"
+# Legacy aliases remain available to existing scripts.
 media-mcp = "media_mcp.server:main"
 media-worker = "media_mcp.runtime.supervisor:main"
 media-web = "media_mcp.platform.api:main"

@@ -6,7 +6,7 @@
 
 ## 配置与目录
 
-本地 Compose 将 `.env` 中 `MEDIA_DATA_DIR` 的**宿主机目录**挂载到容器 `/data`。例如 `MEDIA_DATA_DIR=./data` 实际使用项目下的 `data/`，不会使用宿主机 `/data`。如果真实媒体位于宿主机 `/data`，应使用 `MEDIA_DATA_DIR=/data`，并通过项目唯一 Docker 入口 `sh setup.sh local` 应用部署配置。
+本地 Compose 将 `.env` 中 `MEDIA_LOCAL_DATA_DIR` 的**宿主机目录**挂载到容器 `/data`。例如 `MEDIA_LOCAL_DATA_DIR=./data` 实际使用项目下的 `data/`，不会使用宿主机 `/data`。如果真实媒体位于宿主机 `/data`，应使用 `MEDIA_LOCAL_DATA_DIR=/data`，并通过项目唯一 Docker 入口 `sh setup.sh local` 应用部署配置。
 
 扫描发生在本地控制端，使用容器中可见的路径：
 
@@ -42,7 +42,7 @@ MEDIA_LIBRARY_ROOT=/data/media_hub
 
 ## 确认与失败恢复
 
-空扫描会明确显示 0 项和宿主机媒体目录，并隐藏确认导入按钮；后端也拒绝空导入，不会将原有索引替换为空结果。`MEDIA_DATA_DIR=./data` 与 `MEDIA_DATA_DIR=/data` 是不同的宿主机目录，不能只根据容器内路径判断挂载是否正确。
+空扫描会明确显示 0 项和宿主机媒体目录，并隐藏确认导入按钮；后端也拒绝空导入，不会将原有索引替换为空结果。`MEDIA_LOCAL_DATA_DIR=./data` 与 `MEDIA_LOCAL_DATA_DIR=/data` 是不同的宿主机目录，不能只根据容器内路径判断挂载是否正确。
 
 非空导入返回实际写入的索引数量和新建映射数量，并将回执保存在扫描记录中；资源列表显示数据库中的实际总数及入库时间。只有独立文件、尚无确认映射时，管理员主媒体库也展示已保存的磁盘资源。
 

@@ -56,10 +56,20 @@ class ProxyDeploymentTests(unittest.TestCase):
             ({'MEDIA_WEB_BIND_HOST':'127.0.0.1'},'0.0.0.0'),
             ({'MEDIA_WEB_BIND_HOST':'127.0.0.1','MEDIA_GATEWAY_BIND':'0.0.0.0'},'0.0.0.0'),
             ({'MEDIA_GATEWAY_BIND':'127.0.0.1'},'127.0.0.1'),
+            ({'MEDIA_CLOUD_WEB_BIND':'127.0.0.2','MEDIA_GATEWAY_BIND':'127.0.0.1'},'127.0.0.2'),
         ):
             with self.subTest(configuration=configuration),patch.dict(os.environ,configuration,clear=True),patch('media_mcp.platform.gateway.create_gateway',return_value=Mock()),patch('uvicorn.run') as run:
                 main()
                 self.assertEqual(run.call_args.kwargs['host'],expected)
+
+    def test_cloud_web_port_names_keep_legacy_fallbacks(self):
+        from media_mcp.platform.gateway import main
+        for configuration,expected in (({},18214),({'MEDIA_WEB_PORT':'19514'},19514),
+                ({'MEDIA_WEB_PORT':'19514','MEDIA_GATEWAY_PORT':'19515'},19515),
+                ({'MEDIA_CLOUD_WEB_PORT':'19516','MEDIA_GATEWAY_PORT':'19515'},19516)):
+            with self.subTest(configuration=configuration),patch.dict(os.environ,configuration,clear=True),patch('media_mcp.platform.gateway.create_gateway',return_value=Mock()),patch('uvicorn.run') as run:
+                main()
+                self.assertEqual(run.call_args.kwargs['port'],expected)
 
     def test_cloud_mcp_proxy_keeps_user_token_auth_without_domain_configuration(self):
         from media_mcp.server import main

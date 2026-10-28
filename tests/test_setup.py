@@ -18,7 +18,7 @@ class SetupScriptTests(unittest.TestCase):
                 docker=binary/'docker'
                 docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALL_LOG"\ncase "$*" in\n'
                     '*"--entrypoint python3"*) printf "%s\\n" "synthetic-control-token-12345678901234567890";;\n'
-                    '*"exec -T worker python3 -m media_mcp.monitor.health"*)\n'
+                    '*"exec -T local-worker python3 -m media_mcp.monitor.health"*)\n'
                     ' count=0; if [ -f "$COUNT_FILE" ]; then count=$(cat "$COUNT_FILE"); fi\n'
                     ' count=$((count+1)); printf "%s" "$count" > "$COUNT_FILE"\n'
                     ' if [ "$READY_AFTER" -gt 0 ] && [ "$count" -ge "$READY_AFTER" ]; then exit 0; fi; exit 1;;\n'
@@ -47,8 +47,8 @@ class SetupScriptTests(unittest.TestCase):
             docker=binary/'docker'
             docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALL_LOG"\ncase "$*" in\n'
                 '*"--entrypoint python3"*) printf "%s\\n" "synthetic-control-token-12345678901234567890";;\n'
-                '*"exec -T web"*) exit 1;;\n'
-                '*"ps --all --quiet web"*) printf "%s\\n" "fixture-container";;\n'
+                '*"exec -T local-control"*) exit 1;;\n'
+                '*"ps --all --quiet local-control"*) printf "%s\\n" "fixture-container";;\n'
                 '*"inspect --format"*) printf "%s\\n" "restarting:3";;\nesac\nexit 0\n')
             docker.chmod(0o755)
             (binary/'sleep').write_text('#!/bin/sh\nprintf "sleep %s\\n" "$*" >> "$CALL_LOG"\nexit 0\n')
@@ -61,7 +61,7 @@ class SetupScriptTests(unittest.TestCase):
             self.assertIn('restarting:3',result.stderr)
             self.assertIn('19613',result.stderr)
             self.assertIn('sh setup.sh local logs',result.stderr)
-            self.assertEqual((root/'calls').read_text().count('exec -T web'),60)
+            self.assertEqual((root/'calls').read_text().count('exec -T local-control'),60)
             self.assertIn('sleep 5',(root/'calls').read_text())
             self.assertNotIn('synthetic-control-token',result.stdout+result.stderr)
 
@@ -124,12 +124,12 @@ class SetupScriptTests(unittest.TestCase):
                                             env=env, capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
                 recorded = calls.read_text()
-                self.assertIn('up -d mcp worker', recorded)
+                self.assertIn('up -d local-mcp local-worker', recorded)
                 for dependency in ('qbittorrent', 'jackett'):
                     if dependency in managed:
                         self.assertIn('run --rm --no-deps init-'+dependency, recorded)
                         self.assertIn('up -d '+dependency, recorded)
-                        self.assertTrue(any('stop worker mcp' in line and dependency in line
+                        self.assertTrue(any('stop local-worker local-mcp' in line and dependency in line
                                             for line in recorded.splitlines()))
                     else:
                         self.assertNotIn(dependency, recorded)
@@ -148,11 +148,11 @@ class SetupScriptTests(unittest.TestCase):
             with self.subTest(healthy=healthy),tempfile.TemporaryDirectory() as directory:
                 root=Path(directory)
                 for name in ('setup.sh','.env.example'):shutil.copyfile(source/name,root/name)
-                (root/'.env').write_text((root/'.env.example').read_text()+'\nCODEX_TOKEN_FILE=./state/codex-token\n# preserved private configuration\n')
+                (root/'.env').write_text((root/'.env.example').read_text()+'\nMEDIA_LOCAL_DATA_DIR=./data\nCODEX_TOKEN_FILE=./state/codex-token\n# preserved private configuration\n')
                 (root/'.env').chmod(0o644)
                 binary=root/'bin';binary.mkdir()
                 docker=binary/'docker'
-                docker.write_text('#!/bin/sh\ncase "$*" in\n*"--entrypoint python3"*) printf "%s\\n" "test-generated-control-token-32-characters"; exit 0;;\n*"compose version"*) exit 0;;\n*"exec -T mcp"*) exit '+('0' if healthy else '1')+';;\n*"exec -T worker"*) exit 0;;\n*) exit 0;;\nesac\n')
+                docker.write_text('#!/bin/sh\ncase "$*" in\n*"--entrypoint python3"*) printf "%s\\n" "test-generated-control-token-32-characters"; exit 0;;\n*"compose version"*) exit 0;;\n*"exec -T local-mcp"*) exit '+('0' if healthy else '1')+';;\n*"exec -T local-worker"*) exit 0;;\n*) exit 0;;\nesac\n')
                 docker.chmod(0o755)
                 (binary/'sleep').write_text('#!/bin/sh\nexit 0\n');(binary/'sleep').chmod(0o755)
                 env={**os.environ,'PATH':str(binary)+':'+os.environ['PATH']}
@@ -186,11 +186,11 @@ class SetupScriptTests(unittest.TestCase):
             result = subprocess.run(['sh',str(root/'setup.sh'),'local'],cwd=root,env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             local = calls.read_text()
-            self.assertIn('up -d worker web',local)
+            self.assertIn('up -d local-worker local-control',local)
             self.assertIn('compose.local.yml',local)
             self.assertIn('19613/healthz',local)
             self.assertIn('192.168.8.1:19613/healthz',local)
-            self.assertNotIn('up -d mcp',local)
+            self.assertNotIn('up -d local-mcp',local)
             self.assertNotIn('init-jackett',local)
             calls.unlink()
             result = subprocess.run(['sh',str(root/'setup.sh'),'cloud'],cwd=root,env=env,capture_output=True,text=True)
@@ -198,7 +198,7 @@ class SetupScriptTests(unittest.TestCase):
             cloud = calls.read_text()
             self.assertIn('compose.cloud.yml',cloud)
             self.assertIn('19614/healthz',cloud)
-            self.assertIn('up -d mcp web',cloud)
+            self.assertIn('up -d cloud-mcp cloud-web',cloud)
             self.assertIn('init-jackett',cloud)
             self.assertNotIn('worker',cloud)
             self.assertNotIn('qbittorrent',cloud)

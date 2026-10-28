@@ -29,7 +29,7 @@ services:
       - /root/container_cache/jackett/config:/config
       - /root/container_cache/jackett/downloads:/downloads
     logging: *logging
-  mcp:
+  cloud-mcp:
     build:
       context: .
       dockerfile: Dockerfile.cloud
@@ -40,14 +40,20 @@ services:
     network_mode: host
     env_file: .env
     environment: &cloud-env
-      MEDIA_CONTROL_URL: ${MEDIA_CONTROL_URL:-http://127.0.0.1:18213}
-      MEDIA_CONTROL_PORT: ${MEDIA_CONTROL_PORT:-}
+      MEDIA_CLOUD_MCP_BIND: ${MEDIA_CLOUD_MCP_BIND:-${MEDIA_BIND_HOST:-0.0.0.0}}
+      MEDIA_CLOUD_MCP_PORT: ${MEDIA_CLOUD_MCP_PORT:-${MEDIA_MCP_PORT:-18210}}
+      MEDIA_CLOUD_CONTROL_URL: ${MEDIA_CLOUD_CONTROL_URL:-${MEDIA_CONTROL_URL:-http://127.0.0.1:18213}}
+      MEDIA_CONTROL_URL: ${MEDIA_CLOUD_CONTROL_URL:-${MEDIA_CONTROL_URL:-http://127.0.0.1:18213}}
+      MEDIA_CLOUD_CONTROL_PORT: ${MEDIA_CLOUD_CONTROL_PORT:-${MEDIA_CONTROL_PORT:-}}
+      MEDIA_CONTROL_PORT: ${MEDIA_CLOUD_CONTROL_PORT:-${MEDIA_CONTROL_PORT:-}}
       MEDIA_CONTROL_TOKEN_FILE: /run/secrets/media-control-token
-      MEDIA_BIND_HOST: ${MEDIA_BIND_HOST:-0.0.0.0}
-      MEDIA_MCP_PORT: ${MEDIA_MCP_PORT:-18210}
-      MEDIA_GATEWAY_BIND: ${MEDIA_GATEWAY_BIND:-0.0.0.0}
-      MEDIA_WEB_BIND_HOST: ${MEDIA_GATEWAY_BIND:-0.0.0.0}
-      MEDIA_WEB_PORT: ${MEDIA_GATEWAY_PORT:-${MEDIA_WEB_PORT:-18214}}
+      MEDIA_BIND_HOST: ${MEDIA_CLOUD_MCP_BIND:-${MEDIA_BIND_HOST:-0.0.0.0}}
+      MEDIA_MCP_PORT: ${MEDIA_CLOUD_MCP_PORT:-${MEDIA_MCP_PORT:-18210}}
+      MEDIA_CLOUD_WEB_BIND: ${MEDIA_CLOUD_WEB_BIND:-${MEDIA_GATEWAY_BIND:-0.0.0.0}}
+      MEDIA_GATEWAY_BIND: ${MEDIA_CLOUD_WEB_BIND:-${MEDIA_GATEWAY_BIND:-0.0.0.0}}
+      MEDIA_WEB_BIND_HOST: ${MEDIA_CLOUD_WEB_BIND:-${MEDIA_GATEWAY_BIND:-0.0.0.0}}
+      MEDIA_CLOUD_WEB_PORT: ${MEDIA_CLOUD_WEB_PORT:-${MEDIA_GATEWAY_PORT:-${MEDIA_WEB_PORT:-18214}}}
+      MEDIA_WEB_PORT: ${MEDIA_CLOUD_WEB_PORT:-${MEDIA_GATEWAY_PORT:-${MEDIA_WEB_PORT:-18214}}}
       MEDIA_WEB_MODE: ${MEDIA_WEB_MODE:-lan}
       MEDIA_WEB_PUBLIC: ${MEDIA_WEB_PUBLIC:-false}
       MEDIA_MCP_PUBLIC: ${MEDIA_WEB_PUBLIC:-false}
@@ -70,15 +76,16 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+    command: ["media-cloud-mcp"]
     logging: *logging
-  web:
+  cloud-web:
     image: ${MEDIA_CLOUD_IMAGE:-media-mcp-cloud:local}
     restart: unless-stopped
     network_mode: host
     env_file: .env
     environment: *cloud-env
     volumes: *cloud-volumes
-    command: ["media-gateway"]
+    command: ["media-cloud-web"]
     healthcheck:
       test: ["CMD", "python3", "-c", "import os,urllib.request;h=os.environ.get('MEDIA_GATEWAY_BIND') or '0.0.0.0';h='127.0.0.1' if h in ('0.0.0.0','::') else h;h='['+h+']' if ':' in h else h;urllib.request.urlopen('http://'+h+':'+os.environ.get('MEDIA_WEB_PORT','18213')+'/healthz',timeout=3)"]
       interval: 15s

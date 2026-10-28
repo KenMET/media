@@ -2,7 +2,7 @@
 
 快速首次使用按 [README](../README.md) 顺序执行。本页所有命令默认在服务器的 `media/` 目录执行，不在 Windows 客户端执行 Linux 部署命令。
 
-已有反向代理和私有 FRP 时，优先使用 [两端精简部署](split-deployment.md) 与统一 `.env.example` 中的 cloud / local 分组；cloud 网站默认监听 `0.0.0.0`，支持容器反代访问并保留账号认证，不需要重复域名配置；两端内部凭据自动配对。两端连接只填 `MEDIA_CONTROL_PORT`，NAS 不配置云端地址；搜索和种子获取全部在 cloud。本页下方依赖组合与显式 `MEDIA_WEB_PUBLIC=true` 的域名/TLS 校验是保留的传统单机/高级模式，并非新模板必填项。
+已有反向代理和私有 FRP 时，优先使用 [两端精简部署](split-deployment.md) 与统一 `.env.example` 中的 cloud / local 分组；cloud 网站默认监听 `0.0.0.0`，支持容器反代访问并保留账号认证，不需要重复域名配置；两端内部凭据自动配对。两端连接只填 `MEDIA_CLOUD_CONTROL_PORT`，NAS 不配置云端地址；搜索和种子获取全部在 cloud。本页下方依赖组合与显式 `MEDIA_WEB_PUBLIC=true` 的域名/TLS 校验是保留的传统单机/高级模式，并非新模板必填项。
 
 ## 配置表
 
@@ -24,7 +24,7 @@ MEDIA_JACKETT_CONFIG_DIR=/服务器上的已有Jackett配置根目录
 
 复用已有 Jackett 时，当前站点列表来自配置文件，配置根目录必须包含 `Jackett/ServerConfig.json` 和 `Jackett/Indexers/`。该目录只读挂载；缺失时搜索会报告未配置或没有站点。只有远程 URL/API key 还不够。本段描述传统单机模式；local/cloud 分组部署见 [同机测试说明](platform-testing.md)。
 
-`MEDIA_DATA_DIR` 是宿主机挂载到容器 `/data` 的目录。下载器返回的文件路径必须在 worker 中原样可用；默认 `/data/downloads`，可通过 `MEDIA_DOWNLOAD_ROOT` 指定 `/data` 下其他路径。当前没有路径翻译功能。下载根与库根（默认 `/data/media_hub`，可设 `MEDIA_LIBRARY_ROOT`）必须支持同一文件系统硬链接。容器使用 host 网络，URL 中 localhost 指部署服务器本身，其他容器应使用宿主机发布端口或实际可达地址。
+`MEDIA_LOCAL_DATA_DIR` 是宿主机挂载到容器 `/data` 的目录。下载器返回的文件路径必须在 worker 中原样可用；默认 `/data/downloads`，可通过 `MEDIA_DOWNLOAD_ROOT` 指定 `/data` 下其他路径。当前没有路径翻译功能。下载根与库根（默认 `/data/media_hub`，可设 `MEDIA_LIBRARY_ROOT`）必须支持同一文件系统硬链接。容器使用 host 网络，URL 中 localhost 指部署服务器本身，其他容器应使用宿主机发布端口或实际可达地址。
 
 `.env.example` 只列日常必需配置和外部服务接入项。下面的高级配置仍可自行加入 `.env`，省略时使用原有默认值；精简模板不会覆盖或清理已有 `.env`。
 
@@ -40,15 +40,15 @@ MEDIA_JACKETT_CONFIG_DIR=/服务器上的已有Jackett配置根目录
 | `TMDB_API_KEY` | 必填；作品/年份/季集元数据查询 |
 | `CODEX_APP_SERVER_URL` | `ws://127.0.0.1:8108`；既有适配模型服务，不由本项目安装 |
 | `CODEX_TOKEN_FILE` | `./state/codex-token`；宿主机 token 文件，必须与模型端点匹配，不能为空 |
-| `MEDIA_STATE_PATH` | `./state`；本机 SQLite、WAL、SHM、锁及日志目录 |
-| `MEDIA_DATA_DIR` | `./data`；完整下载/库根目录，容器内统一为 `/data` |
+| `MEDIA_LOCAL_STATE_PATH` | `./state`；本机 SQLite、WAL、SHM、锁及日志目录 |
+| `MEDIA_LOCAL_DATA_DIR` | `./data`；完整下载/库根目录，容器内统一为 `/data` |
 | `MEDIA_SERVICES_DIR` | `./services`；内置依赖的持久配置目录 |
-| `MEDIA_LAN_BIND` | `0.0.0.0`；个人 LAN MCP 监听地址；调整时保留本机健康探针可达 |
+| `MEDIA_LOCAL_MCP_BIND` | `0.0.0.0`；个人 LAN MCP 监听地址；调整时保留本机健康探针可达 |
 | `MEDIA_ADMIN_BIND` | `127.0.0.1`；内置下载器/Jackett 管理端口独立绑定。公网模式启动器仅允许本机绑定 |
 | `MEDIA_LAN_IP` | 可选；只改变启动打印的访问地址，不改变监听或防火墙 |
 | `MEDIA_LAN_CIDRS` | 可选，逗号分隔 MCP 实际客户端来源网段；默认私网/本机。收窄时保留 `127.0.0.0/8,::1/128` 给健康检查 |
 | `MEDIA_ALLOWED_HOSTS` | 可选，逗号分隔准确 DNS 主机名，例如 `media.home`；不含协议、端口、路径，不支持通配符。LAN IP 和 localhost 无需填写 |
-| `MEDIA_MCP_PORT` | `18210`；HTTP MCP，路径 `/mcp` |
+| `MEDIA_LOCAL_MCP_PORT` | `18210`；HTTP MCP，路径 `/mcp` |
 | `MEDIA_QBITTORRENT_PORT` | `18211`；下载器管理/API 端口 |
 | `MEDIA_JACKETT_PORT` | `18212`；Jackett 管理/API 端口 |
 | `MEDIA_TORRENT_PORT` | `48181` TCP/UDP；仅内置下载器的 BT 数据端口 |
@@ -63,7 +63,7 @@ MEDIA_JACKETT_CONFIG_DIR=/服务器上的已有Jackett配置根目录
 
 可选认证：bearer 模式还需服务端 `MEDIA_MCP_TOKEN`（至少 32 字符）；OAuth 需 `MEDIA_PUBLIC_URL` 和 `MEDIA_OWNER_PASSWORD`（至少 24 字符）。这些是另一个显式部署选择，不是快速开始的必填项；选择认证也不会自动提供 TLS、隧道或公网网络通路。不要在聊天中传入密钥。
 
-目录设置在首次下载前确定。更改 `MEDIA_DATA_DIR`、容器内路径、PUID/GID 或数据库位置，不等于已经迁移已有任务路径和文件权限。本启动器不初始化已有下载器或 Jackett；调整权限前需检查已有文件归属。
+目录设置在首次下载前确定。更改 `MEDIA_LOCAL_DATA_DIR`、容器内路径、PUID/GID 或数据库位置，不等于已经迁移已有任务路径和文件权限。本启动器不初始化已有下载器或 Jackett；调整权限前需检查已有文件归属。
 
 ## 模型连接检查
 
@@ -140,7 +140,7 @@ tar -cpf /你的私有备份目录/media-state.tar .env state services
 
 内置下载器、Jackett 管理页默认只绑定回环地址，需要管理时可通过已认证的 SSH 隧道或受保护管理入口访问。`MEDIA_ADMIN_BIND` 与 MCP 监听分开；不要为图方便直接将管理页发布到公网。外部已有服务的地址/认证不由本项目自动修改。
 
-正式公网网页请配置 `MEDIA_WEB_PUBLIC=true`、`MEDIA_WEB_PUBLIC_URL=https://media.example.com`、`MEDIA_ALLOWED_HOSTS=media.example.com`。公网模式验证 HTTPS 源与允许域名，并设置 Secure cookie；TLS 证书、域名和反向代理需实际配置，不由该变量自动创建。将网页后端绑定回环地址（`MEDIA_WEB_BIND_HOST=127.0.0.1`），不要公网发布裸 HTTP 后端。cloud MCP 同样应通过 HTTPS 反代访问，将 `MEDIA_BIND_HOST` 绑定到反代可达的受限地址。当前 LAN 测试可保持 HTTP，不在未启用 TLS 时单独开启 Secure cookie。
+正式公网网页请配置 `MEDIA_WEB_PUBLIC=true`、`MEDIA_WEB_PUBLIC_URL=https://media.example.com`、`MEDIA_ALLOWED_HOSTS=media.example.com`。公网模式验证 HTTPS 源与允许域名，并设置 Secure cookie；TLS 证书、域名和反向代理需实际配置，不由该变量自动创建。使用 `MEDIA_CLOUD_WEB_BIND=127.0.0.1` 将 cloud 网站绑定回环地址，不要公网发布裸 HTTP 后端。cloud MCP 同样应通过 HTTPS 反代访问，将 `MEDIA_CLOUD_MCP_BIND` 绑定到反代可达的受限地址。当前 LAN 测试可保持 HTTP，不在未启用 TLS 时单独开启 Secure cookie。
 
 网关只认可其 socket 来源。若 HTTPS 反代与网关分开，可显式填写准确的 `MEDIA_WEB_TRUSTED_PROXIES` IP/CIDR，例如同机反代 `127.0.0.1/32`。反代必须**覆盖** `X-Real-IP` 为实际来源，并保留入口 Host；不要追加客户端提供的值，不要信任整个互联网网段。以 Nginx 为例，反代需设置 `proxy_set_header Host $http_host;` 和 `proxy_set_header X-Real-IP $remote_addr;`。该设置不启用 Uvicorn 对任意转发头的全局信任，也不更改 LAN socket 检查。控制端的专用 `x-media-client-ip` 仅接受服务凭据认证的网关，外部传入同名头会被覆盖或拒绝。
 

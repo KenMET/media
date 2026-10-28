@@ -22,6 +22,7 @@ from media_mcp.platform.transport import require_service, client_address
 from media_mcp.platform.limits import Budget
 from media_mcp.platform.network import browser_peer, validate_public_origin
 from media_mcp.storage.records import Records
+from media_mcp.config import env_value
 
 
 class Input(BaseModel):
@@ -329,7 +330,7 @@ def create_app(accounts=None, records=None, service_factory=None):
         require_service(request)
         await run_in_threadpool(accounts.verify_api_token, request.headers.get('x-media-user-token', ''))
         from media_mcp.monitor.health import healthy
-        return {'service':'media-control', 'worker_ready':await run_in_threadpool(healthy),
+        return {'service':'media-local-control', 'worker_ready':await run_in_threadpool(healthy),
                 'auth_mode':'platform', 'indexer_configured':bool(os.environ.get('JACKETT_URL') or
                     os.environ.get('MEDIA_CATALOG_URL')),
                 'tmdb_configured':bool(os.environ.get('TMDB_API_KEY') or os.environ.get('MEDIA_CATALOG_URL'))}
@@ -360,11 +361,11 @@ def create_app(accounts=None, records=None, service_factory=None):
     async def status(request):
         await run_in_threadpool(actor, request)
         from media_mcp.monitor.health import healthy
-        return {'service':'media-web', 'worker_ready':await run_in_threadpool(healthy),
+        return {'service':'media-local-control', 'worker_ready':await run_in_threadpool(healthy),
                 'tmdb_configured':bool(os.environ.get('TMDB_API_KEY') or os.environ.get('MEDIA_CATALOG_URL')), 'public':public}
 
     async def health(request):
-        return {'service':'media-web', 'status':'ok'}
+        return {'service':'media-local-control', 'status':'ok'}
 
     async def discover(request):
         user = await run_in_threadpool(actor, request)
@@ -430,8 +431,8 @@ def main():
             with os.fdopen(descriptor, 'w') as handle:
                 handle.write(secrets.token_urlsafe(40))
     app = create_app()
-    uvicorn.run(app, host=os.environ.get('MEDIA_WEB_BIND_HOST', '127.0.0.1'),
-                port=int(os.environ.get('MEDIA_WEB_PORT', '18213')), proxy_headers=False)
+    uvicorn.run(app, host=env_value('MEDIA_LOCAL_CONTROL_BIND', 'MEDIA_WEB_BIND_HOST', default='127.0.0.1'),
+                port=int(env_value('MEDIA_LOCAL_CONTROL_PORT', 'MEDIA_WEB_PORT', default='18213')), proxy_headers=False)
 
 
 if __name__ == '__main__':

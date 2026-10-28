@@ -27,12 +27,14 @@
 
 ## 数据与安全
 
-- `MEDIA_DATA_DIR` 下的 `downloads`、`media_hub` 分别保存源文件和媒体硬链接；硬链接目录须与下载目录位于同一文件系统，且下载器与 worker 的容器内路径一致。
+- `MEDIA_LOCAL_DATA_DIR` 下的 `downloads`、`media_hub` 分别保存源文件和媒体硬链接；硬链接目录须与下载目录位于同一文件系统，且下载器与 worker 的容器内路径一致。
 - NAS 的用户、任务和恢复记录默认在 `./state`，云端缓存与搜索快照默认在 `./state-cloud`。容器重建保留绑定目录；换部署目录时不要丢弃原状态。
 - 不自动接管下载器的其他任务。`submission_unknown` 必须按原任务核对，不换 key 重复下单；重试不提供删除能力。
 - 已有视频、硬链接与外挂字幕可在管理员网页通过“媒体库 → 扫描与导入”预览并保存索引，见[已有媒体接管](docs/existing-media.md)。未整理资源和缺失状态也可保存；不会自动修改原文件。
 - 旧 MySQL 历史数据迁移及新旧服务切换须按[正式接管方案](docs/production-cutover-plan.md)迁移，启动命令不会自动导入。不要将隔离测试状态当作生产数据库。
 - 私有 `.env`、凭据和运行目录不提交 Git。个人 LAN 免认证的[传统单机模式](docs/standalone.md)仍支持，不应转发到公网。
+
+服务与配置命名见[两端服务命名](docs/service-names.md)：NAS 使用 `local-control` / `local-worker`，网站使用 `cloud-web`。
 
 ## 日常命令
 

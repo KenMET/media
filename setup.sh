@@ -26,13 +26,28 @@ if [ ! -f .env ]; then
 fi
 chmod 600 .env
 setting() { sed -n "s/^$1=//p" .env | tail -n 1 | tr -d '\r'; }
-state_path="$(setting MEDIA_STATE_PATH)"; state_path="${state_path:-./state}"
-data_path="$(setting MEDIA_DATA_DIR)"; data_path="${data_path:-./data}"
+# New role-specific names win over legacy aliases, without rewriting private .env.
+selected() {
+    for setting_name in "$@"; do
+        setting_value="$(printenv "$setting_name" 2>/dev/null || true)"
+        if [ -z "$setting_value" ]; then setting_value="$(setting "$setting_name")"; fi
+        if [ -n "$setting_value" ]; then printf '%s' "$setting_value"; return 0; fi
+    done
+}
+MEDIA_LOCAL_STATE_PATH="$(selected MEDIA_LOCAL_STATE_PATH MEDIA_STATE_PATH)"
+MEDIA_LOCAL_STATE_PATH="${MEDIA_LOCAL_STATE_PATH:-./state}"
+MEDIA_LOCAL_DATA_DIR="$(selected MEDIA_LOCAL_DATA_DIR MEDIA_DATA_DIR)"
+MEDIA_LOCAL_DATA_DIR="${MEDIA_LOCAL_DATA_DIR:-./data}"
+MEDIA_LOCAL_IMAGE="$(selected MEDIA_LOCAL_IMAGE MEDIA_IMAGE)"
+MEDIA_LOCAL_IMAGE="${MEDIA_LOCAL_IMAGE:-media-mcp:local}"
+export MEDIA_LOCAL_STATE_PATH MEDIA_LOCAL_DATA_DIR MEDIA_LOCAL_IMAGE
+state_path="$MEDIA_LOCAL_STATE_PATH"
+data_path="$MEDIA_LOCAL_DATA_DIR"
 QBITTORRENT_URL="${QBITTORRENT_URL-$(setting QBITTORRENT_URL)}"
 JACKETT_URL="${JACKETT_URL-$(setting JACKETT_URL)}"
 MEDIA_CATALOG_URL="${MEDIA_CATALOG_URL-$(setting MEDIA_CATALOG_URL)}"
-MEDIA_CONTROL_URL="${MEDIA_CONTROL_URL-$(setting MEDIA_CONTROL_URL)}"
-MEDIA_CONTROL_PORT="${MEDIA_CONTROL_PORT-$(setting MEDIA_CONTROL_PORT)}"
+MEDIA_CONTROL_URL="$(selected MEDIA_CLOUD_CONTROL_URL MEDIA_CONTROL_URL)"
+MEDIA_CONTROL_PORT="$(selected MEDIA_CLOUD_CONTROL_PORT MEDIA_CONTROL_PORT)"
 MEDIA_EXECUTION_ONLY="${MEDIA_EXECUTION_ONLY-$(setting MEDIA_EXECUTION_ONLY)}"
 if [ "$topology" = local ] && [ -z "$MEDIA_CATALOG_URL" ]; then
     MEDIA_EXECUTION_ONLY="${MEDIA_EXECUTION_ONLY:-true}"
@@ -47,7 +62,9 @@ if [ -n "$MEDIA_CONTROL_PORT" ]; then
         echo '控制映射端口必须是 1–65535 的数字。' >&2; exit 1
     fi
 fi
-export MEDIA_CONTROL_PORT MEDIA_EXECUTION_ONLY
+MEDIA_CLOUD_CONTROL_PORT="$MEDIA_CONTROL_PORT"
+MEDIA_CLOUD_CONTROL_URL="$MEDIA_CONTROL_URL"
+export MEDIA_CLOUD_CONTROL_PORT MEDIA_CLOUD_CONTROL_URL MEDIA_CONTROL_PORT MEDIA_EXECUTION_ONLY
 MEDIA_WEB_PUBLIC="${MEDIA_WEB_PUBLIC-$(setting MEDIA_WEB_PUBLIC)}"
 legacy_public="$MEDIA_WEB_PUBLIC"
 MEDIA_WEB_PUBLIC="${MEDIA_WEB_PUBLIC:-false}"
@@ -71,29 +88,41 @@ elif [ "$topology" = cloud ]; then
     proxy_bind=0.0.0.0
     if [ "$MEDIA_WEB_MODE" = proxy ]; then proxy_bind=127.0.0.1; fi
     if [ -n "$proxy_ips" ]; then proxy_bind=0.0.0.0; fi
-    MEDIA_GATEWAY_BIND="${MEDIA_GATEWAY_BIND-$(setting MEDIA_GATEWAY_BIND)}"
+    MEDIA_GATEWAY_BIND="$(selected MEDIA_CLOUD_WEB_BIND MEDIA_GATEWAY_BIND)"
     MEDIA_GATEWAY_BIND="${MEDIA_GATEWAY_BIND:-0.0.0.0}"
     MEDIA_WEB_BIND_HOST="$MEDIA_GATEWAY_BIND"
-    export MEDIA_GATEWAY_BIND
-    MEDIA_BIND_HOST="${MEDIA_BIND_HOST-$(setting MEDIA_BIND_HOST)}"; MEDIA_BIND_HOST="${MEDIA_BIND_HOST:-$proxy_bind}"
+    MEDIA_CLOUD_WEB_BIND="$MEDIA_GATEWAY_BIND"
+    export MEDIA_GATEWAY_BIND MEDIA_CLOUD_WEB_BIND
+    MEDIA_BIND_HOST="$(selected MEDIA_CLOUD_MCP_BIND MEDIA_BIND_HOST)"; MEDIA_BIND_HOST="${MEDIA_BIND_HOST:-$proxy_bind}"
     export MEDIA_BIND_HOST
 fi
 MEDIA_WEB_BIND_HOST="${MEDIA_WEB_BIND_HOST:-0.0.0.0}"
 MEDIA_SERVICE_PAIRING="${MEDIA_SERVICE_PAIRING:-false}"
 export QBITTORRENT_URL JACKETT_URL MEDIA_CATALOG_URL MEDIA_CONTROL_URL MEDIA_WEB_PUBLIC MEDIA_WEB_MODE MEDIA_WEB_BIND_HOST MEDIA_SERVICE_PAIRING
-managed_services=''
-app_services='mcp worker web'
-stop_services='worker mcp web'
-health_service=mcp
-health_port="$(setting MEDIA_MCP_PORT)"; health_port="${health_port:-18210}"
 if [ "$topology" = cloud ]; then
-    app_services='mcp web'; stop_services='mcp web'
+    MEDIA_CLOUD_WEB_PORT="$(selected MEDIA_CLOUD_WEB_PORT MEDIA_GATEWAY_PORT MEDIA_WEB_PORT)"
+    MEDIA_CLOUD_WEB_PORT="${MEDIA_CLOUD_WEB_PORT:-18214}"
+    export MEDIA_CLOUD_WEB_PORT
+fi
+managed_services=''
+app_services='local-mcp local-worker local-control'
+stop_services='local-worker local-mcp local-control'
+build_service=local-mcp
+http_service=local-control
+health_service=local-mcp
+health_port="$(selected MEDIA_LOCAL_MCP_PORT MEDIA_MCP_PORT)"; health_port="${health_port:-18210}"
+legacy_services='worker mcp web'
+legacy_project=media-standalone
+if [ "$topology" = cloud ]; then
+    app_services='cloud-mcp cloud-web'; stop_services='cloud-mcp cloud-web'
+    build_service=cloud-mcp; http_service=cloud-web; health_service=cloud-mcp
+    health_port="$(selected MEDIA_CLOUD_MCP_PORT MEDIA_MCP_PORT)"; health_port="${health_port:-18210}"
+    legacy_services='mcp web'; legacy_project=media-cloud
     if [ -z "$JACKETT_URL" ]; then managed_services='jackett'; fi
 elif [ "$topology" = local ]; then
-    app_services='worker web'; stop_services='worker web'; health_service=web
-    legacy_web_port="$(setting MEDIA_WEB_PORT)"
-    health_port="${MEDIA_LOCAL_CONTROL_PORT-$(setting MEDIA_LOCAL_CONTROL_PORT)}"
-    health_port="${health_port:-${legacy_web_port:-18213}}"
+    app_services='local-worker local-control'; stop_services='local-worker local-control'; health_service=local-control
+    health_port="$(selected MEDIA_LOCAL_CONTROL_PORT MEDIA_WEB_PORT)"
+    health_port="${health_port:-18213}"
     if [ -z "$QBITTORRENT_URL" ]; then managed_services='qbittorrent'; fi
     if [ "$MEDIA_EXECUTION_ONLY" != true ] && [ -z "$JACKETT_URL" ] && [ -z "$MEDIA_CATALOG_URL" ]; then managed_services="$managed_services jackett"; fi
 else
@@ -164,12 +193,12 @@ else
         echo '尚未配置模型凭据：网页/MCP 可以启动，智能处理等待模型连接。'
     fi
 fi
-compose build mcp
+compose build "$build_service"
 if [ "$pair_control" = true ]; then
     pairing_parent="$(CDPATH= cd -- "$(dirname -- "$control_file")" && pwd)"
     pairing_name="$(basename -- "$control_file")"
     pairing_image="${MEDIA_CLOUD_IMAGE-$(setting MEDIA_CLOUD_IMAGE)}"; pairing_image="${pairing_image:-media-mcp-cloud:local}"
-    docker run --rm --network host --entrypoint python3 -e MEDIA_CONTROL_URL -e MEDIA_CONTROL_PORT \
+    docker run --rm --network host --entrypoint python3 -e MEDIA_CLOUD_CONTROL_URL -e MEDIA_CLOUD_CONTROL_PORT -e MEDIA_CONTROL_URL -e MEDIA_CONTROL_PORT \
         -v "$pairing_parent:/pairing" "$pairing_image" \
         -m media_mcp.platform.pairing "/pairing/$pairing_name"
     if [ ! -s "$control_file" ]; then echo '自动连接没有生成内部凭据，停止启动。' >&2; exit 1; fi
@@ -180,7 +209,7 @@ if [ "$create_control" = true ]; then
         token_image="${MEDIA_CLOUD_IMAGE-$(setting MEDIA_CLOUD_IMAGE)}"
         token_image="${token_image:-media-mcp-cloud:local}"
     else
-        token_image="${MEDIA_IMAGE-$(setting MEDIA_IMAGE)}"
+        token_image="$MEDIA_LOCAL_IMAGE"
         token_image="${token_image:-media-mcp:local}"
     fi
     token_temp="$control_file.tmp.$$"
@@ -209,6 +238,20 @@ for service in $managed_services; do
             printf '%s 尚未就绪，请查看相应部署的 setup.sh logs。\n' "$service" >&2; exit 1
         fi
         sleep 5
+    done
+done
+# Keep the Compose project identifier and dependency containers stable. Only the
+# old application service keys are retired; no volume or state directory is removed.
+for legacy_service in $legacy_services; do
+    legacy_ids="$(docker ps --all --filter "label=com.docker.compose.project=$legacy_project" \
+        --filter "label=com.docker.compose.service=$legacy_service" --format '{{.ID}}')"
+    for legacy_id in $legacy_ids; do
+        legacy_dir="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$legacy_id")"
+        legacy_dir="$(CDPATH= cd -- "$legacy_dir" 2>/dev/null && pwd -P || true)"
+        if [ "$legacy_dir" != "$(pwd -P)" ]; then continue; fi
+        printf '迁移旧应用服务 %s；保留状态目录和媒体挂载。\n' "$legacy_service"
+        docker stop "$legacy_id" >/dev/null
+        docker rm "$legacy_id" >/dev/null
     done
 done
 compose up -d $app_services
@@ -245,21 +288,22 @@ wait_for_entry() {
     printf '%s等待超时，请查看相应部署的 setup.sh logs。\n' "$entry_label" >&2
     return 1
 }
-entry_label='MCP'
+entry_label='本地 MCP'
+if [ "$topology" = cloud ]; then entry_label='云端 MCP'; fi
 entry_bind=127.0.0.1
 if [ "$topology" = local ]; then entry_label='本地控制 API'; fi
 if [ "$topology" = local ]; then entry_bind="$MEDIA_WEB_BIND_HOST"; fi
 if ! wait_for_entry "$health_service" "$health_port" "$entry_label" "$entry_bind"; then exit 1; fi
-web_port="$(setting MEDIA_WEB_PORT)"
+web_port="$(selected MEDIA_LOCAL_CONTROL_PORT MEDIA_WEB_PORT)"
 if [ "$topology" = cloud ]; then
-    gateway_port="$(setting MEDIA_GATEWAY_PORT)"; web_port="${gateway_port:-${web_port:-18214}}"
+    web_port="$(selected MEDIA_CLOUD_WEB_PORT MEDIA_GATEWAY_PORT MEDIA_WEB_PORT)"; web_port="${web_port:-18214}"
 else
     local_control_port="${MEDIA_LOCAL_CONTROL_PORT-$(setting MEDIA_LOCAL_CONTROL_PORT)}"
     web_port="${local_control_port:-${web_port:-18213}}"
 fi
 case "$web_port" in ''|*[!0-9]*) echo '网页端口必须是数字。' >&2; exit 1 ;; esac
-if [ "$health_service" != web ]; then
-    if ! wait_for_entry web "$web_port" '网页入口' "$MEDIA_WEB_BIND_HOST"; then exit 1; fi
+if [ "$health_service" != "$http_service" ]; then
+    if ! wait_for_entry "$http_service" "$web_port" '云端网站网关' "$MEDIA_WEB_BIND_HOST"; then exit 1; fi
 fi
 lan_ip="$(setting MEDIA_LAN_IP)"
 if [ -z "$lan_ip" ] && command -v ip >/dev/null 2>&1; then
@@ -279,7 +323,7 @@ else
 fi
 if [ "$topology" = cloud ]; then
     echo '首次创建网站管理员：初始化令牌在 NAS 的 local 状态目录 web-bootstrap-token，不在云端 state-cloud。'
-    echo '请在 NAS 的项目目录执行：docker compose -f compose.local.yml exec -T web cat /state/web-bootstrap-token；只在自己的终端查看，不要分享令牌。'
+    echo '请在 NAS 的项目目录执行：docker compose -f compose.local.yml exec -T local-control cat /state/web-bootstrap-token；只在自己的终端查看，不要分享令牌。'
 else
     printf '首次创建网站管理员：初始化令牌位于本机 %s/web-bootstrap-token；不要分享令牌。\n' "$state_path"
 fi
@@ -289,11 +333,11 @@ if [ "$topology" = standalone ] && [ "$auth_mode" = none ]; then
 fi
 if [ "$topology" != cloud ]; then
     echo '正在检查下载器 API（只读取版本，不提交下载）...'
-    if ! compose exec -T worker python3 -m media_mcp.monitor.dependencies; then exit 1; fi
+    if ! compose exec -T local-worker python3 -m media_mcp.monitor.dependencies; then exit 1; fi
     echo '正在等待后台 worker 初始化（模型连接与目录检查）...'
     worker_ready=false; worker_attempt=0
     while [ "$worker_attempt" -lt 60 ]; do
-        if compose exec -T worker python3 -m media_mcp.monitor.health >/dev/null 2>&1; then
+        if compose exec -T local-worker python3 -m media_mcp.monitor.health >/dev/null 2>&1; then
             worker_ready=true; break
         fi
         worker_attempt=$((worker_attempt+1))

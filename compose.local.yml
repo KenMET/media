@@ -6,7 +6,7 @@ x-media-logging: &media-logging
     max-file: "3"
 services:
   init-qbittorrent:
-    image: ${MEDIA_IMAGE:-media-mcp:local}
+    image: ${MEDIA_LOCAL_IMAGE:-${MEDIA_IMAGE:-media-mcp:local}}
     profiles: [setup]
     env_file: .env
     environment:
@@ -15,10 +15,10 @@ services:
       MEDIA_DATA_ROOT: /data
     command: ["python3", "-m", "media_mcp.bootstrap", "qbittorrent"]
     volumes:
-      - ${MEDIA_DATA_DIR:-./data}:/data
+      - ${MEDIA_LOCAL_DATA_DIR:-${MEDIA_DATA_DIR:-./data}}:/data
       - ${MEDIA_SERVICES_DIR:-./services}/qbittorrent:/services/qbittorrent
   init-jackett:
-    image: ${MEDIA_IMAGE:-media-mcp:local}
+    image: ${MEDIA_LOCAL_IMAGE:-${MEDIA_IMAGE:-media-mcp:local}}
     profiles: [setup]
     env_file: .env
     environment:
@@ -42,7 +42,7 @@ services:
       - "${MEDIA_TORRENT_PORT:-48181}:${MEDIA_TORRENT_PORT:-48181}/udp"
     volumes:
       - ${MEDIA_SERVICES_DIR:-./services}/qbittorrent:/config
-      - ${MEDIA_DATA_DIR:-./data}:/data
+      - ${MEDIA_LOCAL_DATA_DIR:-${MEDIA_DATA_DIR:-./data}}:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/v2/app/version >/dev/null"]
       interval: 10s
@@ -70,21 +70,24 @@ services:
       retries: 12
       start_period: 30s
     logging: *media-logging
-  mcp:
+  local-mcp:
     build:
       context: .
       dockerfile: Dockerfile.local
       args:
         MEDIA_BASE_IMAGE: ${MEDIA_BASE_IMAGE:-python:3.12-slim-bookworm}
         INSTALL_OCR: ${INSTALL_OCR:-true}
-    image: ${MEDIA_IMAGE:-media-mcp:local}
+    image: ${MEDIA_LOCAL_IMAGE:-${MEDIA_IMAGE:-media-mcp:local}}
     restart: unless-stopped
     network_mode: host
     env_file: .env
     environment: &media-environment
+      MEDIA_LOCAL_DATA_DIR: ${MEDIA_LOCAL_DATA_DIR:-${MEDIA_DATA_DIR:-./data}}
+      MEDIA_LOCAL_MCP_BIND: ${MEDIA_LOCAL_MCP_BIND:-${MEDIA_LAN_BIND:-0.0.0.0}}
+      MEDIA_LOCAL_MCP_PORT: ${MEDIA_LOCAL_MCP_PORT:-${MEDIA_MCP_PORT:-18210}}
       MEDIA_AUTH_MODE: ${MEDIA_AUTH_MODE:-none}
-      MEDIA_BIND_HOST: ${MEDIA_LAN_BIND:-0.0.0.0}
-      MEDIA_MCP_PORT: ${MEDIA_MCP_PORT:-18210}
+      MEDIA_BIND_HOST: ${MEDIA_LOCAL_MCP_BIND:-${MEDIA_LAN_BIND:-0.0.0.0}}
+      MEDIA_MCP_PORT: ${MEDIA_LOCAL_MCP_PORT:-${MEDIA_MCP_PORT:-18210}}
       MEDIA_DB_PATH: /state/media.sqlite3
       MEDIA_SERVICE_PAIRING: ${MEDIA_SERVICE_PAIRING:-false}
       QBITTORRENT_URL: ${QBITTORRENT_URL:-http://127.0.0.1:${MEDIA_QBITTORRENT_PORT:-18211}}
@@ -97,11 +100,13 @@ services:
       MEDIA_CONTROL_TOKEN_FILE: /run/secrets/media-control-token
       MEDIA_CATALOG_URL: ${MEDIA_CATALOG_URL:-}
       MEDIA_EXECUTION_ONLY: ${MEDIA_EXECUTION_ONLY:-false}
+      MEDIA_CLOUD_CONTROL_URL: ""
+      MEDIA_CLOUD_CONTROL_PORT: ""
       MEDIA_CONTROL_URL: ""
       MEDIA_CONTROL_PORT: ""
     volumes: &media-volumes
-      - ${MEDIA_DATA_DIR:-./data}:/data
-      - ${MEDIA_STATE_PATH:-./state}:/state
+      - ${MEDIA_LOCAL_DATA_DIR:-${MEDIA_DATA_DIR:-./data}}:/data
+      - ${MEDIA_LOCAL_STATE_PATH:-${MEDIA_STATE_PATH:-./state}}:/state
       - ${MEDIA_JACKETT_CONFIG_DIR:-${MEDIA_SERVICES_DIR:-./services}/jackett}:/services/jackett:ro
       - type: bind
         source: ${CODEX_TOKEN_FILE:-./state/codex-token}
@@ -121,18 +126,21 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    command: ["media-local-mcp"]
     logging: *media-logging
-  web:
-    image: ${MEDIA_IMAGE:-media-mcp:local}
+  local-control:
+    image: ${MEDIA_LOCAL_IMAGE:-${MEDIA_IMAGE:-media-mcp:local}}
     restart: unless-stopped
     network_mode: host
     env_file: .env
     environment:
       <<: *media-environment
+      MEDIA_LOCAL_CONTROL_BIND: ${MEDIA_LOCAL_CONTROL_BIND:-${MEDIA_WEB_BIND_HOST:-0.0.0.0}}
+      MEDIA_LOCAL_CONTROL_PORT: ${MEDIA_LOCAL_CONTROL_PORT:-${MEDIA_WEB_PORT:-18213}}
       MEDIA_WEB_BIND_HOST: ${MEDIA_LOCAL_CONTROL_BIND:-${MEDIA_WEB_BIND_HOST:-0.0.0.0}}
       MEDIA_WEB_PORT: ${MEDIA_LOCAL_CONTROL_PORT:-${MEDIA_WEB_PORT:-18213}}
     volumes: *media-volumes
-    command: ["media-web"]
+    command: ["media-local-control"]
     healthcheck:
       test: ["CMD", "python3", "-c", "import os,urllib.request;h=os.environ.get('MEDIA_WEB_BIND_HOST','127.0.0.1');h='127.0.0.1' if h in ('0.0.0.0','::') else h;h='['+h+']' if ':' in h else h;urllib.request.urlopen('http://'+h+':'+os.environ.get('MEDIA_WEB_PORT','18213')+'/healthz',timeout=3)"]
       interval: 15s
@@ -140,14 +148,14 @@ services:
       retries: 3
       start_period: 30s
     logging: *media-logging
-  worker:
-    image: ${MEDIA_IMAGE:-media-mcp:local}
+  local-worker:
+    image: ${MEDIA_LOCAL_IMAGE:-${MEDIA_IMAGE:-media-mcp:local}}
     restart: unless-stopped
     network_mode: host
     env_file: .env
     environment: *media-environment
     volumes: *media-volumes
-    command: ["media-worker"]
+    command: ["media-local-worker"]
     stop_grace_period: 30s
     cpus: 1
     healthcheck:

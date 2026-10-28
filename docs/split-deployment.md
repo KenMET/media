@@ -10,12 +10,12 @@
 
 | 用途 | 默认行为 | 仅需要修改时填写 |
 | --- | --- | --- |
-| cloud 网站 | 0.0.0.0:18214 | `MEDIA_GATEWAY_BIND`、`MEDIA_GATEWAY_PORT` |
-| cloud MCP | 127.0.0.1:18210 | `MEDIA_MCP_PORT` |
-| cloud 访问 FRP 本机映射 | 127.0.0.1:28213 | `MEDIA_CONTROL_PORT` |
+| cloud 网站 | 0.0.0.0:18214 | `MEDIA_CLOUD_WEB_BIND`、`MEDIA_CLOUD_WEB_PORT` |
+| cloud MCP | 127.0.0.1:18210 | `MEDIA_CLOUD_MCP_PORT` |
+| cloud 访问 FRP 本机映射 | 127.0.0.1:28213 | `MEDIA_CLOUD_CONTROL_PORT` |
 | NAS 控制端 | 模板 192.168.8.1:18213 | `MEDIA_LOCAL_CONTROL_BIND`、`MEDIA_LOCAL_CONTROL_PORT` |
 | NAS 模型服务 | ws://127.0.0.1:8108 | `CODEX_APP_SERVER_URL` |
-| 下载 / 硬链接 | `MEDIA_DATA_DIR` 下的 downloads / media_hub | 通常无需修改容器内部根路径 |
+| 下载 / 硬链接 | `MEDIA_LOCAL_DATA_DIR` 下的 downloads / media_hub | 通常无需修改容器内部根路径 |
 | NAS / cloud 状态 | 部署目录 ./state / ./state-cloud | 仅已有自定义状态目录时保留原设置 |
 
 已有下载器要求登录时，添加真实 `QBITTORRENT_USERNAME` 和 `QBITTORRENT_PASSWORD`；省略表示免认证访问，不表示尝试默认密码。网站默认允许容器反代连接，仍要求用户认证。需要按真实客户端 IP 区分登录限流时，可额外指定反代实际来源 `MEDIA_PROXY_IPS`；未指定时忽略非回环来源提供的客户端 IP 头，使用真实 socket 来源限流，不信任可伪造的头。
@@ -40,7 +40,7 @@ local 按 `MEDIA_LOCAL_CONTROL_BIND` 监听 NAS 的明确地址，模板为 `192
 
 ## 云端
 
-填写 cloud 分组的端口、TMDB key 和已有 Jackett（留空则启动内置）。网站使用 `MEDIA_GATEWAY_PORT`，NAS 控制端使用 `MEDIA_LOCAL_CONTROL_PORT`，避免统一模板的同名参数相互覆盖。本机 FRP 映射入口使用 `MEDIA_CONTROL_PORT`。内部固定连接 `127.0.0.1`，不用填写两端 URL。无需在 Media 配置域名、证书、`MEDIA_WEB_PUBLIC_URL` 或 `MEDIA_ALLOWED_HOSTS`。
+填写 cloud 分组的端口、TMDB key 和已有 Jackett（留空则启动内置）。网站使用 `MEDIA_CLOUD_WEB_PORT`，NAS 控制端使用 `MEDIA_LOCAL_CONTROL_PORT`，避免统一模板的同名参数相互覆盖。本机 FRP 映射入口使用 `MEDIA_CLOUD_CONTROL_PORT`。内部固定连接 `127.0.0.1`，不用填写两端 URL。无需在 Media 配置域名、证书、`MEDIA_WEB_PUBLIC_URL` 或 `MEDIA_ALLOWED_HOSTS`。
 
 ```sh
 cp .env.example .env
@@ -50,9 +50,9 @@ sh setup.sh cloud
 
 先启动 local 并接通现有 FRP（NAS `192.168.8.1:18213` → 云端本机 `127.0.0.1:28213`），再启动 cloud。云端自动通过该端口建立内部认证，保存 0600 凭据，确认成功后 NAS 关闭初次配对入口。原来的 API 身份认证仍然保留；不是删除 token 校验，也不是自动信任任意远程地址。已有内部凭据文件会沿用，不打印或覆盖。
 
-网站管理员、密码和会话保存在 NAS。首次初始化令牌也由 NAS 控制 API 生成，默认在 NAS 项目目录的 `state/web-bootstrap-token`；云端 `find` 不会找到它。可在 NAS 项目目录运行 `docker compose -f compose.local.yml exec -T web cat /state/web-bootstrap-token`，仅在自己的终端读取，再填入云端网站初始化页面。不要把令牌发到聊天或日志中，也不需要将文件复制到云端。已有管理员时初始化入口关闭，不能靠重建 token 文件重置账户。
+网站管理员、密码和会话保存在 NAS。首次初始化令牌也由 NAS 控制 API 生成，默认在 NAS 项目目录的 `state/web-bootstrap-token`；云端 `find` 不会找到它。可在 NAS 项目目录运行 `docker compose -f compose.local.yml exec -T local-control cat /state/web-bootstrap-token`，仅在自己的终端读取，再填入云端网站初始化页面。不要把令牌发到聊天或日志中，也不需要将文件复制到云端。已有管理员时初始化入口关闭，不能靠重建 token 文件重置账户。
 
-FRPC 的 `localIP` 应与 `MEDIA_LOCAL_CONTROL_BIND` 一致，`localPort` 等于 `MEDIA_LOCAL_CONTROL_PORT`，`remotePort` 等于 cloud 的 `MEDIA_CONTROL_PORT`。此方案要求 FRPC 与控制 API 使用同一宿主机网络；当前不自动修改共享 FRP 服务的其他映射。未填写新监听项的旧配置仍回退到原 `MEDIA_WEB_BIND_HOST` 或 local 的回环默认值。
+FRPC 的 `localIP` 应与 `MEDIA_LOCAL_CONTROL_BIND` 一致，`localPort` 等于 `MEDIA_LOCAL_CONTROL_PORT`，`remotePort` 等于 cloud 的 `MEDIA_CLOUD_CONTROL_PORT`。此方案要求 FRPC 与控制 API 使用同一宿主机网络；当前不自动修改共享 FRP 服务的其他映射。未填写新监听项的旧配置仍回退到原 `MEDIA_WEB_BIND_HOST` 或 local 的回环默认值。
 
 网页和 MCP 的中英文搜索、榜单、详情、Jackett 查询及种子内容获取均在 cloud 执行。云端按用户隔离搜索结果，选定后把有大小限制的种子字节或 magnet、媒体身份和集数交给 NAS；NAS 检查权限、过期时间、infohash、已有媒体、计划版本和幂等键，再生成本地任务。worker 直接消费已冻结材料，不访问云端 Jackett 地址。下载过程中 BT tracker/peer 与字幕/模型服务仍由对应本地执行组件按需访问；“不回调云端 Provider”不等于 NAS 完全断网。
 
@@ -60,9 +60,9 @@ FRPC 的 `localIP` 应与 `MEDIA_LOCAL_CONTROL_BIND` 一致，`localPort` 等于
 
 跨公网的 FRP 传输仍须使用已有认证和加密配置；只把映射端口绑定回环并不等于传输加密。Media 不修改你现有的 FRP 配置。
 
-云端网站默认监听 `0.0.0.0:18214`，不再只监听回环。Docker bridge 反代的上游填写容器可达的云主机 IP 和 `MEDIA_GATEWAY_PORT`，例如本次 `10.3.0.7:8800`，不要填写反代容器自己的 `127.0.0.1`，也不要填 FRP 控制映射口 `8802`。反代需保留 Host，覆盖或追加真实客户端来源。同源检查、登录/CSRF 和 MCP 用户令牌仍启用，网站会设置 Secure cookie，外部 HTTPS 由现有反代提供。
+云端网站默认监听 `0.0.0.0:18214`，不再只监听回环。Docker bridge 反代的上游填写容器可达的云主机 IP 和 `MEDIA_CLOUD_WEB_PORT`，例如本次 `10.3.0.7:8800`，不要填写反代容器自己的 `127.0.0.1`，也不要填 FRP 控制映射口 `8802`。反代需保留 Host，覆盖或追加真实客户端来源。同源检查、登录/CSRF 和 MCP 用户令牌仍启用，网站会设置 Secure cookie，外部 HTTPS 由现有反代提供。
 
-`MEDIA_GATEWAY_BIND` 可省略或留空，默认就是 `0.0.0.0`。云端网站只读取这个专用监听项，不再被旧 `MEDIA_WEB_BIND_HOST=127.0.0.1` 带回回环地址；Compose 同时把旧内部项映射为相同值以兼容已有镜像。修改后需要重新创建网站容器，仅 `docker restart` 不会更新容器环境。
+`MEDIA_CLOUD_WEB_BIND` 可省略或留空，默认就是 `0.0.0.0`。云端网站只读取这个专用监听项，不再被旧 `MEDIA_WEB_BIND_HOST=127.0.0.1` 带回回环地址；Compose 同时把旧内部项映射为相同值以兼容已有镜像。修改后需要重新创建网站容器，仅 `docker restart` 不会更新容器环境。
 
 已有反代若已按标准追加/覆盖 `X-Forwarded-For`，无需再加 X-Real-IP：应用优先读取该链末端由本机代理追加的实际来源，不使用客户端可伪造的第一个值。只有回环代理来源才有此权限；反代不能原样透传客户端的来源头而不追加/覆盖。
 
@@ -78,22 +78,22 @@ FRPC 的 `localIP` 应与 `MEDIA_LOCAL_CONTROL_BIND` 一致，`localPort` 等于
 | --- | --- | --- |
 | `/root/container_cache/jackett/config` | Jackett `/config` | `Jackett/ServerConfig.json`、`Indexers`、`DataProtection`、日志及配置内缓存 |
 | `/root/container_cache/jackett/downloads` | Jackett `/downloads` | Jackett 导出的种子/blackhole 文件，不是 NAS 的影片下载目录 |
-| `/root/container_cache/jackett/config` | cloud web/MCP `/services/jackett`（只读） | 读取现有 API key 与 public 站点配置 |
+| `/root/container_cache/jackett/config` | cloud-web / cloud-mcp `/services/jackett`（只读） | 读取现有 API key 与 public 站点配置 |
 
 已有目录可原样使用。初始化只在 `ServerConfig.json` 不存在时创建默认配置，不覆盖已有站点、API key 或 DataProtection。`JACKETT_URL` 非空时不启动、初始化第二个 Jackett，但仍按上述固定目录只读获取该主机上的现有配置。cloud 不再读取 `MEDIA_JACKETT_CONFIG_DIR`。
 
-NAS 标准模板只保留 `MEDIA_DATA_DIR`：宿主机该目录整体挂载到容器 `/data`，默认下载与媒体库分别使用其 `downloads`、`media_hub` 子目录。例如宿主机 `/mnt/media` 对应 `/mnt/media/downloads`、`/mnt/media/media_hub`，容器内仍为 `/data/downloads`、`/data/media_hub`。无需设置 `MEDIA_DOWNLOAD_ROOT` 或 `MEDIA_LIBRARY_ROOT`；它们仅用于特殊容器内路径的高级配置。
+NAS 标准模板只保留 `MEDIA_LOCAL_DATA_DIR`：宿主机该目录整体挂载到容器 `/data`，默认下载与媒体库分别使用其 `downloads`、`media_hub` 子目录。例如宿主机 `/mnt/media` 对应 `/mnt/media/downloads`、`/mnt/media/media_hub`，容器内仍为 `/data/downloads`、`/data/media_hub`。无需设置 `MEDIA_DOWNLOAD_ROOT` 或 `MEDIA_LIBRARY_ROOT`；它们仅用于特殊容器内路径的高级配置。
 
-其他应用状态已经绑定到宿主机：cloud 的 `./state-cloud` 保存榜单缓存与用户隔离的搜索快照，NAS 默认的 `./state` 保存用户、下载记录、处理任务与恢复状态；私有内部凭据默认在宿主机 `./state/control-token`。无需设置 `MEDIA_STATE_PATH`。容器删除重建仍会复用这些目录。此处 `./` 相对于各自部署目录，重装到其他目录时应保留原状态目录；不能删除后期待容器恢复数据。榜单缓存仍按过期时间刷新，不会因持久化而永久冻结。
+其他应用状态已经绑定到宿主机：cloud 的 `./state-cloud` 保存榜单缓存与用户隔离的搜索快照，NAS 默认的 `./state` 保存用户、下载记录、处理任务与恢复状态；私有内部凭据默认在宿主机 `./state/control-token`。无需设置 `MEDIA_LOCAL_STATE_PATH`。容器删除重建仍会复用这些目录。此处 `./` 相对于各自部署目录，重装到其他目录时应保留原状态目录；不能删除后期待容器恢复数据。榜单缓存仍按过期时间刷新，不会因持久化而永久冻结。
 
-已有部署若显式配置了 `MEDIA_STATE_PATH`，继续保留原值；直接删除该项会切换到默认 `./state`，不会自动迁移原数据库。模板精简不改动用户已有 `.env` 或状态目录。
+已有部署若显式配置了 `MEDIA_LOCAL_STATE_PATH`，继续保留原值；直接删除该项会切换到默认 `./state`，不会自动迁移原数据库。模板精简不改动用户已有 `.env` 或状态目录。
 
 仅重建容器即可复用上述绑定目录；Media 不会在本轮把现有云端目录复制到 NAS，也不会替换已运行的 Jackett。传统不分角色的单机配置仍保留原目录选项，避免自动搬迁已有安装。
 
 ## 兼容和端口
 
-- 统一模板使用 `MEDIA_GATEWAY_PORT` 表示 cloud 网站、`MEDIA_LOCAL_CONTROL_PORT` 表示 NAS 控制端。旧 local 的 `MEDIA_WEB_PORT` 仍作兼容回退，新控制端口优先；旧 cloud 仅填写 `MEDIA_WEB_PORT` 仍兼容，`MEDIA_GATEWAY_PORT` 优先。
-- `MEDIA_CONTROL_PORT` 优先于旧 `MEDIA_CONTROL_URL`；只允许 1–65535 的数字并固定使用回环 HTTP。未设置端口时旧 URL 保留兼容；新 cloud 配置默认端口 28213。同机、不经过 FRP 的隔离测试可设为本地控制端口，例如 18213。
+- 统一模板使用 `MEDIA_CLOUD_WEB_PORT` 表示 cloud 网站、`MEDIA_LOCAL_CONTROL_PORT` 表示 NAS 控制端。旧 local 的 `MEDIA_WEB_PORT` 仍作兼容回退，新控制端口优先；旧 cloud 仅填写 `MEDIA_WEB_PORT` 仍兼容，`MEDIA_CLOUD_WEB_PORT` 优先。
+- `MEDIA_CLOUD_CONTROL_PORT` 优先于旧 `MEDIA_CLOUD_CONTROL_URL`；只允许 1–65535 的数字并固定使用回环 HTTP。未设置端口时旧 URL 保留兼容；新 cloud 配置默认端口 28213。同机、不经过 FRP 的隔离测试可设为本地控制端口，例如 18213。
 - 已显式设置旧 `MEDIA_CATALOG_URL` 的 local 配置保留原兼容模式；切换时移除它并重启 local，即默认启用 `MEDIA_EXECUTION_ONLY=true`，拒绝 Provider 网络访问。旧单机不受影响。不要只改模板而误以为已修改自己的 `.env`。
 - 需要直接用 NAS IP 访问同机测试网页时，显式设置 `MEDIA_WEB_MODE=lan`、`MEDIA_WEB_BIND_HOST=0.0.0.0`；仍使用原有 LAN 边界。非回环监听不会开放自动配对。不是推荐的公网部署方式。
 - 已显式设置旧 `MEDIA_WEB_PUBLIC` 的配置继续使用旧模式；要改为现有反代模式，可显式加入 `MEDIA_WEB_MODE=proxy`。新配置省略这两个开关时，`setup.sh cloud` 默认采用 proxy。
@@ -107,3 +107,5 @@ NAS 标准模板只保留 `MEDIA_DATA_DIR`：宿主机该目录整体挂载到�
 ## 启动状态检查
 
 local 启动时会只读调用 qBittorrent 版本 API，核对下载器服务和认证，不创建分类、不提交下载、不修改已有任务；失败会明确提示地址或认证检查。控制 API 就绪之后，worker 仍需完成模型连接、目录/硬链接检查及子进程初始化。脚本每 5 秒检查一次，最多检查 60 次；全部健康检查通过后才成功退出，持续未就绪则超时并非零退出。排错使用 `sh setup.sh local logs`。
+
+服务名、配置名及旧部署自动迁移方式见[两端服务命名](service-names.md)。cloud 的网站是 `cloud-web`，NAS 的控制 API 是 `local-control`。

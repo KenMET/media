@@ -10,8 +10,8 @@
 
 ```dotenv
 MEDIA_LOCAL_CONTROL_PORT=18213
-MEDIA_GATEWAY_PORT=18214
-MEDIA_CONTROL_PORT=18213
+MEDIA_CLOUD_WEB_PORT=18214
+MEDIA_CLOUD_CONTROL_PORT=18213
 MEDIA_WEB_PUBLIC=false
 MEDIA_WEB_MODE=lan
 MEDIA_WEB_BIND_HOST=0.0.0.0
@@ -27,26 +27,26 @@ sh setup.sh cloud
 
 | 分组 | 服务 | 默认入口/状态位置 |
 | --- | --- | --- |
-| local | 控制 API、网页后端、用户/会话、worker | 18213，`state/media.sqlite3` |
+| local | `local-control` 控制 API、用户/会话；`local-worker` 文件处理 | 18213，`state/media.sqlite3` |
 | local | 下载器 | 已填 `QBITTORRENT_URL` 则复用，否则内置 18211 |
-| cloud | 网页网关 | 18214，浏览器打开 `http://192.168.8.1:18214` |
-| cloud | MCP | `http://192.168.8.1:18210/mcp`，个人访问令牌认证 |
+| cloud | `cloud-web` 网站网关 | 18214，浏览器打开 `http://192.168.8.1:18214` |
+| cloud | `cloud-mcp` | `http://192.168.8.1:18210/mcp`，个人访问令牌认证 |
 | cloud | Jackett | 已填 `JACKETT_URL` 则复用，否则内置 18212 |
 | cloud | 热点缓存 | `state-cloud/catalog.sqlite3` |
 
-不带分组的 `sh setup.sh` 仍提供传统单机组合：MCP、web、worker 以及所需内置依赖。它的 MCP 默认 LAN 免登录，网页仍使用账号登录。不要在已运行分组测试的相同默认端口上再启动这个组合。
+不带分组的 `sh setup.sh` 仍提供传统单机组合：`local-mcp`、`local-control`、`local-worker` 以及所需内置依赖。它的 MCP 默认 LAN 免登录，网页仍使用账号登录。不要在已运行分组测试的相同默认端口上再启动这个组合。
 
-新配置由 cloud 完成搜索和种子获取；local 不再请求云端 Provider，也不需要云端地址。同机测试显式设 `MEDIA_CONTROL_PORT=18213`，cloud 即连接本机 local 控制端；真实 FRP 部署填写映射端口（默认 28213）。旧 `MEDIA_CATALOG_URL` / `MEDIA_CONTROL_URL` 仅保留兼容，已有测试配置不会自动被改写。
+新配置由 cloud 完成搜索和种子获取；local 不再请求云端 Provider，也不需要云端地址。同机测试显式设 `MEDIA_CLOUD_CONTROL_PORT=18213`，cloud 即连接本机 local 控制端；真实 FRP 部署填写映射端口（默认 28213）。旧 `MEDIA_CATALOG_URL` / `MEDIA_CONTROL_URL` 保留兼容；高级控制 URL 使用 `MEDIA_CLOUD_CONTROL_URL`，已有测试配置不会自动被改写。
 
-统一 `.env.example` 使用 `MEDIA_GATEWAY_PORT` 指定 cloud 网站端口、`MEDIA_LOCAL_CONTROL_PORT` 指定 local 控制端口。local 控制端改端口后，同机测试同步 `MEDIA_CONTROL_PORT`；真实部署则同步 FRPC 的目标端口。
+统一 `.env.example` 使用 `MEDIA_CLOUD_WEB_PORT` 指定 cloud 网站端口、`MEDIA_LOCAL_CONTROL_PORT` 指定 local 控制端口。local 控制端改端口后，同机测试同步 `MEDIA_CLOUD_CONTROL_PORT`；真实部署则同步 FRPC 的目标端口。
 
 ## 测试目录与已有服务
 
 测试必须使用新建的可丢弃目录，且不能挂载真实媒体。例如独立测试副本中的 `.env`：
 
 ```dotenv
-MEDIA_DATA_DIR=./data-test
-MEDIA_STATE_PATH=./state-test
+MEDIA_LOCAL_DATA_DIR=./data-test
+MEDIA_LOCAL_STATE_PATH=./state-test
 MEDIA_CLOUD_STATE_PATH=./state-cloud-test
 ```
 
@@ -102,4 +102,4 @@ nice -n 15 .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 未来真正拆到新加坡时，复用已有 HTTPS 反代与受保护 FRP 隧道，使用两端精简模板；无需重复填写域名 allowlist。直接暴露后端的旧高级模式另有要求。不要转发免登录的传统单机 MCP。
 # 关于新默认值
 
-拆机正式部署优先看 [两端精简部署](split-deployment.md)。本文件的同机 LAN HTTP 网页测试使用 `MEDIA_WEB_MODE=lan`；正式 cloud 网站默认 `MEDIA_GATEWAY_BIND=0.0.0.0`，通过已有 HTTPS 反代访问并保留账号认证。已有显式 `MEDIA_WEB_PUBLIC=false` 的旧同机配置继续按原 LAN 模式运行。
+拆机正式部署优先看 [两端精简部署](split-deployment.md)。本文件的同机 LAN HTTP 网页测试使用 `MEDIA_WEB_MODE=lan`；正式 cloud 网站默认 `MEDIA_CLOUD_WEB_BIND=0.0.0.0`，通过已有 HTTPS 反代访问并保留账号认证。已有显式 `MEDIA_WEB_PUBLIC=false` 的旧同机配置继续按原 LAN 模式运行。

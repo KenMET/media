@@ -146,7 +146,7 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
                     raise RuntimeError('remote_invalid_response')
                 if path == '/api/status' and payload.get('success'):
                     payload['data']['public'] = secure
-                    payload['data']['service'] = 'media-gateway'
+                    payload['data']['service'] = 'media-cloud-web'
                     payload['data']['tmdb_configured'] = bool(os.environ.get('TMDB_API_KEY'))
                     payload['data']['indexer_configured'] = bool(jackett.configured)
                 response = JSONResponse(payload, status_code=upstream.status_code)
@@ -196,7 +196,7 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
         return await run_in_threadpool(provider_call, command, tmdb, jackett)
 
     async def health(request):
-        return {'service':'media-gateway','status':'ok'}
+        return {'service':'media-cloud-web','status':'ok'}
 
     from pathlib import Path
     static = Path(__file__).parent/'static'
@@ -227,8 +227,9 @@ class dict_input(RootModel[dict]):
 
 def main():
     import uvicorn
-    uvicorn.run(create_gateway(), host=os.environ.get('MEDIA_GATEWAY_BIND') or '0.0.0.0',
-                port=int(os.environ.get('MEDIA_WEB_PORT','18213')), proxy_headers=False)
+    from media_mcp.config import env_value
+    uvicorn.run(create_gateway(), host=env_value('MEDIA_CLOUD_WEB_BIND', 'MEDIA_GATEWAY_BIND', default='0.0.0.0'),
+                port=int(env_value('MEDIA_CLOUD_WEB_PORT', 'MEDIA_GATEWAY_PORT', 'MEDIA_WEB_PORT', default='18214')), proxy_headers=False)
 
 
 if __name__ == '__main__':

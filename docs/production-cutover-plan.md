@@ -21,7 +21,7 @@
 
 云端不挂载下载文件/视频目录，也不持有正式媒体数据库。浏览器/AI 请求经认证入口到本地控制端；本地 worker 访问已有下载器，完成文件操作。已有 qBittorrent URL 配置非空，因此 `setup.sh local` 不启动第二个下载器。
 
-最小可行的 FRP 路线：本地控制端明确监听 NAS 的 `192.168.8.1:18213`，同机 host 网络的 FRPC 使用相同本地 IP 和端口，转发到云端 **仅回环绑定** 的例如 `28213`；云端只填 `MEDIA_CONTROL_PORT=28213`。所有搜索及种子获取均由云端完成，NAS 不需要云端地址；内部凭据首次自动配对，仅接受本机自连接。不能把原始控制 API/FRP 控制转发端口开放公网。
+最小可行的 FRP 路线：本地控制端明确监听 NAS 的 `192.168.8.1:18213`，同机 host 网络的 FRPC 使用相同本地 IP 和端口，转发到云端 **仅回环绑定** 的例如 `28213`；云端只填 `MEDIA_CLOUD_CONTROL_PORT=28213`。所有搜索及种子获取均由云端完成，NAS 不需要云端地址；内部凭据首次自动配对，仅接受本机自连接。不能把原始控制 API/FRP 控制转发端口开放公网。
 
 云端网页/MCP 后端可分别监听回环 `18214`/`18210`，现有 HTTPS 反代将网站和 `/mcp` 路由到对应服务，保留 Host 并覆盖/追加真实客户端来源。新反代模式不要求域名变量；具体 Docker 反代配置见两端部署文档。这只是部署方案，尚未验证实际域名、证书或云端 FRPS 配置。
 
@@ -34,8 +34,8 @@
 本地配置示意（不是已可执行的生产配置）：
 
 ```dotenv
-MEDIA_DATA_DIR=/data
-MEDIA_STATE_PATH=/你的本地磁盘/media-production-state
+MEDIA_LOCAL_DATA_DIR=/data
+MEDIA_LOCAL_STATE_PATH=/你的本地磁盘/media-production-state
 MEDIA_DOWNLOAD_ROOT=/data/downloads
 MEDIA_LIBRARY_ROOT=/data/media_hub
 QBITTORRENT_URL=http://你的已有下载器地址:端口
@@ -43,7 +43,7 @@ MEDIA_LOCAL_CONTROL_BIND=192.168.8.1
 MEDIA_LOCAL_CONTROL_PORT=18213
 ```
 
-下载器认证、模型凭据与 control-token 留在私有 `.env`/文件中。`MEDIA_STATE_PATH` 必须在 NAS 本机磁盘上，不能指向 Windows SMB 挂载的 SQLite。
+下载器认证、模型凭据与 control-token 留在私有 `.env`/文件中。`MEDIA_LOCAL_STATE_PATH` 必须在 NAS 本机磁盘上，不能指向 Windows SMB 挂载的 SQLite。
 
 可以选择其他目录，但要区分宿主机路径和容器内路径，并明确完整映射。下载器返回的路径必须在 worker 中原样可见；目前没有任意路径翻译。下载根和硬链接目标须在同一文件系统，并通过**共同父目录的一次挂载**保留硬链接能力；不能默认分别挂载两个目录后就能跨挂载点 link，即便宿主机看起来是同一块盘。不同磁盘只能另选复制方案，当前硬链接模式不会自动回退复制。
 

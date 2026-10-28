@@ -8,16 +8,17 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import requests
+from media_mcp.config import env_value
 
 
 def control_url():
     """New split deployments use the existing FRP listener on this host."""
-    port = os.environ.get('MEDIA_CONTROL_PORT', '')
+    port = env_value('MEDIA_CLOUD_CONTROL_PORT', 'MEDIA_CONTROL_PORT')
     if port:
         if not port.isascii() or not port.isdecimal() or not 1 <= int(port) <= 65535:
             raise ValueError('invalid_media_control_port')
         return 'http://127.0.0.1:'+str(int(port))
-    return os.environ.get('MEDIA_CONTROL_URL', '')
+    return env_value('MEDIA_CLOUD_CONTROL_URL', 'MEDIA_CONTROL_URL')
 
 
 def service_token():

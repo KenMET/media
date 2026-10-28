@@ -22,7 +22,7 @@ if __name__ == '__main__':
     assert login.status_code == 200
     browser.headers['x-csrf-token'] = login.json()['data']['csrf']
     status = browser.get(web+'/api/status',timeout=15).json()['data']
-    assert status['service'] == 'media-gateway'
+    assert status['service'] == 'media-cloud-web'
     assert status['tmdb_configured'] is False
     assert requests.get('http://127.0.0.1:18412/UI/Dashboard',timeout=10).status_code == 200
     torrents = requests.get('http://127.0.0.1:18411/api/v2/torrents/info',timeout=10)
