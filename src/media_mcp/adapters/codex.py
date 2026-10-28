@@ -64,6 +64,8 @@ class _Session:
         self.events: deque[dict] = deque()
         self.reject_tool_calls = False
         self.allowed_mcp_server: str | None = None
+        self.observe_web = None
+        self.web_items = set()
         self.next_id = 0
         self.received = 0
 
@@ -126,6 +128,15 @@ class _Session:
             if event_turn != turn_id:
                 continue
             method = message.get('method')
+            if self.observe_web and method in ('item/started', 'item/completed'):
+                item=params.get('item') or {}
+                kind=item.get('type')
+                if kind not in ('userMessage','agentMessage','reasoning','contextCompaction','webSearch'):
+                    raise CodexError('unexpected_tool_call')
+                if kind=='webSearch':
+                    self.web_items.add(item.get('id'))
+                    if len(self.web_items)>24:raise CodexError('search_budget_exceeded')
+                    self.observe_web(item)
             if self.reject_tool_calls and method in ('item/started', 'item/completed'):
                 kind = (params.get('item') or {}).get('type')
                 if kind not in ('userMessage', 'agentMessage', 'reasoning', 'contextCompaction'):

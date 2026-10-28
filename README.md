@@ -36,7 +36,7 @@
 
 服务与配置命名见[两端服务命名](docs/service-names.md)：NAS 使用 `local-control` / `local-worker`，网站使用 `cloud-web`。
 
-媒体库按作品显示海报合集，详情中查看季集与版本，并支持识别确认、映射预览和字幕维护，见[作品媒体库](docs/collection-library.md)。
+媒体库按作品显示海报合集，详情中查看季集与版本，并支持识别确认、映射预览和字幕维护，见[作品媒体库](docs/collection-library.md)。已有媒体的规则判断、时长探测与 AI 兜底检索由 NAS `local-worker` 执行，见[智能识别](docs/library-ai-identification.md)。
 
 ## 日常命令
 

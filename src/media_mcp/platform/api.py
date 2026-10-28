@@ -152,6 +152,16 @@ class EpisodeAssignment(Input):
     episode: int | None = Field(default=None,ge=1,le=999)
 
 
+class CollectionAnalyze(CollectionScope):
+    idempotency_key: str = Field(min_length=8,max_length=128)
+    folder: bool = False
+
+
+class AnalysisApply(Input):
+    plan_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    selection: list[str] = Field(min_length=1,max_length=500)
+
+
 class CollectionClassify(CollectionScope):
     category: Literal['main','extra']
 
@@ -210,6 +220,7 @@ COMMANDS = {
     'inventory_scan':Input, 'inventory_preview':InventoryPreview,
     'inventory_import':InventoryImport, 'inventory':InventoryPage,
     'collections':CollectionsPage,'collection':Collection,'collection_identify':CollectionIdentify,
+    'collection_analyze':CollectionAnalyze,'collection_analysis_plan':LibraryPlan,'collection_analysis_apply':AnalysisApply,
     'collection_classify':CollectionClassify,'collection_identity_apply':LibraryPlan,'collection_mapping_plan':CollectionScope,
     'collection_mapping_apply':LibraryMappingApply,'collection_subtitles':LibrarySubtitles,'collection_task':Job,
 }

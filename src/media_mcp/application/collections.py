@@ -267,7 +267,13 @@ class Collections:
                 raise ValueError('collection_cursor_changed')
             start = positions[0]+1
         page = items[start:start+limit]
-        return {'collections':page, 'total':len(items), 'can_manage':self.actor.can_manage_media, 'next_cursor':page[-1]['collection_id'] if start+limit<len(items) and page else None}
+        tasks=[]
+        if self.actor.can_manage_media:
+            tasks=[task_public(self.records.decode(row)) for row in self.db.execute("""SELECT * FROM media_mcp_record
+                WHERE kind='library_task' AND json_extract(data,'$.owner')=:owner AND json_extract(data,'$.action')='analysis'
+                ORDER BY updated_at DESC,rowid DESC LIMIT 10""",{'owner':self.actor.id}).mappings()]
+        return {'collections':page, 'total':len(items), 'can_manage':self.actor.can_manage_media, 'analysis_tasks':tasks,
+                'next_cursor':page[-1]['collection_id'] if start+limit<len(items) and page else None}
 
     def group(self, collection_id):
         group = self.groups().get(collection_id)
@@ -408,6 +414,29 @@ class Collections:
         return {'plan_id':row['id'], 'identity':identity, 'assignments':snapshot['assignments'],
                 'total':len(context['data']['files']), 'expires_at':context['data']['expires_at']}
 
+    def write_identity(self,conn,file,identity,item):
+        annotation={'identity':identity,'season':item.get('season'),'episode':item.get('episode'),
+                    'video_fingerprint':file['state']['source'] or file['state']['target']}
+        if item.get('runtime_seconds'):annotation['runtime_seconds']=item['runtime_seconds']
+        path=file['source_path'] or file['target_path']
+        conn.execute(text('''INSERT INTO media_library_identity(path,data) VALUES(:path,:data)
+            ON CONFLICT(path) DO UPDATE SET data=excluded.data,updated_at=CURRENT_TIMESTAMP'''),
+            {'path':path,'data':json.dumps(annotation,ensure_ascii=False)})
+        if file['media_id']:
+            payload=_json_object(file['metadata'].get('agent_result_json'))
+            if file['state']['source']:
+                payload['_source_fingerprint']=file['state']['source']
+            payload['library_identity']={'confirmed_by_user':True,'title_id':identity['title_id'],
+                                         'video_fingerprint':annotation['video_fingerprint']}
+            conn.execute(text('''UPDATE media_link SET media_type=:kind,media_tmdb_id=:tmdb_id,
+                season_tmdb_id=NULL,episode_tmdb_id=NULL,extra_type=NULL,extra_index=NULL,confidence=NULL,
+                media_name=:title,base_title=:title,alt_name=:original_title,
+                original_language=:original_language,year=:year,season=:season,episode=:episode,
+                agent_result_json=:payload,updated_at=CURRENT_TIMESTAMP WHERE id=:id'''),
+                {**identity,'year':int(identity['date'][:4]) if identity.get('date') else None,
+                 'season':item.get('season'),'episode':item.get('episode'),'id':file['media_id'],
+                 'payload':json.dumps(payload,ensure_ascii=False)})
+
     def identity_apply(self, plan_id):
         self.manage()
         with media_mutation_lock(self.db):
@@ -421,26 +450,7 @@ class Collections:
             with self.db.begin() as conn:
                 for file in data['files']:
                     item=assigned[file['key']]
-                    annotation={'identity':identity,'season':item.get('season'),'episode':item.get('episode'),
-                                'video_fingerprint':file['state']['source'] or file['state']['target']}
-                    path=file['source_path'] or file['target_path']
-                    conn.execute(text('''INSERT INTO media_library_identity(path,data) VALUES(:path,:data)
-                        ON CONFLICT(path) DO UPDATE SET data=excluded.data,updated_at=CURRENT_TIMESTAMP'''),
-                        {'path':path,'data':json.dumps(annotation,ensure_ascii=False)})
-                    if file['media_id']:
-                        payload=_json_object(file['metadata'].get('agent_result_json'))
-                        if file['state']['source']:
-                            payload['_source_fingerprint']=file['state']['source']
-                        payload['library_identity']={'confirmed_by_user':True,'title_id':identity['title_id'],
-                                                     'video_fingerprint':annotation['video_fingerprint']}
-                        conn.execute(text('''UPDATE media_link SET media_type=:kind,media_tmdb_id=:tmdb_id,
-                            season_tmdb_id=NULL,episode_tmdb_id=NULL,extra_type=NULL,extra_index=NULL,confidence=NULL,
-                            media_name=:title,base_title=:title,alt_name=:original_title,
-                            original_language=:original_language,year=:year,season=:season,episode=:episode,
-                            agent_result_json=:payload,updated_at=CURRENT_TIMESTAMP WHERE id=:id'''),
-                            {**identity,'year':int(identity['date'][:4]) if identity.get('date') else None,
-                             'season':item.get('season'),'episode':item.get('episode'),'id':file['media_id'],
-                             'payload':json.dumps(payload,ensure_ascii=False)})
+                    self.write_identity(conn,file,identity,item)
                 key=digest('library-title:'+identity['title_id'])
                 conn.execute(text('''INSERT INTO media_mcp_record(id,kind,data,state,key_hash,created_at,updated_at)
                     VALUES(:id,'library_title',:data,'confirmed',:key,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
@@ -504,7 +514,7 @@ class Collections:
 
 
 
-    def _queue(self, action, collection_id, files, operations, idempotency_key, blocked=None, plan_id=None, request=None):
+    def _queue(self, action, collection_id, files, operations, idempotency_key, blocked=None, plan_id=None, request=None,label=None,analysis_roots=None):
         self.manage()
         from media_mcp.runtime.state import MediaJobs
         jobs=MediaJobs();jobs.initialize()
@@ -517,7 +527,7 @@ class Collections:
                     raise ValueError('idempotency_key_reused_with_different_request')
                 return task_public(previous)
             self.validate(files)
-            effect=digest([action,files,operations])
+            effect=digest([action,files,operations,request,analysis_roots]) if action=='analysis' else digest([action,files,operations])
             running=self.active_overlap(files)
             if running:
                 if running['data']['owner'] != self.actor.id or running['data']['effect']!=effect:
@@ -526,9 +536,9 @@ class Collections:
             from media_mcp.platform.limits import Budget
             Budget(self.db,self.service.accounts.clock).admit_job(self.actor.id)
             ident=uuid.uuid4().hex
-            data={'owner':self.actor.id,'action':action,'collection_id':collection_id,'files':files,
+            data={'owner':self.actor.id,'action':action,'label':label,'collection_id':collection_id,'files':files,
                   'operations':operations,'results':[],'blocked':blocked or [],'intent':intent,'effect':effect,
-                  'processing_key':digest('library:'+ident),'plan_id':plan_id}
+                  'processing_key':digest('library:'+ident),'plan_id':plan_id,'analysis_roots':analysis_roots}
             with self.db.begin() as conn:
                 conn.execute(text('''INSERT INTO media_mcp_record(id,kind,data,state,key_hash,created_at,updated_at)
                     VALUES(:id,'library_task',:data,'queued',:key,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)'''),
@@ -634,6 +644,6 @@ def prepare_identity(provider, context, title_id, season_override=None, assignme
 def task_public(row):
     data=row['data']
     return {'job_id':row['id'],'state':row['state'],'action':data['action'],
-            'collection_id':data['collection_id'],'total':len(data['files']),
+            'collection_id':data['collection_id'],'label':data.get('label'),'analysis_plan_id':data.get('analysis_plan_id'),'analysis_progress':data.get('analysis_progress'),'analysis_applied':data.get('analysis_applied',0),'total':len(data['files']),
             'completed':len(data.get('results',[])), 'results':data.get('results',[]),
             'error_code':data.get('error_code'), 'blocked':data.get('blocked',[])}

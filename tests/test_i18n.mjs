@@ -21,7 +21,7 @@ test('Chinese is the default and preserves authored text',()=>{
 test('English covers navigation, status, forms and errors',()=>{
   const ui=load('en');
   for(const label of ['下载任务','媒体库','分配与操作','用户名或密码不正确','字幕获取、同步与校验',
-    '批量重新识别','标为附加内容','确认保存已勾选结果','你的作品媒体库','作品身份已确认','检查映射','字幕需要复核','生成识别预览',
+    '规则 + AI 识别','识别与分类建议','查看识别建议','建议已生成，待确认','批量重新识别','标为附加内容','确认保存已勾选结果','你的作品媒体库','作品身份已确认','检查映射','字幕需要复核','生成识别预览',
     '任务详情','清晰度','网页访问模式','角色已更新，原有会话与令牌已失效。']) {
     assert.doesNotMatch(ui.t(label),/[\u3400-\u9fff]/);
   }

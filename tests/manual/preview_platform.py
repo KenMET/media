@@ -129,7 +129,13 @@ if __name__ == '__main__':
                 (other/'Interview.mkv').write_bytes(b'preview-extra')
                 (other/'Clip.mkv').write_bytes(b'preview-extra')
                 (downloads/'Unclear Interview.mkv').write_bytes(b'preview-ambiguous')
-                (library/'movie/风的另一边 · 测试作品 - 2025.mkv').write_bytes(b'preview-unknown-movie')
+                wind=library/'movie/风的另一边 · 测试作品 - 2025.mkv'
+                if os.environ.get('MEDIA_PREVIEW_ANALYSIS')=='true':
+                    parent=downloads/'Unmatched Feature (2025)';parent.mkdir()
+                    source=parent/'Feature.mkv';source.write_bytes(b'preview-unknown-movie');os.link(source,wind)
+                    bonus=parent/'Featurettes';bonus.mkdir()
+                    (bonus/'First Clip.mkv').write_bytes(b'preview-extra');(bonus/'Second Clip.mkv').write_bytes(b'preview-extra')
+                else:wind.write_bytes(b'preview-unknown-movie')
                 from media_mcp.storage.inventory import Inventory
                 inventory=Inventory(records);scan=inventory.scan(admin.id);inventory.adopt(scan['scan_id'],admin.id)
 
@@ -138,13 +144,42 @@ if __name__ == '__main__':
             from media_mcp.runtime.state import MediaJobs
             from media_mcp.runtime.library_worker import process_task
             from unittest.mock import Mock
+            class PreviewAnalysis:
+                def analyze(self,payload,**callbacks):
+                    time.sleep(float(os.environ.get('MEDIA_PREVIEW_ANALYSIS_DELAY_SECONDS','0')))
+                    callbacks['on_thread']('preview-thread');callbacks['on_submitting']();callbacks['on_turn']('preview-turn')
+                    decisions=[];opened=[]
+                    for file in payload['requested_files']:
+                        hints=file['filename_hints'];raw=file.get('source_path') or file.get('target_path')
+                        if 'Unclear Interview' in raw:
+                            decisions.append({'key':file['key'],'category':'unknown','confidence':.4,'reason':'Fixture: no reliable matching media information','sources':[]});continue
+                        if hints.get('season_hint') is not None:
+                            ident='tv:3';season=hints['season_hint'];episode=hints['episode_hint']
+                        else:
+                            import re
+                            match=re.search(r'Preview.Movie.(\d+)',raw)
+                            ident=(file.get('cached_identity') or {}).get('title_id') or 'movie:'+str(int(match[1]) if match else 6)
+                            season=episode=None
+                        identity=PreviewTMDB().detail(ident)
+                        url='https://www.themoviedb.org/'+ident.replace(':','/')+(f'/season/{season}' if season is not None else '')
+                        opened.append(url)
+                        decisions.append({'key':file['key'],'category':'main','identity':identity,'season':season,'episode':episode,
+                            'confidence':.95,'runtime_seconds':1400 if season is not None else 7200,'reason':'Fixture AI search and duration assessment','sources':[url,'https://en.wikipedia.org/wiki/Preview_fixture']})
+                    from media_mcp.ingest.clients.library_analysis import ResearchEvidence
+                    return {'decisions':decisions},ResearchEvidence(opened,2)
             def process_preview_jobs():
                 jobs=MediaJobs();jobs.initialize()
                 agent=Mock();agent._run_path_summary_locked.return_value={'handled':1,'media_count':1,'failed':0,'missing':0,'review':0}
                 while True:
                     job=jobs.claim('library')
                     if job:
-                        process_task(jobs,job,agent);jobs.finish(job)
+                        kwargs={}
+                        if os.environ.get('MEDIA_PREVIEW_ANALYSIS')=='true':
+                            kwargs={'analysis_client':PreviewAnalysis(),'analysis_probe':lambda path:120 if any(part in path for part in ('Featurettes','Extras','Unclear')) else 1400 if 'Island.' in path else 7200}
+                        try:process_task(jobs,job,agent,**kwargs);jobs.finish(job)
+                        except Exception:
+                            import traceback
+                            traceback.print_exc();jobs.finish(job,error='fixture_failed',review_required=True)
                     time.sleep(.2)
             threading.Thread(target=process_preview_jobs,daemon=True).start()
         with patch('media_mcp.platform.api.Catalog') as catalog_type:

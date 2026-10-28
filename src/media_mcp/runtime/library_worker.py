@@ -92,7 +92,7 @@ def repair_mapping(library,jobs,conn,file,operation):
     return {'key':file['key'],'state':'completed'}
 
 
-def process_task(jobs,job,subtitle_agent=None):
+def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_probe=None):
     from media_mcp.platform.accounts import Accounts
     from media_mcp.platform.service import PlatformService
     from media_mcp.runtime import version_changes
@@ -114,6 +114,16 @@ def process_task(jobs,job,subtitle_agent=None):
     lease()
     row=records.update(row,'running')
     data=row['data'];completed={item['key'] for item in data['results']}
+    if data['action']=='analysis':
+        from media_mcp.application.library_analysis import LibraryAnalysis
+        def analysis_guard():
+            lease()
+            if not accounts.actor_by_id(data['owner']).can_manage_media:
+                raise ValueError('media_management_permission_required')
+        kwargs={'client':analysis_client}
+        if analysis_probe is not None:kwargs['probe']=analysis_probe
+        LibraryAnalysis(library).process(row,analysis_guard,**kwargs)
+        return
     for file in data['files']:
         if file['key'] in completed:
             continue
@@ -175,7 +185,8 @@ def run_library_worker():
         try:
             process_task(jobs,job)
         except Exception as exc:
-            error=type(exc).__name__
+            candidate=getattr(exc,'code',str(exc) if isinstance(exc,ValueError) else type(exc).__name__)
+            error=candidate if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,100}',candidate) else type(exc).__name__
             if jobs.renew(job):
                 records=Records(jobs.db)
                 row=jobs.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_task' AND json_extract(data,'$.processing_key')=:key",{'key':job['delivery_key']}).mappings().first()

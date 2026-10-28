@@ -168,6 +168,19 @@ class PlatformService:
         snapshot=prepare_identity(self.service.tmdb,context,title_id,season_override,assignments)
         return library.identity_preview(context['context_id'],LibraryIdentitySnapshot.model_validate(snapshot).model_dump())
 
+    def _analysis(self):
+        from media_mcp.application.library_analysis import LibraryAnalysis
+        return LibraryAnalysis(self._collections())
+
+    def collection_analyze(self,collection_id,idempotency_key,selection=None,season=None,folder=False):
+        return self._analysis().queue(collection_id,idempotency_key,selection,season,folder)
+
+    def collection_analysis_plan(self,plan_id):
+        return self._analysis().plan(plan_id)
+
+    def collection_analysis_apply(self,plan_id,selection):
+        return self._analysis().apply(plan_id,selection)
+
     def collection_classify(self,collection_id,category,selection=None,season=None):
         return self._collections().classify(collection_id,category,selection,season)
 
