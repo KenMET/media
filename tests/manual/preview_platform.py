@@ -25,13 +25,13 @@ class PreviewTMDB:
             return {'episodes':[{'episode_number':index,'name':f'测试第 {index} 集'} for index in range(1,4)]}
         item = {'id':1, 'title':'远山来信 · 测试作品', 'original_title':'Letters from the Mountain',
                 'release_date':'2025-01-01', 'overview':'仅用于界面验证的虚构作品，不会访问真实资源站或下载器。',
-                'original_language':'zh', 'vote_average':8.4, 'genres':[{'name':'剧情'}]}
+                'original_language':'zh', 'vote_average':8.4, 'poster_path':f'/preview-{ident}.jpg', 'genres':[{'name':'剧情'}]}
         if path.startswith('trending/') or path.startswith('search/'):
             return {'results':[{**item,'id':index+1,'title':title} for index,title in enumerate(
                 self.titles)]}
         item.update(id=ident, title=self.titles[(ident-1)%len(self.titles)])
         if match and match[1] == 'tv':
-            item['seasons'] = [{'season_number':1,'name':'第一季 · 测试','episode_count':3}]
+            item['seasons'] = [{'season_number':n,'name':f'第 {n} 季 · 测试','episode_count':3} for n in (1,2)]
         return item
 
     def search(self, query, kind, year=None):
@@ -68,6 +68,12 @@ class PreviewIndexer:
 if __name__ == '__main__':
     with tempfile.TemporaryDirectory(prefix='media-platform-preview-') as directory:
         root = Path(directory)
+        (root/'.acceptance').write_text('media-collection-preview')
+        if os.environ.get('MEDIA_PREVIEW_MANIFEST'):
+            import json
+            manifest=Path(os.environ['MEDIA_PREVIEW_MANIFEST'])
+            manifest.write_text(json.dumps({'root':str(root),'source':str(root/'downloads'),'library':str(root/'library')}))
+            manifest.chmod(0o600)
         os.environ.update(MEDIA_DB_PATH=str(root/'state/media.sqlite3'), MEDIA_STATE_DIR=str(root/'state'),
             MEDIA_DOWNLOAD_ROOT=str(root/'downloads'), MEDIA_LIBRARY_ROOT=str(root/'library'),
             MEDIA_HEALTH_DIR=str(root/'health'), MEDIA_WEB_PUBLIC='false', MEDIA_ALLOWED_HOSTS='localhost',
@@ -95,6 +101,39 @@ if __name__ == '__main__':
         for username, download, manage in (('viewer',True,False),('observer',False,False),('librarian',False,True)):
             accounts.create_user(admin,username,'preview-password-123',
                                  can_download=download,can_manage_media=manage)
+        if os.environ.get('MEDIA_PREVIEW_COLLECTIONS')=='true':
+            from media_mcp.storage.media import upsert_media_link,upsert_media_subtitle
+            from media_mcp.application.collections import digest
+            for season,episode in ((1,1),(1,2),(2,1)):
+                source=downloads/f'Island.S{season:02d}E{episode:02d}.mkv'
+                source.write_bytes(b'preview-episode')
+                target=library/'series/岛屿漫游'/f'第{season:02d}季'/f'岛屿漫游 - S{season:02d}E{episode:02d} - 2025.mkv'
+                target.parent.mkdir(parents=True,exist_ok=True);os.link(source,target)
+                upsert_media_link(None,str(source),str(target),media_name=target.stem,status='linked')
+                if season==1 and episode==1:
+                    subtitle=target.with_suffix('.zh.srt');subtitle.write_text('1\n00:00:01,000 --> 00:00:02,000\n测试字幕\n')
+                    upsert_media_subtitle(None,str(subtitle),str(subtitle),matched_video_source_path=str(source),matched_video_target_path=str(target),language='zh',format='srt',status='verified')
+            for ident in (1,2,4,5):
+                title=PreviewTMDB().detail('movie:'+str(ident))
+                source=downloads/f'Preview.Movie.{ident}.mkv';source.write_bytes(b'preview-movie')
+                target=library/'movie'/(title['title']+' - 2025.mkv');target.parent.mkdir(exist_ok=True);os.link(source,target)
+                upsert_media_link(None,str(source),str(target),media_name=title['title'],media_type='movie',media_tmdb_id=ident,year=2025,status='linked')
+                records.put('library_title',{'identity':title,'overview':'用于界面验收的虚构作品。'},key_hash=digest('library-title:'+title['title_id']))
+
+            # A fixture worker uses the real durable queue and hardlink repair, with a fake subtitle engine.
+            import threading,time
+            from media_mcp.runtime.state import MediaJobs
+            from media_mcp.runtime.library_worker import process_task
+            from unittest.mock import Mock
+            def process_preview_jobs():
+                jobs=MediaJobs();jobs.initialize()
+                agent=Mock();agent._run_path_summary_locked.return_value={'handled':1,'media_count':1,'failed':0,'missing':0,'review':0}
+                while True:
+                    job=jobs.claim('library')
+                    if job:
+                        process_task(jobs,job,agent);jobs.finish(job)
+                    time.sleep(.2)
+            threading.Thread(target=process_preview_jobs,daemon=True).start()
         with patch('media_mcp.platform.api.Catalog') as catalog_type:
             from media_mcp.platform.catalog import Catalog
             catalog_type.return_value = Catalog(records.db, tmdb=PreviewTMDB())

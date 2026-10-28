@@ -14,6 +14,7 @@ nice -n 15 node --test --test-concurrency=1 tests/test_i18n.mjs tests/test_ux.mj
 | `acceptance_sqlite.py` | 一次性数据库和媒体目录内，验证下载、租约、硬链接、字幕；可选真实专用 qBittorrent 和云端准备材料 |
 | `acceptance_cloud_tcp.py` | 固定隔离端口上的真实 HTTP/MCP、搜索、榜单与配对，不提交下载 |
 | 其他 `acceptance_*.py` | 账号、权限、搜索、下载恢复等历史隔离场景；部分脚本固定了测试端口、账号或日期，运行前逐项核对 |
+| `acceptance_collections_browser.cjs` | 一次性目录内验证合集、海报、按季识别、补链和字幕任务；运行方式见[作品媒体库](../docs/collection-library.md) |
 | `acceptance_inventory_browser.cjs` | 针对预览服务，检查手机端扫描导入、持久化、中英文和 320–1440px 布局；配置见[已有媒体接管](../docs/existing-media.md) |
 | `preview_platform.py` | 虚构数据的浏览器 QA 服务，不连接下载器或启动 worker |
 | `verify_package.py` | 安装后的包、命令入口和静态资源核验 |

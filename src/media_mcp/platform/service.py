@@ -150,6 +150,41 @@ class PlatformService:
         from media_mcp.storage.inventory import Inventory
         return Inventory(self.records)
 
+    def _collections(self):
+        from media_mcp.application.collections import Collections
+        return Collections(self)
+
+    def collections(self,after='',limit=24,query='',kind='all'):
+        return self._collections().list(after,limit,query,kind)
+
+    def collection(self,collection_id):
+        return self._collections().detail(collection_id)
+
+    def collection_identify(self,collection_id,title_id,selection=None,season=None,season_override=None,assignments=None):
+        from media_mcp.application.collections import prepare_identity
+        from media_mcp.platform.api import LibraryIdentitySnapshot
+        library=self._collections()
+        context=library.identity_context(collection_id,selection,season)
+        snapshot=prepare_identity(self.service.tmdb,context,title_id,season_override,assignments)
+        return library.identity_preview(context['context_id'],LibraryIdentitySnapshot.model_validate(snapshot).model_dump())
+
+    def collection_identity_apply(self,plan_id):
+        result=self._collections().identity_apply(plan_id)
+        self.accounts.event(self.actor,'collection_identified','collection',result['collection_id'])
+        return result
+
+    def collection_mapping_plan(self,collection_id,selection=None,season=None):
+        return self._collections().mapping_preview(collection_id,selection,season)
+
+    def collection_mapping_apply(self,plan_id,idempotency_key):
+        return self._collections().queue_mapping(plan_id,idempotency_key)
+
+    def collection_subtitles(self,collection_id,idempotency_key,selection=None,season=None,mode='missing'):
+        return self._collections().queue_subtitles(collection_id,idempotency_key,selection,season,mode)
+
+    def collection_task(self,job_id):
+        return self._collections().task(job_id)
+
     def inventory_scan(self):
         result = self._inventory().scan(self.actor.id)
         self.accounts.event(self.actor, 'inventory_scanned', 'inventory', result['scan_id'])

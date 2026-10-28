@@ -21,7 +21,7 @@ def main():
         stop = True
     signal.signal(signal.SIGTERM, stopping)
     signal.signal(signal.SIGINT, stopping)
-    for name in ('monitor', 'ingest', 'subtitle'):
+    for name in ('monitor', 'ingest', 'subtitle', 'library'):
         (Path(os.environ.get('MEDIA_HEALTH_DIR', '/tmp/media-health')) / name).unlink(missing_ok=True)
     records = Records()
     records.initialize()
@@ -51,6 +51,10 @@ def main():
             process = Process(target=run_worker, args=(stage,), name='media-'+stage)
             process.start()
             processes.append(process)
+        from media_mcp.runtime.library_worker import run_library_worker
+        process=Process(target=run_library_worker,name='media-library')
+        process.start()
+        processes.append(process)
         controller = Controller(records, jobs=jobs)
         while not stop:
             if any(not process.is_alive() for process in processes):

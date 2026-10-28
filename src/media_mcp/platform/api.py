@@ -130,6 +130,72 @@ class InventoryImport(Input):
     scan_id: str = Field(pattern=r'^[a-f0-9]{32}$')
 
 
+class CollectionsPage(Input):
+    after: str = Field(default='',max_length=32)
+    limit: int = Field(default=24,ge=1,le=100)
+    query: str = Field(default='',max_length=200)
+    kind: Literal['all','movie','tv','pending'] = 'all'
+
+
+class Collection(Input):
+    collection_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+
+
+class CollectionScope(Collection):
+    selection: list[str] | None = Field(default=None,max_length=500)
+    season: int | None = Field(default=None,ge=0,le=99)
+
+
+class EpisodeAssignment(Input):
+    key: str = Field(pattern=r'^[mi]:[1-9][0-9]*$')
+    season: int | None = Field(default=None,ge=0,le=99)
+    episode: int | None = Field(default=None,ge=1,le=999)
+
+
+class CollectionIdentify(CollectionScope):
+    title_id: str = Field(pattern=r'^(movie|tv):[1-9][0-9]{0,11}$')
+    season_override: int | None = Field(default=None,ge=0,le=99)
+    assignments: list[EpisodeAssignment] = Field(default_factory=list,max_length=500)
+
+
+class LibraryPlan(Input):
+    plan_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+
+
+class LibraryMappingApply(LibraryPlan):
+    idempotency_key: str = Field(min_length=8,max_length=128)
+
+
+class LibrarySubtitles(CollectionScope):
+    idempotency_key: str = Field(min_length=8,max_length=128)
+    mode: Literal['missing','recheck'] = 'missing'
+
+
+from media_mcp.platform.cloud import Identity
+
+
+class SeasonEvidence(Input):
+    season: int = Field(ge=0,le=99)
+    episodes: list[int] = Field(max_length=999)
+
+
+class LibraryIdentitySnapshot(Input):
+    identity: Identity
+    overview: str = Field(default='',max_length=5000)
+    assignments: list[EpisodeAssignment] = Field(max_length=500)
+    seasons: list[SeasonEvidence] = Field(max_length=30)
+    expires_at: float
+
+
+class CollectionCloud(Input):
+    action: Literal['context','plan']
+    collection_id: str | None = Field(default=None,pattern=r'^[a-f0-9]{32}$')
+    selection: list[str] | None = Field(default=None,max_length=500)
+    season: int | None = Field(default=None,ge=0,le=99)
+    context_id: str | None = Field(default=None,pattern=r'^[a-f0-9]{32}$')
+    snapshot: LibraryIdentitySnapshot | None = None
+
+
 class TokenName(Input):
     name: str = Field(min_length=1, max_length=80)
 
@@ -139,6 +205,9 @@ COMMANDS = {
     'start':Start, 'job':Job, 'jobs':Jobs, 'retry':Retry, 'subtitles':Subtitles, 'media':Media,
     'inventory_scan':Input, 'inventory_preview':InventoryPreview,
     'inventory_import':InventoryImport, 'inventory':InventoryPage,
+    'collections':CollectionsPage,'collection':Collection,'collection_identify':CollectionIdentify,
+    'collection_identity_apply':LibraryPlan,'collection_mapping_plan':CollectionScope,
+    'collection_mapping_apply':LibraryMappingApply,'collection_subtitles':LibrarySubtitles,'collection_task':Job,
 }
 READ_COMMANDS = {'search_titles', 'library', 'job', 'jobs', 'media'}
 
@@ -322,6 +391,19 @@ def create_app(accounts=None, records=None, service_factory=None):
         service = PlatformService(user, accounts, records, entry=entry)
         return await run_in_threadpool(accept_cloud, data, service)
 
+    async def collection_cloud(request):
+        require_service(request)
+        user=await run_in_threadpool(actor,request,True)
+        data=await read_input(request,CollectionCloud,limit=1024*1024)
+        library=PlatformService(user,accounts,records)._collections()
+        if data.action=='context':
+            if not data.collection_id or data.context_id or data.snapshot:
+                raise ValueError('invalid_request')
+            return await run_in_threadpool(library.identity_context,data.collection_id,data.selection,data.season)
+        if not data.context_id or not data.snapshot or data.collection_id or data.selection or data.season is not None:
+            raise ValueError('invalid_request')
+        return await run_in_threadpool(library.identity_preview,data.context_id,data.snapshot.model_dump())
+
     async def pair(request):
         from media_mcp.platform.pairing import pairing_response
         return await run_in_threadpool(pairing_response,request,accounts.db.path.parent)
@@ -384,7 +466,7 @@ def create_app(accounts=None, records=None, service_factory=None):
     static = Path(__file__).parent/'static'
     async def asset(request):
         name = request.path_params.get('name', 'index.html')
-        if name not in ('index.html','app.js','app.css','i18n.js','ux.js') or not (static/name).is_file():
+        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','library.js') or not (static/name).is_file():
             raise ValueError('page_not_found')
         return FileResponse(static/name)
 
@@ -396,6 +478,7 @@ def create_app(accounts=None, records=None, service_factory=None):
         ('/internal/command',internal_command,['POST']), ('/internal/token-info',token_info,['POST']),
         ('/internal/status',internal_status,['POST']),
         ('/internal/cloud',cloud_command,['POST']),
+        ('/internal/collection',collection_cloud,['POST']),
         ('/internal/pairing',pair,['GET','POST']),
         ('/api/allocations',allocation,['POST']), ('/api/events',events,['GET']),
         ('/api/auth/setup-status',setup_status,['GET']),

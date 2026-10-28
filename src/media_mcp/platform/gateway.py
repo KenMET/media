@@ -168,6 +168,22 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
             body = json.dumps(model.payload).encode()
             if path == 'command':
                 command = Command.model_validate(model.payload)
+                if command.operation=='collection_identify':
+                    from media_mcp.platform.api import CollectionIdentify
+                    from media_mcp.application.collections import prepare_identity
+                    args=CollectionIdentify.model_validate(command.arguments).model_dump()
+                    def identify():
+                        def call(payload):
+                            response=relay(request,'/internal/collection',json.dumps(payload).encode())
+                            envelope=json.loads(response.body)
+                            if not envelope.get('success'):
+                                raise ValueError(envelope.get('error_code','local_service_unavailable'))
+                            return envelope['data']
+                        context=call({'action':'context',**{key:args[key] for key in ('collection_id','selection','season')}})
+                        with budget.operation(context['user_id'],'search'):
+                            snapshot=prepare_identity(tmdb,context,args['title_id'],args['season_override'],args['assignments'])
+                        return call({'action':'plan','context_id':context['context_id'],'snapshot':snapshot})
+                    return await run_in_threadpool(identify)
                 if command.operation in CloudCommands.operations:
                     commands = CloudCommands(lambda payload:cloud_call(request,payload), budget.db, tmdb, jackett)
                     return await run_in_threadpool(commands.invoke, command.operation, command.arguments)
@@ -202,7 +218,7 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
     static = Path(__file__).parent/'static'
     async def asset(request):
         name = request.path_params.get('name','index.html')
-        if name not in ('index.html','app.js','app.css','i18n.js','ux.js'):
+        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','library.js'):
             raise ValueError('page_not_found')
         return FileResponse(static/name)
 

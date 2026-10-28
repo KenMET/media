@@ -9,9 +9,19 @@ from media_mcp.storage.client import DatabaseClient
 
 _active_mutation_lock=ContextVar('media_mutation_lock',default=None)
 _invalidated_mutation_scope=ContextVar('media_mutation_scope_invalidated',default=False)
+_job_guard=ContextVar('media_job_guard',default=None)
+
+
+@contextmanager
+def media_job_guard(validate):
+    token=_job_guard.set(validate)
+    try:yield
+    finally:_job_guard.reset(token)
 
 
 def assert_mutation_lock():
+    guard=_job_guard.get()
+    if guard:guard()
     if _invalidated_mutation_scope.get():raise RuntimeError('media_mutation_scope_invalidated')
     active=_active_mutation_lock.get()
     if active:active[0].check()
@@ -69,7 +79,7 @@ class MediaJobs:
         self.db.execute('CREATE INDEX IF NOT EXISTS due_jobs ON media_processing_job(stage,state,next_attempt_at)')
 
     def enqueue(self,key,path,stage='ingest'):
-        if stage not in ('ingest','subtitle'):raise ValueError('invalid_media_stage')
+        if stage not in ('ingest','subtitle','library'):raise ValueError('invalid_media_stage')
         self.db.execute('''INSERT OR IGNORE INTO media_processing_job
             (delivery_key,stage,path,state,next_attempt_at,created_at,updated_at)
             VALUES(:key,:stage,:path,'queued',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)''',

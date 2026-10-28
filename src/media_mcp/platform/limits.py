@@ -61,10 +61,11 @@ class Budget:
 
     def admit_job(self, user):
         # Caller holds the existing global media mutation lock through insertion.
-        rows = self.db.execute('''SELECT json_extract(data,'$._platform_owner') AS owner,
-            COUNT(*) AS total FROM media_mcp_record WHERE kind='acquisition'
+        rows = self.db.execute('''SELECT COALESCE(json_extract(data,'$._platform_owner'),json_extract(data,'$.owner')) AS owner,
+            COUNT(*) AS total FROM media_mcp_record WHERE kind IN ('acquisition','library_task')
             AND state NOT IN ('completed','completed_with_warnings','failed','cancelled')
-            GROUP BY json_extract(data,'$._platform_owner')''').mappings().all()
+            AND (kind!='library_task' OR state!='needs_review')
+            GROUP BY COALESCE(json_extract(data,'$._platform_owner'),json_extract(data,'$.owner'))''').mappings().all()
         if sum(row['total'] for row in rows) >= 100 or sum(
                 row['total'] for row in rows if row['owner'] == user) >= 10:
             raise ValueError('account_queue_full')
