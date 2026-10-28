@@ -92,6 +92,23 @@ def repair_mapping(library,jobs,conn,file,operation):
     return {'key':file['key'],'state':'completed'}
 
 
+def process_subtitle(library,jobs,file,subtitle_agent=None):
+    library.validate([file])
+    if subtitle_agent is None:
+        from media_mcp.subtitle.services.subtitle_agent import SubtitleAgent
+        subtitle_agent=SubtitleAgent(defer_ai_usage=True)
+    path=file['source_path'] if file['state']['source'] else file['target_path']
+    rows=jobs.db.execute("""SELECT id FROM media_link WHERE (source_path=:path OR target_path=:path)
+        AND status IN ('linked','source_missing','target_missing')""",{'path':path}).mappings().all()
+    if {row['id'] for row in rows}!={file['media_id']}:
+        raise ValueError('collection_mapping_ambiguous')
+    # Already hold the mutation lock; the agent releases/revalidates it for external I/O.
+    summary=subtitle_agent._run_path_summary_locked(path,send_notify=False)
+    counts={key:summary[key] for key in ('handled','media_count','sidecar_count','skipped','failed','missing','review') if type(summary.get(key)) is int}
+    incomplete=summary.get('media_count')!=1 or not summary.get('handled') or summary.get('failed') or summary.get('missing') or summary.get('review')
+    return {'key':file['key'],'state':'needs_review' if incomplete else 'completed','summary':counts}
+
+
 def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_probe=None):
     from media_mcp.platform.accounts import Accounts
     from media_mcp.platform.service import PlatformService
@@ -114,6 +131,14 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
     lease()
     row=records.update(row,'running')
     data=row['data'];completed={item['key'] for item in data['results']}
+    if data['action']=='auto':
+        from media_mcp.application.library_auto import LibraryAuto
+        def auto_guard():
+            lease()
+            if not accounts.actor_by_id(data['owner']).can_manage_media:
+                raise ValueError('media_management_permission_required')
+        LibraryAuto(library).process(jobs,row,auto_guard,analysis_client,analysis_probe,subtitle_agent)
+        return
     if data['action']=='analysis':
         from media_mcp.application.library_analysis import LibraryAnalysis
         def analysis_guard():
@@ -138,20 +163,10 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
                     operation=next(op for op in data['operations'] if op['key']==file['key'])
                     result=repair_mapping(library,jobs,conn,file,operation)
                 else:
-                    library.validate([file])
                     if subtitle_agent is None:
                         from media_mcp.subtitle.services.subtitle_agent import SubtitleAgent
                         subtitle_agent=SubtitleAgent(defer_ai_usage=True)
-                    path=file['source_path'] if file['state']['source'] else file['target_path']
-                    rows=jobs.db.execute("""SELECT id FROM media_link WHERE (source_path=:path OR target_path=:path)
-                        AND status IN ('linked','source_missing','target_missing')""",{'path':path}).mappings().all()
-                    if {row['id'] for row in rows}!={file['media_id']}:
-                        raise ValueError('collection_mapping_ambiguous')
-                    # Already hold the mutation lock; the agent releases/revalidates it for external I/O.
-                    summary=subtitle_agent._run_path_summary_locked(path,send_notify=False)
-                    counts={key:summary[key] for key in ('handled','media_count','sidecar_count','skipped','failed','missing','review') if type(summary.get(key)) is int}
-                    incomplete=summary.get('media_count')!=1 or not summary.get('handled') or summary.get('failed') or summary.get('missing') or summary.get('review')
-                    result={'key':file['key'],'state':'needs_review' if incomplete else 'completed','summary':counts}
+                    result=process_subtitle(library,jobs,file,subtitle_agent)
                 assert_mutation_lock()
         except Exception as error:
             if str(error) in ('media_job_lease_lost','media_mutation_lock_lost','media_mutation_scope_invalidated'):

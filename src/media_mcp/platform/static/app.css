@@ -120,3 +120,9 @@ h1{font-size:34px;line-height:1.3;letter-spacing:-.7px;font-weight:650}h2{font-s
 
 .library-analysis-tasks{border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:12px 0;font-size:12px}.library-analysis-tasks>summary{cursor:pointer;color:var(--muted)}.library-analysis-tasks .library-tasks{margin:12px 0 0}.library-analysis-tasks .library-tasks>h2{font-size:15px}.library-analysis-tasks .library-task{padding:12px 0}.library-analysis-tasks .library-task>button{font-size:12px;margin-top:10px}.collection-care-actions{flex-wrap:wrap}
 @media(max-width:700px){.collection-care-actions button[data-action="library-analyze"]{grid-column:1/-1}.library-analysis-tasks{padding:8px 12px;font-size:11px}.library-analysis-tasks .library-task>button{font-size:11px;min-height:40px}}
+
+/* Defaults are automatic; per-file selection and manual repair belong to advanced tools. */
+#content:not(.advanced-library) .library-select,#content:not(.advanced-library) .season-select{display:none}
+#content:not(.advanced-library) .library-file-paths{margin-left:0}
+.library-auto-primary{width:100%}.auto-explanation{font-size:12px;margin:10px 0 12px}.library-advanced>summary,.library-more>summary{cursor:pointer;color:var(--muted);font-size:12px}.library-advanced[open]>summary{margin-bottom:16px}.library-advanced .collection-care-actions{margin:12px 0}.library-more{margin-left:auto}.library-more[open]{flex-basis:100%;margin:0}.library-more button{margin-top:8px;font-size:12px}
+@media(max-width:700px){.collection-care{padding:16px}.library-auto-primary{min-height:42px;font-size:13px}.library-advanced .collection-care-actions{grid-template-columns:1fr 1fr}.library-advanced .collection-care-actions button[data-action="library-analyze"]{grid-column:auto}.auto-explanation{font-size:11px}.library-batch-toolbar>button{min-height:40px}.library-more>summary{font-size:11px}}

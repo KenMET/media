@@ -168,6 +168,10 @@ class PlatformService:
         snapshot=prepare_identity(self.service.tmdb,context,title_id,season_override,assignments)
         return library.identity_preview(context['context_id'],LibraryIdentitySnapshot.model_validate(snapshot).model_dump())
 
+    def library_auto(self,idempotency_key,collection_id=None,scope='pending'):
+        from media_mcp.application.library_auto import LibraryAuto
+        return LibraryAuto(self._collections()).queue(idempotency_key,collection_id,scope)
+
     def _analysis(self):
         from media_mcp.application.library_analysis import LibraryAnalysis
         return LibraryAnalysis(self._collections())

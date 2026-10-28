@@ -204,8 +204,11 @@ class LibraryAnalysis:
             revision=media_mcp_record.revision+1,updated_at=CURRENT_TIMESTAMP'''),
             {'id':uuid.uuid4().hex,'data':json.dumps(metadata,ensure_ascii=False),'key':key})
 
-    def apply(self,plan_id,selection):
+    def apply(self,plan_id,selection,*,automatic=False,guard=None,exclude_task=None):
         lib=self.library;lib.manage()
+        if automatic:
+            if guard is None:raise ValueError('automatic_guard_required')
+            guard()
         chosen=set(selection)
         with media_mutation_lock(self.db):
             row=lib.owned(plan_id,'library_analysis');data=row['data']
@@ -218,20 +221,20 @@ class LibraryAnalysis:
             if not chosen<=decisions.keys():raise ValueError('analysis_result_not_applicable')
             lib.validate(data['files'])
             if digest(manifest(data['roots']))!=digest(data['manifest']):raise ValueError('analysis_directory_changed')
-            if lib.active_overlap(data['files']):raise ValueError('collection_operation_busy')
+            if lib.active_overlap(data['files'],excluded=(exclude_task,) if automatic else ()):raise ValueError('collection_operation_busy')
             files={f['key']:f for f in data['files']}
             with self.db.begin() as conn:
                 for key in sorted(chosen,key=lambda value:(decisions[value]['source']=='ai',value)):
                     assert_mutation_lock();decision=decisions[key];file=files[key]
                     identity=decision.get('identity')
                     if identity:
-                        lib.write_identity(conn,file,identity,decision)
+                        lib.write_identity(conn,file,identity,decision,confirmation='automatic' if automatic else 'user')
                         self.cache_identity(conn,identity)
                     role='source' if file['state']['source'] else 'target';path=file[role+'_path']
                     conn.execute(text('''INSERT INTO media_library_classification(path,category,fingerprint) VALUES(:path,:category,:fingerprint)
                         ON CONFLICT(path) DO UPDATE SET category=excluded.category,fingerprint=excluded.fingerprint,updated_at=CURRENT_TIMESTAMP'''),
                         {'path':path,'category':decision['category'],'fingerprint':json.dumps(file_state(path,role))})
-                receipt={'updated_files':len(chosen),'keys':sorted(chosen)};data['receipt']=receipt
+                receipt={'updated_files':len(chosen),'keys':sorted(chosen),'automatic':automatic};data['receipt']=receipt
                 assert_mutation_lock()
                 conn.execute(text("UPDATE media_mcp_record SET state='applied',data=:data,updated_at=CURRENT_TIMESTAMP WHERE id=:id"),
                     {'data':json.dumps(data,ensure_ascii=False),'id':row['id']})

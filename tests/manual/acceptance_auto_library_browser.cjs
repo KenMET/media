@@ -1,0 +1,47 @@
+/* Disposable collection-preview acceptance. Never target a real media service. */
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const fs=require('fs'),path=require('path');
+const manifest=JSON.parse(fs.readFileSync(process.env.MEDIA_PREVIEW_MANIFEST||'/tmp/media-collections-preview.json','utf8'));
+if(!manifest.root.startsWith('/tmp/media-platform-preview-')||fs.readFileSync(path.join(manifest.root,'.acceptance'),'utf8')!=='media-collection-preview')throw Error('Disposable preview marker required');
+const artifacts=process.env.MEDIA_BROWSER_ARTIFACTS||'/tmp/media-auto-library-acceptance';fs.mkdirSync(artifacts,{recursive:true});
+(async()=>{
+const browser=await chromium.launch({executablePath:process.env.CHROME_EXECUTABLE,headless:true,args:['--no-sandbox']});
+const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+await page.route('https://image.tmdb.org/**',route=>{const n=Number((route.request().url().match(/preview-(\d+)/)||[])[1]||3);const palettes=[['#253a41','#d6be91'],['#604336','#f0c782'],['#384930','#c8d2a2'],['#3e394d','#bdb6d5'],['#354c4b','#b0d0c4'],['#5a433f','#e6bfc0']];const [bg,fg]=palettes[n%palettes.length];return route.fulfill({contentType:'image/svg+xml',body:`<svg xmlns="http://www.w3.org/2000/svg" width="342" height="513"><rect width="342" height="513" fill="${bg}"/><circle cx="220" cy="150" r="110" fill="${fg}" opacity=".4"/><path d="M-20 470L150 160L370 470" fill="${fg}" opacity=".35"/><text x="28" y="60" fill="${fg}" font-size="13" font-family="sans-serif" letter-spacing="3">COLLECTION / ${n}</text><text x="28" y="435" fill="${fg}" font-size="28" font-family="sans-serif">TEST STORIES</text><text x="28" y="468" fill="${fg}" font-size="13" font-family="sans-serif">DISPOSABLE PREVIEW</text></svg>`});});
+async function command(operation,args={}){return page.evaluate(async({operation,args})=>{const response=await fetch('/api/command',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':sessionStorage.getItem('media-csrf')},body:JSON.stringify({operation,arguments:args})});const envelope=await response.json();if(!response.ok)throw Error(envelope.error_code);return envelope.data;},{operation,args});}
+async function noOverflow(label){const value=await page.evaluate(()=>({viewport:innerWidth,content:document.documentElement.scrollWidth}));if(value.content>value.viewport)throw Error(label+' overflow '+JSON.stringify(value));}
+await page.goto('http://127.0.0.1:18293');await page.locator('[name=username]').fill('preview');await page.locator('[name=password]').fill('preview-password-123');await page.locator('#login button').click();await page.locator('.nav [data-page=library]').click();await page.getByRole('heading',{name:'你的作品媒体库',exact:true}).waitFor();
+const submitted=[];page.on('request',request=>{if(request.url().endsWith('/api/command'))submitted.push(request.postDataJSON());});
+async function finish(job){for(let i=0;i<900;i++){const task=await command('collection_task',{job_id:job.job_id});if(['completed','completed_with_warnings'].includes(task.state))return task;if(task.state==='needs_review')throw Error(JSON.stringify(task));await page.waitForTimeout(200);}throw Error('Automatic task timed out');}
+let list=await command('collections');if(list.total!==37||!list.next_cursor)throw Error('Expected more than a page of resources');
+const oldSeries=(await command('collections',{kind:'tv'})).collections[0];
+const source=path.join(manifest.source,'Island.S01E01.mkv'),inode=fs.statSync(source).ino,original=fs.readFileSync(source,'utf8');
+const subtitle=path.join(manifest.library,'series/岛屿漫游/第01季/岛屿漫游 - S01E01 - 2025.zh.srt'),subtitleBefore=fs.readFileSync(subtitle,'utf8');
+// Per-work primary action starts immediately, with no selection or confirmation.
+await page.locator('[data-action=library-filter][data-kind=tv]').click();await page.locator(`[data-action=library-open][data-id="${oldSeries.collection_id}"]`).click();await page.getByRole('button',{name:'自动整理这部作品',exact:true}).waitFor();
+if(await page.locator('[data-library-file]:visible').count())throw Error('Normal detail exposes checkboxes');
+const oneResponse=page.waitForResponse(r=>r.url().endsWith('/api/command')&&r.request().postDataJSON()?.operation==='library_auto');
+await page.getByRole('button',{name:'自动整理这部作品',exact:true}).click();const one=(await (await oneResponse).json()).data;
+if(await page.locator('dialog[open]').count())throw Error('Automatic action opened a dialog');
+const oneTask=await finish(one);if(oneTask.state!=='completed'||oneTask.summary.identified!==3)throw Error('Single work did not finish automatically '+JSON.stringify(oneTask));
+await page.reload();await page.getByRole('heading',{name:'季集与版本',exact:true}).waitFor();const alias=await command('collection',{collection_id:oldSeries.collection_id});if(!alias.identified||alias.summary.subtitle_verified!==3)throw Error('Old collection URL or automatic subtitles failed');
+await page.locator('.library-advanced>summary').click();if(await page.locator('[data-library-file]:visible').count()<1)throw Error('Optional manual controls not available');
+await page.locator('.nav [data-page=library]').click();await page.getByRole('heading',{name:'你的作品媒体库',exact:true}).waitFor();
+// A global operation ignores current filters and pagination by design.
+await page.locator('#library-filter input').fill('Unclear Interview');await page.locator('#library-filter button').click();await page.getByRole('heading',{name:'Unclear Interview',exact:true}).waitFor();if(await page.locator('.collection-card').count()!==1)throw Error('Filter fixture failed');
+const allResponse=page.waitForResponse(r=>r.url().endsWith('/api/command')&&r.request().postDataJSON()?.operation==='library_auto');
+await page.getByRole('button',{name:'全库自动整理',exact:true}).click();const all=(await (await allResponse).json()).data;
+if(all.total<35||all.collection_id)throw Error('Whole library request was limited to visible rows');if(await page.locator('dialog[open]').count())throw Error('Batch requested confirmation');
+await page.reload();await page.getByRole('heading',{name:'你的作品媒体库',exact:true}).waitFor();const finished=await finish(all);
+if(finished.state!=='completed_with_warnings'||finished.review_count!==1||finished.completed!==finished.total)throw Error('Unexpected automatic result '+JSON.stringify(finished));
+if(finished.summary.identified<35||finished.summary.extras<6||finished.summary.linked<30)throw Error('Batch processing incomplete '+JSON.stringify(finished.summary));
+const last=(await command('collections',{query:'批量样本 129'})).collections[0];if(last?.title_id!=='movie:129'||!last.identified||last.summary.mapped!==1||last.summary.subtitle_verified!==1)throw Error('Beyond-page resource not saved/mapped/subtitled');
+const after=await command('collection',{collection_id:last.collection_id}),file=after.seasons.flatMap(s=>s.files)[0];if(fs.statSync(file.source_path).ino!==fs.statSync(file.target_path).ino)throw Error('New mapping not a hardlink');
+if(fs.statSync(source).ino!==inode||fs.readFileSync(source,'utf8')!==original||fs.readFileSync(subtitle,'utf8')!==subtitleBefore)throw Error('Existing source or subtitles changed');
+if(submitted.some(item=>['collection_analysis_apply','collection_identity_apply','collection_mapping_apply','collection_subtitles'].includes(item.operation)))throw Error('Normal UI required manual apply endpoints');
+await page.reload();await page.getByRole('heading',{name:'你的作品媒体库',exact:true}).waitFor();await page.locator('.library-analysis-tasks>summary').click();await page.getByText('暂未找到可靠匹配，已跳过。',{exact:false}).count();await noOverflow('completed results');await page.screenshot({path:artifacts+'/automatic-results.png',fullPage:true});await page.locator('.library-analysis-tasks>summary').click();
+for(const width of [320,375,390,430,768,1440]){await page.setViewportSize({width,height:844});await noOverflow('automatic library '+width);const cover=await page.locator('.collection-poster').first().boundingBox();if(cover.width>80)throw Error('Poster too large');await page.screenshot({path:artifacts+`/library-${width}.png`,fullPage:true});}
+await page.setViewportSize({width:390,height:844});await page.locator('.language-switch').click();await page.locator('.nav [data-page=library]').click();await page.getByRole('heading',{name:'Your collection',exact:true}).waitFor();await page.getByRole('button',{name:'Auto-organize library',exact:true}).waitFor();await noOverflow('English automatic library');await page.screenshot({path:artifacts+'/library-en.png',fullPage:true});
+if(errors.length)throw Error(errors.join('\n'));fs.writeFileSync(artifacts+'/result.json',JSON.stringify({passed:true,total:finished.total,summary:finished.summary,review_count:finished.review_count,checks:['one-click per work','no normal checkboxes/dialog/confirmation','automatic identity and SQLite save','automatic mapping and subtitle artifacts','global pending scope beyond page and search','reload persistence','old URL resolves canonical title','uncertain file skips without blocking rest','optional advanced tools','unchanged source bytes/inode and valid subtitle','320–1440px compact rows','English','no JS errors']},null,2));console.log('Automatic library browser acceptance passed: '+artifacts);await browser.close();
+})().catch(error=>{console.error(error);process.exit(1)});

@@ -18,7 +18,9 @@ if(await page.locator('.collection-card').count()!==5)throw Error('Unexpected pe
 await noOverflow('initial library');await page.screenshot({path:artifacts+'/mobile-library-before.png',fullPage:true});
 await page.locator(`[data-action=library-open][data-id="${series.collection_id}"]`).click();await page.getByRole('heading',{name:'季集与版本',exact:true}).waitFor();
 await page.goBack();await page.getByRole('heading',{name:'你的作品媒体库',exact:true}).waitFor();await page.goForward();await page.getByRole('heading',{name:'季集与版本',exact:true}).waitFor();
+async function advanced(){const panel=page.locator('.library-advanced');if(await panel.getAttribute('open')===null)await panel.locator('summary').click();}
 async function identifySeason(season){
+ await advanced();
  const bucket=page.locator(`.library-season[data-season="${season}"]`);if(await bucket.getAttribute('open')===null)await bucket.locator('summary').first().click();
  await page.getByRole('button',{name:'清空选择',exact:true}).click();await bucket.getByRole('button',{name:'选择本季文件',exact:true}).click();
  await page.getByRole('button',{name:'重新识别',exact:true}).click();await page.locator('#library-identify-search button[type=submit]').click();await page.locator('.library-candidate').nth(2).click();
@@ -29,7 +31,7 @@ await identifySeason(1);
 list=await command('collections');series=list.collections.find(item=>item.title_id==='tv:3');if(list.total!==5||series.summary.identity_pending!==1||series.summary.files!==3)throw Error('Partial identification split the title or lost files');
 await identifySeason(2);list=await command('collections');series=list.collections.find(item=>item.title_id==='tv:3');if(!series.identified||series.summary.episodes!==3||series.summary.seasons!==2)throw Error('Confirmed seasons missing');
 await page.getByText('作品身份已确认',{exact:true}).waitFor();await noOverflow('collection detail');await page.screenshot({path:artifacts+'/mobile-series-detail.png',fullPage:true});
-await page.getByRole('button',{name:'清空选择',exact:true}).click();
+await advanced();await page.getByRole('button',{name:'清空选择',exact:true}).click();
 const source=path.join(manifest.source,'Island.S01E01.mkv'),target=path.join(manifest.library,'series/岛屿漫游/第01季/岛屿漫游 - S01E01 - 2025.mkv');
 if(fs.readFileSync(source,'utf8')!=='preview-episode'||fs.readFileSync(target,'utf8')!=='preview-episode')throw Error('Not a fixture file');
 const original=fs.statSync(source).ino,subtitle=target.replace(/\.mkv$/,'.zh.srt'),subtitleBefore=fs.readFileSync(subtitle,'utf8');fs.unlinkSync(target);

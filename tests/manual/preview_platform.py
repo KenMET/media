@@ -30,6 +30,7 @@ class PreviewTMDB:
             return {'results':[{**item,'id':index+1,'title':title} for index,title in enumerate(
                 self.titles)]}
         item.update(id=ident, title=self.titles[(ident-1)%len(self.titles)])
+        if ident>=100:item['title']=f'批量样本 {ident}'
         if match and match[1] == 'tv':
             item['seasons'] = [{'season_number':n,'name':f'第 {n} 季 · 测试','episode_count':3} for n in (1,2)]
         return item
@@ -136,6 +137,9 @@ if __name__ == '__main__':
                     bonus=parent/'Featurettes';bonus.mkdir()
                     (bonus/'First Clip.mkv').write_bytes(b'preview-extra');(bonus/'Second Clip.mkv').write_bytes(b'preview-extra')
                 else:wind.write_bytes(b'preview-unknown-movie')
+                for ident in range(100,100+int(os.environ.get('MEDIA_PREVIEW_MANY_MOVIES','0'))):
+                    parent=downloads/f'Batch{ident}';parent.mkdir()
+                    (parent/f'Preview.Movie.{ident}.mkv').write_bytes(b'preview-batch-movie')
                 from media_mcp.storage.inventory import Inventory
                 inventory=Inventory(records);scan=inventory.scan(admin.id);inventory.adopt(scan['scan_id'],admin.id)
 
@@ -143,7 +147,13 @@ if __name__ == '__main__':
             import threading,time
             from media_mcp.runtime.state import MediaJobs
             from media_mcp.runtime.library_worker import process_task
-            from unittest.mock import Mock
+            class PreviewSubtitles:
+                def _run_path_summary_locked(self,path,**kwargs):
+                    row=records.db.execute('SELECT * FROM media_link WHERE source_path=:path OR target_path=:path',{'path':path}).mappings().one()
+                    target=Path(row['target_path']).with_suffix('.zh.srt')
+                    if not target.exists():target.write_text('1\n00:00:01,000 --> 00:00:02,000\n隔离测试字幕\n')
+                    upsert_media_subtitle(None,str(target),str(target),matched_video_source_path=row['source_path'],matched_video_target_path=row['target_path'],language='zh',format='srt',status='verified')
+                    return {'handled':1,'media_count':1,'failed':0,'missing':0,'review':0}
             class PreviewAnalysis:
                 def analyze(self,payload,**callbacks):
                     time.sleep(float(os.environ.get('MEDIA_PREVIEW_ANALYSIS_DELAY_SECONDS','0')))
@@ -169,7 +179,7 @@ if __name__ == '__main__':
                     return {'decisions':decisions},ResearchEvidence(opened,2)
             def process_preview_jobs():
                 jobs=MediaJobs();jobs.initialize()
-                agent=Mock();agent._run_path_summary_locked.return_value={'handled':1,'media_count':1,'failed':0,'missing':0,'review':0}
+                agent=PreviewSubtitles()
                 while True:
                     job=jobs.claim('library')
                     if job:

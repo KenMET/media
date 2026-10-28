@@ -174,7 +174,8 @@ class Collections:
                     try:valid=json.loads(override['fingerprint'])==file_state(file.get(role+'_path'),role)
                     except ValueError:valid=False
                     if valid:
-                        file['classification']={'category':override['category'],'reason':'user_classified','owner':None}
+                        file['classification']={'category':override['category'],'reason':'user_classified',
+                            'owner':file['classification'].get('owner') if override['category']=='extra' else None}
                         break
             annotation = file.get('identity')
             if file.get('media_tmdb_id') and file.get('media_type') in ('movie','tv','tv_extra'):
@@ -270,13 +271,20 @@ class Collections:
         tasks=[]
         if self.actor.can_manage_media:
             tasks=[task_public(self.records.decode(row)) for row in self.db.execute("""SELECT * FROM media_mcp_record
-                WHERE kind='library_task' AND json_extract(data,'$.owner')=:owner AND json_extract(data,'$.action')='analysis'
+                WHERE kind='library_task' AND json_extract(data,'$.owner')=:owner AND json_extract(data,'$.action') IN ('analysis','auto')
+                AND (json_extract(data,'$.action')!='auto' OR json_extract(data,'$.total')>0)
                 ORDER BY updated_at DESC,rowid DESC LIMIT 10""",{'owner':self.actor.id}).mappings()]
         return {'collections':page, 'total':len(items), 'can_manage':self.actor.can_manage_media, 'analysis_tasks':tasks,
                 'next_cursor':page[-1]['collection_id'] if start+limit<len(items) and page else None}
 
     def group(self, collection_id):
-        group = self.groups().get(collection_id)
+        groups=self.groups();group=groups.get(collection_id)
+        visited=set()
+        while not group and collection_id not in visited and len(visited)<8:
+            visited.add(collection_id)
+            alias=self.records.by_key(digest(['library-alias',self.actor.id,collection_id]))
+            if not alias:break
+            collection_id=alias['data']['target'];group=groups.get(collection_id)
         if not group:
             raise ValueError('collection_not_found')
         return group
@@ -299,6 +307,7 @@ class Collections:
 
     def detail(self, collection_id):
         group = self.group(collection_id)
+        collection_id=group['collection_id']
         files = group['files']
         seasons = defaultdict(list)
         for file in files:
@@ -316,7 +325,7 @@ class Collections:
                 episodes.setdefault(key,{'episode':number,'versions':[]})['versions'].append(file)
             buckets.append({'season':season,'provisional':any(not f['identified'] for f in values),'files':values,'episodes':list(episodes.values())})
         tasks=[task_public(self.records.decode(row)) for row in self.db.execute("""SELECT * FROM media_mcp_record
-            WHERE kind='library_task' AND json_extract(data,'$.owner')=:owner AND json_extract(data,'$.collection_id')=:collection
+            WHERE kind='library_task' AND json_extract(data,'$.owner')=:owner AND (json_extract(data,'$.collection_id')=:collection OR json_extract(data,'$.result_collection_id')=:collection)
             ORDER BY updated_at DESC,rowid DESC LIMIT 5""",{'owner':self.actor.id,'collection':collection_id}).mappings()]
         return {'collection_id':collection_id, 'title_id':group['title_id'], **self._title(group),
                 'summary':self.summary(files), 'can_manage':self.actor.can_manage_media,
@@ -349,10 +358,11 @@ class Collections:
             if not file or self.freeze(file) != expected:
                 raise ValueError('collection_changed_rebuild_plan')
 
-    def active_overlap(self,files):
+    def active_overlap(self,files,excluded=()):
         paths={f.get(key) for f in files for key in ('source_path','target_path') if f.get(key)}
         for row in self.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_task' AND state IN ('queued','running')").mappings():
             row=self.records.decode(row)
+            if row['id'] in excluded:continue
             other={f.get(key) for f in row['data']['files'] for key in ('source_path','target_path') if f.get(key)}
             if paths&other:
                 return row
@@ -414,9 +424,9 @@ class Collections:
         return {'plan_id':row['id'], 'identity':identity, 'assignments':snapshot['assignments'],
                 'total':len(context['data']['files']), 'expires_at':context['data']['expires_at']}
 
-    def write_identity(self,conn,file,identity,item):
+    def write_identity(self,conn,file,identity,item,confirmation='user'):
         annotation={'identity':identity,'season':item.get('season'),'episode':item.get('episode'),
-                    'video_fingerprint':file['state']['source'] or file['state']['target']}
+                    'video_fingerprint':file['state']['source'] or file['state']['target'],'approval_mode':confirmation}
         if item.get('runtime_seconds'):annotation['runtime_seconds']=item['runtime_seconds']
         path=file['source_path'] or file['target_path']
         conn.execute(text('''INSERT INTO media_library_identity(path,data) VALUES(:path,:data)
@@ -426,7 +436,7 @@ class Collections:
             payload=_json_object(file['metadata'].get('agent_result_json'))
             if file['state']['source']:
                 payload['_source_fingerprint']=file['state']['source']
-            payload['library_identity']={'confirmed_by_user':True,'title_id':identity['title_id'],
+            payload['library_identity']={'confirmed_by_user':confirmation=='user','approval_mode':confirmation,'title_id':identity['title_id'],
                                          'video_fingerprint':annotation['video_fingerprint']}
             conn.execute(text('''UPDATE media_link SET media_type=:kind,media_tmdb_id=:tmdb_id,
                 season_tmdb_id=NULL,episode_tmdb_id=NULL,extra_type=NULL,extra_index=NULL,confidence=NULL,
@@ -643,7 +653,9 @@ def prepare_identity(provider, context, title_id, season_override=None, assignme
 
 def task_public(row):
     data=row['data']
-    return {'job_id':row['id'],'state':row['state'],'action':data['action'],
-            'collection_id':data['collection_id'],'label':data.get('label'),'analysis_plan_id':data.get('analysis_plan_id'),'analysis_progress':data.get('analysis_progress'),'analysis_applied':data.get('analysis_applied',0),'total':len(data['files']),
-            'completed':len(data.get('results',[])), 'results':data.get('results',[]),
+    results=data.get('results',[])
+    visible=[item for item in results if item['state']!='completed'][:50] if data.get('automatic') else results
+    return {'job_id':row['id'],'state':row['state'],'action':data['action'],'automatic':data.get('automatic',False),'result_collection_id':data.get('result_collection_id'),'summary':data.get('summary',{}),
+            'collection_id':data['collection_id'],'label':data.get('label'),'analysis_plan_id':data.get('analysis_plan_id'),'analysis_progress':data.get('analysis_progress'),'analysis_applied':data.get('analysis_applied',0),'total':data.get('total',len(data['files'])),
+            'completed':len(results), 'results':visible,'review_count':sum(item['state']!='completed' for item in results),
             'error_code':data.get('error_code'), 'blocked':data.get('blocked',[])}
