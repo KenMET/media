@@ -35,3 +35,14 @@ test('completion of one action does not unlock a different pending action',async
   assert.equal(requests.busy(),true);assert.equal(requests.busy('save-user'),true);
   gate.resolve();await slow;assert.equal(requests.busy(),false);
 });
+
+test('batch suggestions reject ambiguity, wrong years and first-result guesses',async()=>{
+  const {collectionCandidate}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+  const item={title:'作品 (Original Title)',year:2024};
+  const exact={title_id:'movie:1',title:'作品',date:'2024-01-01'};
+  assert.equal(collectionCandidate(item,[{title_id:'movie:9',title:'Other',date:'2024'},exact]),exact);
+  assert.equal(collectionCandidate(item,[{...exact,title_id:'movie:2'},exact]),null);
+  assert.equal(collectionCandidate(item,[{...exact,date:'2023-01-01'}]),null);
+  assert.equal(collectionCandidate(item,[{...exact,title:'Completely unrelated'}]),null);
+  assert.equal(collectionCandidate(item,[{...exact,title:'Translated',original_title:'Original Title'}]).title_id,'movie:1');
+});

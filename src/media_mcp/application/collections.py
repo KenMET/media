@@ -18,6 +18,28 @@ from media_mcp.storage.media import _json_object
 
 MAX_FILES = 500
 EPISODE = re.compile(r'(?i)(?<![a-z0-9])s(\d{1,2})[ ._-]*e(\d{1,3})(?!\d)')
+EXTRA_FOLDER = re.compile(r'(?i)^(?:extras?|bonus(?:[ ._-]+features?)?|featurettes?|behind[ ._-]+the[ ._-]+scenes|deleted[ ._-]+scenes|trailers?|samples?|特典|花絮|幕后|幕后花絮|预告片|附加内容)$')
+EXTRA_NAME = re.compile(r'(?i)(?:^|[\s._\[(-])(?:sample|trailer|featurette|NCOP|NCED|PV|CM)(?:$|[\s._\])\d-])|特典|花絮|幕后制作|删减片段|预告片')
+
+
+def classify(file):
+    """Explicit evidence only: a short or unfamiliar title is never enough."""
+    if file.get('media_type')=='tv_extra' or file.get('season')==0:
+        return {'category':'extra','reason':'record_special','owner':None}
+    for raw in (file.get('source_path'),file.get('target_path')):
+        if not raw:
+            continue
+        path=Path(raw)
+        root=download_root() if raw==file.get('source_path') else library_root()
+        try:parts=path.relative_to(root).parts
+        except ValueError:continue
+        for index,part in enumerate(parts[:-1]):
+            if EXTRA_FOLDER.fullmatch(part):
+                parent=Path(root).joinpath(*parts[:index])
+                return {'category':'extra','reason':'extra_directory','owner':str(parent) if index else None}
+        if (not file.get('media_tmdb_id') and not file.get('identity') and EXTRA_NAME.search(path.stem)) or (EPISODE.search(path.stem) and int(EPISODE.search(path.stem)[1])==0):
+            return {'category':'extra','reason':'extra_filename','owner':None}
+    return {'category':'main','reason':'no_extra_marker','owner':None}
 
 
 def digest(value):
@@ -93,6 +115,9 @@ class Collections:
         self.db, self.actor = self.records.db, service.actor
         self.db.execute('''CREATE TABLE IF NOT EXISTS media_library_identity (
             path TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)''')
+        self.db.execute('''CREATE TABLE IF NOT EXISTS media_library_classification (
+            path TEXT PRIMARY KEY, category TEXT NOT NULL, fingerprint TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)''')
         self._title_cache=None
 
     def manage(self):
@@ -139,8 +164,18 @@ class Collections:
                         'target_path':row['path'] if raw['role']=='library' else None,
                         'identity':annotations.get(row['path']), 'subtitles':[{'status':'discovered','language':None,'format':Path(p).suffix.lstrip('.')} for p in raw.get('subtitles',[])]}
                 files.append(item)
+        classifications={row['path']:dict(row) for row in self.db.execute('SELECT path,category,fingerprint FROM media_library_classification').mappings()}
         for file in files:
             file['guess'] = guess(file)
+            file['classification']=classify(file)
+            for role in ('source','target'):
+                override=classifications.get(file.get(role+'_path'))
+                if override:
+                    try:valid=json.loads(override['fingerprint'])==file_state(file.get(role+'_path'),role)
+                    except ValueError:valid=False
+                    if valid:
+                        file['classification']={'category':override['category'],'reason':'user_classified','owner':None}
+                        break
             annotation = file.get('identity')
             if file.get('media_tmdb_id') and file.get('media_type') in ('movie','tv','tv_extra'):
                 kind = 'tv' if file['media_type']=='tv_extra' else file['media_type']
@@ -162,10 +197,25 @@ class Collections:
         for file in files:
             identities=scopes[(file['guess']['kind'],file['guess']['scope'])]
             known=file['title_id'] or (next(iter(identities)) if len(identities)==1 else None)
-            key = known or 'pending:'+file['guess']['kind']+':'+file['guess']['scope']
+            key = known or ('pending:extra:'+file['classification']['owner'] if file['classification']['category']=='extra' and file['classification'].get('owner') else 'pending:'+file['guess']['kind']+':'+file['guess']['scope'])
             ident = digest(key)[:32]
             group = groups.setdefault(ident, {'collection_id':ident, 'title_id':known, 'files':[]})
             group['files'].append(file)
+        # Group extras inside an explicit bonus folder, or attach to a unique parent work.
+        for ident,group in list(groups.items()):
+            if ident not in groups or group['title_id'] or not all(f['classification']['category']=='extra' for f in group['files']):
+                continue
+            owner=group['files'][0]['classification'].get('owner')
+            if not owner:continue
+            parents=[(gid,g) for gid,g in groups.items() if gid!=ident and any(
+                f['classification']['category']=='main' and any(p and Path(owner) in Path(p).parents for p in (f.get('source_path'),f.get('target_path')))
+                for f in g['files'])]
+            if len(parents)==1:
+                destination=parents[0][1]
+            else:
+                gid=digest('extras:'+owner)[:32]
+                destination=groups.setdefault(gid,{'collection_id':gid,'title_id':None,'files':[],'extra_title':Path(owner).name})
+            destination['files'].extend(group['files']);del groups[ident]
         return groups
 
     def _title(self, group):
@@ -178,31 +228,38 @@ class Collections:
             for row in self.db.execute("SELECT data FROM media_mcp_record WHERE kind='library_title'").mappings():
                 meta=json.loads(row['data']);self._title_cache[meta['identity']['title_id']]=meta
         meta=self._title_cache.get(group['title_id'],{})
-        first = next((f for f in group['files'] if f['title_id']),group['files'][0])
+        first = next((f for f in group['files'] if f['title_id']),next((f for f in group['files'] if f['classification']['category']=='main'),group['files'][0]))
         identity = meta.get('identity') or (first.get('identity') or {}).get('identity') or {}
-        return {'title':identity.get('title') or (first.get('media_name') if group['title_id'] else None) or first['guess']['title'],
+        return {'title':identity.get('title') or (first.get('media_name') if group['title_id'] else None) or group.get('extra_title') or first['guess']['title'],
                 'kind':identity.get('kind') or ('tv' if first.get('media_type')=='tv_extra' else first.get('media_type')) or first['guess']['kind'],
                 'year':(identity.get('date') or '')[:4] or first.get('year') or first['guess']['year_hint'],
                 'poster_url':identity.get('poster_url'), 'overview':meta.get('overview',''),
-                'identified':all(f['title_id'] for f in group['files'])}
+                'identified':all(f['title_id'] for f in group['files'] if f['classification']['category']=='main') and any(f['classification']['category']=='main' for f in group['files'])}
 
     @staticmethod
     def summary(files):
         ready={'translated','linked','exists','completed','verified','extracted','converted'}
+        main=[f for f in files if f['classification']['category']=='main']
+        main_verified=sum(any(s['status'] in ready for s in f['subtitles']) for f in main)
+        main_discovered=sum(any(s['status']=='discovered' for s in f['subtitles']) and not any(s['status'] in ready for s in f['subtitles']) for f in main)
         verified = sum(any(s['status'] in ready for s in f['subtitles']) for f in files)
         discovered = sum(any(s['status']=='discovered' for s in f['subtitles']) and not any(s['status'] in ready for s in f['subtitles']) for f in files)
-        return {'files':len(files), 'mapped':sum(f['status']=='linked' for f in files),
-                'identity_pending':sum(not f['title_id'] for f in files),
+        return {'files':len(files), 'extras':sum(f['classification']['category']=='extra' for f in files), 'mapped':sum(f['status']=='linked' for f in files),
+                'main_files':len(main),'main_mapped':sum(f['status']=='linked' for f in main),
+                'main_subtitle_verified':main_verified,'main_subtitle_discovered':main_discovered,
+                'main_subtitle_missing':len(main)-main_verified-main_discovered,
+                'identity_pending':sum(not f['title_id'] for f in main),
                 'subtitle_verified':verified, 'subtitle_discovered':discovered,
                 'subtitle_missing':len(files)-verified-discovered,
-                'seasons':len({f.get('season') for f in files if f.get('season') is not None}),
-                'episodes':len({(f.get('season'),f.get('episode')) for f in files if f.get('episode') is not None})}
+                'seasons':len({f.get('season') for f in main if f.get('season') is not None}),
+                'episodes':len({(f.get('season'),f.get('episode')) for f in main if f.get('episode') is not None})}
 
     def list(self, after='', limit=24, query='',kind='all'):
         items = [{**{k:v for k,v in group.items() if k!='files'}, **self._title(group),
                   'summary':self.summary(group['files'])} for group in self.groups().values()]
         items = sorted((g for g in items if query.casefold() in g['title'].casefold() and
-                        (kind=='all' or kind=='pending' and not g['identified'] or kind in ('movie','tv') and g['kind']==kind)), key=lambda g:(g['title'].casefold(),g['collection_id']))
+                        (kind=='extra' and g['summary']['extras']>0 or g['summary']['files']>g['summary']['extras'] and
+                         (kind=='all' or kind=='pending' and not g['identified'] or kind in ('movie','tv') and g['kind']==kind))), key=lambda g:(g['title'].casefold(),g['collection_id']))
         start = 0
         if after:
             positions = [i for i,g in enumerate(items) if g['collection_id']==after]
@@ -210,7 +267,7 @@ class Collections:
                 raise ValueError('collection_cursor_changed')
             start = positions[0]+1
         page = items[start:start+limit]
-        return {'collections':page, 'total':len(items), 'next_cursor':page[-1]['collection_id'] if start+limit<len(items) and page else None}
+        return {'collections':page, 'total':len(items), 'can_manage':self.actor.can_manage_media, 'next_cursor':page[-1]['collection_id'] if start+limit<len(items) and page else None}
 
     def group(self, collection_id):
         group = self.groups().get(collection_id)
@@ -220,7 +277,8 @@ class Collections:
 
     def _public_file(self, file):
         result = {key:file.get(key) for key in ('key','media_id','name','season','episode','status','subtitles')}
-        result.update(season_hint=file['guess']['season_hint'],episode_hint=file['guess']['episode_hint'])
+        result.update(season_hint=file['guess']['season_hint'],episode_hint=file['guess']['episode_hint'],classification=file['classification'])
+        result['classification']={k:v for k,v in file['classification'].items() if k!='owner'}
         result['identified']=bool(file['title_id'])
         if self.actor.can_manage_media:
             result.update(source_path=file.get('source_path'),target_path=file.get('target_path'))
@@ -276,7 +334,7 @@ class Collections:
     def freeze(file):
         return {'key':file['key'], 'media_id':file.get('media_id'), 'source_path':file.get('source_path'),
                 'target_path':file.get('target_path'), 'title_id':file.get('title_id'), 'season':file.get('season'),
-                'episode':file.get('episode'), 'metadata':{key:file.get(key) for key in ('media_type','media_tmdb_id','media_name','year','identity','agent_result_json','status','reason','fail_stage')}, 'state':mapping_state(file)}
+                'episode':file.get('episode'), 'metadata':{key:file.get(key) for key in ('media_type','media_tmdb_id','media_name','year','identity','agent_result_json','status','reason','fail_stage','classification')}, 'state':mapping_state(file)}
 
     def validate(self, frozen):
         current = {f['key']:f for f in self.files()}
@@ -297,12 +355,30 @@ class Collections:
     def identity_context(self, collection_id, selection=None, season=None):
         self.manage()
         _, files = self.selection(collection_id,selection,season)
+        files=[f for f in files if f['classification']['category']=='main']
+        if not files:raise ValueError('collection_no_main_files')
         snapshot = [self.freeze(f) for f in files]
         row = self.records.put('library_context', {'owner':self.actor.id,'collection_id':collection_id,
             'files':snapshot,'expires_at':time.time()+900})
         return {'context_id':row['id'], 'user_id':self.actor.id,
                 'files':[{'key':f['key'],'name':f['name'], 'season':f.get('season') if f['title_id'] else f['guess']['season_hint'],
                           'episode':f.get('episode') if f['title_id'] else f['guess']['episode_hint']} for f in files]}
+
+    def classify(self, collection_id, category, selection=None, season=None):
+        self.manage()
+        if category not in ('main','extra'):raise ValueError('invalid_classification')
+        with media_mutation_lock(self.db):
+            _,files=self.selection(collection_id,selection,season)
+            if self.active_overlap(files):raise ValueError('collection_operation_busy')
+            with self.db.begin() as conn:
+                for file in files:
+                    assert_mutation_lock()
+                    role='source' if file.get('source_path') else 'target';path=file[role+'_path']
+                    conn.execute(text('''INSERT INTO media_library_classification(path,category,fingerprint) VALUES(:path,:category,:fingerprint)
+                        ON CONFLICT(path) DO UPDATE SET category=excluded.category,fingerprint=excluded.fingerprint,updated_at=CURRENT_TIMESTAMP'''),
+                        {'path':path,'category':category,'fingerprint':json.dumps(file_state(path,role))})
+        self.service.accounts.event(self.actor,'collection_classified','collection',collection_id)
+        return {'updated_files':len(files),'category':category}
 
     def owned(self, ident, kind):
         row = self.records.get(ident,kind)
@@ -397,7 +473,9 @@ class Collections:
             status=state['state']['status']
             action='keep' if status in ('linked','source_missing','library_only') else 'review'
             reason=None
-            if file.get('media_id') and file.get('status')=='unlinked':
+            if file['classification']['category']=='extra':
+                action='review';reason='extra_requires_review'
+            elif file.get('media_id') and file.get('status')=='unlinked':
                 action='review';reason='version_selection_required'
             elif video_changed(file,state['state']):
                 action='review';reason='source_identity_changed'
@@ -491,6 +569,8 @@ class Collections:
         _,files=self.selection(collection_id,selection,season)
         eligible=[];blocked=[]
         for file in files:
+            if file['classification']['category']=='extra':
+                blocked.append({'key':file['key'],'reason':'extra_requires_review'});continue
             state=mapping_state(file)
             if video_changed(file,state):
                 blocked.append({'key':file['key'],'reason':'identify_again'});continue

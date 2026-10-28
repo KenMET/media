@@ -134,7 +134,7 @@ class CollectionsPage(Input):
     after: str = Field(default='',max_length=32)
     limit: int = Field(default=24,ge=1,le=100)
     query: str = Field(default='',max_length=200)
-    kind: Literal['all','movie','tv','pending'] = 'all'
+    kind: Literal['all','movie','tv','pending','extra'] = 'all'
 
 
 class Collection(Input):
@@ -150,6 +150,10 @@ class EpisodeAssignment(Input):
     key: str = Field(pattern=r'^[mi]:[1-9][0-9]*$')
     season: int | None = Field(default=None,ge=0,le=99)
     episode: int | None = Field(default=None,ge=1,le=999)
+
+
+class CollectionClassify(CollectionScope):
+    category: Literal['main','extra']
 
 
 class CollectionIdentify(CollectionScope):
@@ -206,7 +210,7 @@ COMMANDS = {
     'inventory_scan':Input, 'inventory_preview':InventoryPreview,
     'inventory_import':InventoryImport, 'inventory':InventoryPage,
     'collections':CollectionsPage,'collection':Collection,'collection_identify':CollectionIdentify,
-    'collection_identity_apply':LibraryPlan,'collection_mapping_plan':CollectionScope,
+    'collection_classify':CollectionClassify,'collection_identity_apply':LibraryPlan,'collection_mapping_plan':CollectionScope,
     'collection_mapping_apply':LibraryMappingApply,'collection_subtitles':LibrarySubtitles,'collection_task':Job,
 }
 READ_COMMANDS = {'search_titles', 'library', 'job', 'jobs', 'media'}

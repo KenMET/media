@@ -14,3 +14,13 @@ export class Requests {
     this.pending.set(key,promise);this.changed();return promise;
   }
 }
+
+// Batch suggestions require one exact title/alias and compatible year, never first-result ranking.
+export function collectionCandidate(item,candidates){
+  const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/[\p{P}\p{Z}\s_]+/gu,'');
+  const names=new Set([item.title,...String(item.title).split(/[()（）]/)].map(normalize).filter(Boolean));
+  const matches=candidates.filter(candidate=>(!item.year||String(candidate.date||'').slice(0,4)===String(item.year))&&
+    [candidate.title,candidate.original_title,candidate.english_title].some(name=>name&&names.has(normalize(name))));
+  const unique=new Map(matches.map(candidate=>[candidate.title_id,candidate]));
+  return unique.size===1?[...unique.values()][0]:null;
+}

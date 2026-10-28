@@ -168,6 +168,9 @@ class PlatformService:
         snapshot=prepare_identity(self.service.tmdb,context,title_id,season_override,assignments)
         return library.identity_preview(context['context_id'],LibraryIdentitySnapshot.model_validate(snapshot).model_dump())
 
+    def collection_classify(self,collection_id,category,selection=None,season=None):
+        return self._collections().classify(collection_id,category,selection,season)
+
     def collection_identity_apply(self,plan_id):
         result=self._collections().identity_apply(plan_id)
         self.accounts.event(self.actor,'collection_identified','collection',result['collection_id'])

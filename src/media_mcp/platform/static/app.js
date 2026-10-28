@@ -67,7 +67,7 @@ async function loadData(selector,message,operation,{cards=false,quiet=false}={})
   }
 }
 const command=(operation,arguments_={})=>api('/api/command',{operation,arguments:arguments_});
-const libraryUI=createLibraryUI({state,command,loadData,paint,heading,escape,toast,showCollection,syncBusyControls,current:rev=>requests.current(rev),revision:()=>requests.revision});
+const libraryUI=createLibraryUI({state,command,loadData,paint,heading,escape,toast,showCollection,navigateLibrary:()=>navigate('library'),syncBusyControls,current:rev=>requests.current(rev),revision:()=>requests.revision});
 const bytes=(value)=>value == null ? '—' : value>=1073741824 ? (value/1073741824).toFixed(1)+' GB' : value>=1048576 ? (value/1048576).toFixed(1)+' MB' : value>=1024 ? (value/1024).toFixed(0)+' KB' : value+' B';
 const date=(value)=>value ? new Date(typeof value==='number'?value*1000:value.replace(' ','T')+'Z').toLocaleString(lang === 'en' ? 'en-US' : 'zh-CN',{hour12:false}) : t('尚无记录');
 const progress=(value)=>Number.isFinite(value)?Math.round(Math.max(0,Math.min(1,value))*100):null;

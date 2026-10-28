@@ -115,10 +115,23 @@ if __name__ == '__main__':
                     upsert_media_subtitle(None,str(subtitle),str(subtitle),matched_video_source_path=str(source),matched_video_target_path=str(target),language='zh',format='srt',status='verified')
             for ident in (1,2,4,5):
                 title=PreviewTMDB().detail('movie:'+str(ident))
-                source=downloads/f'Preview.Movie.{ident}.mkv';source.write_bytes(b'preview-movie')
+                parent=downloads/'First Movie' if ident==1 and os.environ.get('MEDIA_PREVIEW_EXTRAS')=='true' else downloads
+                parent.mkdir(exist_ok=True)
+                source=parent/f'Preview.Movie.{ident}.mkv';source.write_bytes(b'preview-movie')
                 target=library/'movie'/(title['title']+' - 2025.mkv');target.parent.mkdir(exist_ok=True);os.link(source,target)
                 upsert_media_link(None,str(source),str(target),media_name=title['title'],media_type='movie',media_tmdb_id=ident,year=2025,status='linked')
                 records.put('library_title',{'identity':title,'overview':'用于界面验收的虚构作品。'},key_hash=digest('library-title:'+title['title_id']))
+            if os.environ.get('MEDIA_PREVIEW_EXTRAS')=='true':
+                bonus=downloads/'First Movie/Featurettes/Deleted Scenes';bonus.mkdir(parents=True)
+                (bonus/'Chandler Charters.mkv').write_bytes(b'preview-bonus')
+                (bonus/'Children’s Funeral.mkv').write_bytes(b'preview-bonus')
+                other=downloads/'Unknown Film/Extras';other.mkdir(parents=True)
+                (other/'Interview.mkv').write_bytes(b'preview-extra')
+                (other/'Clip.mkv').write_bytes(b'preview-extra')
+                (downloads/'Unclear Interview.mkv').write_bytes(b'preview-ambiguous')
+                (library/'movie/风的另一边 · 测试作品 - 2025.mkv').write_bytes(b'preview-unknown-movie')
+                from media_mcp.storage.inventory import Inventory
+                inventory=Inventory(records);scan=inventory.scan(admin.id);inventory.adopt(scan['scan_id'],admin.id)
 
             # A fixture worker uses the real durable queue and hardlink repair, with a fake subtitle engine.
             import threading,time

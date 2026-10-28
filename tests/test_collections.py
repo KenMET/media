@@ -244,6 +244,86 @@ class CollectionsTests(unittest.TestCase):
         self.assertEqual(result['state'],'completed_with_warnings')
         self.assertTrue(all(item['state']=='needs_review' for item in result['results']))
 
+    def test_bonus_directories_attach_to_parent_and_do_not_become_movies(self):
+        from media_mcp.storage.inventory import Inventory
+        ident=self.fixture(1)
+        source,target=self.paths[0]
+        work=source.parent/'Work';work.mkdir();moved=work/source.name;source.rename(moved)
+        self.db.execute('UPDATE media_link SET source_path=:new WHERE source_path=:old',{'new':str(moved),'old':str(source)})
+        bonus=work/'Featurettes'/'Deleted Scenes';bonus.mkdir(parents=True)
+        (bonus/'Chandler Charters.mkv').write_bytes(b'extra-one')
+        (bonus/'Children’s Funeral.mkv').write_bytes(b'extra-two')
+        scan=Inventory(self.records).scan(self.admin.id);Inventory(self.records).adopt(scan['scan_id'],self.admin.id)
+        page=self.service.collections()
+        self.assertEqual(page['total'],1)
+        self.assertEqual(page['collections'][0]['summary']['extras'],2)
+        self.assertEqual(page['collections'][0]['summary']['files'],3)
+        self.assertEqual(self.service.collections(kind='extra')['total'],1)
+        with patch.object(self.service.service.tmdb,'get',side_effect=AssertionError('implicit provider')):
+            self.service.collections()
+        context=self.service._collections().identity_context(ident)
+        self.assertEqual(len(context['files']),1)
+
+    def test_standalone_extras_hidden_but_recoverable_and_manual_classification_persists(self):
+        from media_mcp.storage.inventory import Inventory
+        self.fixture(1)
+        path=self.paths[0][0].parent/'Unmatched Movie'/'Extras';path.mkdir(parents=True)
+        first=path/'Unknown Clip.mkv';first.write_bytes(b'bonus')
+        (path/'Another Clip.mkv').write_bytes(b'bonus-two')
+        inv=Inventory(self.records);scan=inv.scan(self.admin.id);inv.adopt(scan['scan_id'],self.admin.id)
+        self.assertEqual(self.service.collections()['total'],1)
+        extra=self.service.collections(kind='extra')['collections'][0]
+        self.assertEqual(extra['summary']['files'],2)
+        self.assertEqual(extra['title'],'Unmatched Movie')
+        detail=self.service.collection(extra['collection_id'])
+        keys=[file['key'] for season in detail['seasons'] for file in season['files']]
+        self.service.collection_classify(extra['collection_id'],'main',selection=[keys[0]])
+        page=PlatformService(self.admin,self.accounts,self.records).collections()
+        self.assertEqual(page['total'],2)
+        self.assertEqual(first.read_bytes(),b'bonus')
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM media_inventory').scalar(),4)
+
+    def test_unfamiliar_title_is_not_filtered_and_known_movie_names_are_preserved(self):
+        from media_mcp.application.collections import classify
+        source=Path(os.environ['MEDIA_DOWNLOAD_ROOT'])
+        self.assertEqual(classify({'source_path':str(source/'Children’s Funeral.mkv')})['category'],'main')
+        self.assertEqual(classify({'source_path':str(source/'Trailer.mkv'),'media_tmdb_id':42,'media_type':'movie'})['category'],'main')
+        self.assertEqual(classify({'source_path':str(source/'Show.NCOP01.mkv')})['category'],'extra')
+        self.assertEqual(classify({'source_path':str(source/'Special.S00E01.mkv')})['category'],'extra')
+
+    def test_classification_permissions_and_active_task_fence(self):
+        ident=self.identify(self.fixture())
+        viewer=PlatformService(self.alice,self.accounts,self.records)
+        with self.assertRaisesRegex(ValueError,'media_management_permission_required'):
+            viewer.collection_classify(ident,'extra')
+        self.service.collection_subtitles(ident,'classify-busy-001',mode='recheck')
+        with self.assertRaisesRegex(ValueError,'collection_operation_busy'):
+            self.service.collection_classify(ident,'extra')
+
+    def test_classification_changes_invalidate_existing_identity_preview(self):
+        ident=self.fixture()
+        plan=self.service.collection_identify(ident,'tv:123')
+        self.service.collection_classify(ident,'extra')
+        with self.assertRaisesRegex(ValueError,'collection_changed_rebuild_plan'):
+            self.service.collection_identity_apply(plan['plan_id'])
+
+    def test_extras_do_not_enter_normal_mapping_or_subtitle_maintenance(self):
+        ident=self.identify(self.fixture(1))
+        self.service.collection_classify(ident,'extra')
+        self.assertEqual(self.service.collections()['total'],0)
+        self.assertEqual(self.service.collections(kind='extra')['total'],1)
+        plan=self.service.collection_mapping_plan(ident)
+        self.assertEqual(plan['operations'][0]['reason'],'extra_requires_review')
+        with self.assertRaisesRegex(ValueError,'collection_no_eligible_subtitles'):
+            self.service.collection_subtitles(ident,'skip-extra-001',mode='recheck')
+
+    def test_manual_category_does_not_hide_a_replaced_file(self):
+        ident=self.fixture(1)
+        self.service.collection_classify(ident,'extra')
+        self.assertEqual(self.service.collections()['total'],0)
+        self.paths[0][0].write_bytes(b'replaced-with-another-video')
+        self.assertEqual(self.service.collections()['total'],1)
+
     def test_numeric_title_is_not_mistaken_for_release_year(self):
         from media_mcp.application.collections import guess
         file={'target_path':str(Path(os.environ['MEDIA_LIBRARY_ROOT'])/'movie/银翼杀手2049(Blade Runner 2049) - 2017.mkv')}
