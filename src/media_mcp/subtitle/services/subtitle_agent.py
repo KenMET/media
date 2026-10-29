@@ -853,7 +853,7 @@ class SubtitleAgent:
                     dependencies.os.path.basename(legacy_translated_target),
                     dependencies.os.path.basename(translated_target),
                 )
-            return 'exists'
+            return self._record_existing_generated(media_link, translated_target if not test_mode else legacy_translated_target, test_mode=test_mode)
         if (
             dependencies.os.path.exists(translated_target)
             and self._parse_subtitle_candidate(translated_target).generated_by_agent
@@ -871,7 +871,7 @@ class SubtitleAgent:
                         dependencies.os.path.basename(translated_target),
                     )
             dependencies.logger.info('Action: kept existing generated subtitle %s', dependencies.os.path.basename(translated_target))
-            return 'exists'
+            return self._record_existing_generated(media_link, translated_target, test_mode=test_mode)
 
         existing_target_sidecar = self._select_existing_target_sidecar(media_link, media_sidecars)
         if existing_target_sidecar:
@@ -2608,6 +2608,21 @@ class SubtitleAgent:
                 'would remove' if test_mode else 'removed',
                 removed,
             )
+
+    def _record_existing_generated(self, media_link, path, *, test_mode=False):
+        # Generated markers alone do not prove that dialogue is valid Chinese.
+        try:
+            with open(path,'rb') as handle:
+                dependencies.validate_online_subtitle(handle.read(),dependencies.os.path.basename(path))
+        except (OSError,ValueError):
+            return self._mark_needs_review(media_link,'existing_subtitle_chinese_content_unverified',test_mode=test_mode)
+        if not test_mode:
+            candidate=self._parse_subtitle_candidate(path)
+            metadata=self._subtitle_metadata(media_link,candidate.language or 'zh-CN',candidate.subtitle_type,
+                candidate.extension.lstrip('.'),'translated')
+            dependencies.upsert_media_subtitle(dependencies.MEDIA_DB,path,path,**metadata,status='exists',
+                reason='existing_generated_subtitle_content_validated')
+        return 'exists'
 
     def _mark_missing(self, media_link: dict[str, dependencies.Any], reason: str, test_mode: bool = False) -> str:
         source_id = f'{media_link.get("source_path")}#subtitle:missing'

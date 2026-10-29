@@ -2,6 +2,7 @@
 // server data never pass through this dictionary or through HTML translation.
 export const lang = localStorage.getItem('media-language') === 'en' ? 'en' : 'zh-CN';
 const english = {
+  "本次任务曾未确认字幕；当前已有字幕处理记录。":"This task could not confirm subtitles at the time; a subtitle processing record is now available.",
   "当前整理记录":"Current library link record",
   "已校验":"Verified",
   "任务状态暂未取到，正在自动重新连接。后台任务不会因此取消。":"Task status is temporarily unavailable. Reconnecting automatically; the task is not cancelled.",
