@@ -1,0 +1,70 @@
+/* Disposable collection-preview acceptance. Never target a real media service. */
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const fs=require('fs'),path=require('path');
+const manifest=JSON.parse(fs.readFileSync(process.env.MEDIA_PREVIEW_MANIFEST||'/tmp/media-collections-preview.json','utf8'));
+if(!manifest.root.startsWith('/tmp/media-platform-preview-')||fs.readFileSync(path.join(manifest.root,'.acceptance'),'utf8')!=='media-collection-preview')throw Error('Disposable preview marker required');
+const artifacts=process.env.MEDIA_BROWSER_ARTIFACTS||'/tmp/media-task-experience-acceptance';fs.mkdirSync(artifacts,{recursive:true});
+(async()=>{
+const browser=await chromium.launch({executablePath:process.env.CHROME_EXECUTABLE,headless:true,args:['--no-sandbox']});
+const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+await page.route('https://image.tmdb.org/**',route=>{const n=Number((route.request().url().match(/preview-(\d+)/)||[])[1]||3);const palettes=[['#253a41','#d6be91'],['#604336','#f0c782'],['#384930','#c8d2a2'],['#3e394d','#bdb6d5'],['#354c4b','#b0d0c4'],['#5a433f','#e6bfc0']];const [bg,fg]=palettes[n%palettes.length];return route.fulfill({contentType:'image/svg+xml',body:`<svg xmlns="http://www.w3.org/2000/svg" width="342" height="513"><rect width="342" height="513" fill="${bg}"/><circle cx="220" cy="150" r="110" fill="${fg}" opacity=".4"/><path d="M-20 470L150 160L370 470" fill="${fg}" opacity=".35"/><text x="28" y="60" fill="${fg}" font-size="13" font-family="sans-serif" letter-spacing="3">COLLECTION / ${n}</text><text x="28" y="435" fill="${fg}" font-size="28" font-family="sans-serif">TEST STORIES</text><text x="28" y="468" fill="${fg}" font-size="13" font-family="sans-serif">DISPOSABLE PREVIEW</text></svg>`});});
+async function command(operation,args={}){return page.evaluate(async({operation,args})=>{const response=await fetch('/api/command',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':sessionStorage.getItem('media-csrf')},body:JSON.stringify({operation,arguments:args})});const envelope=await response.json();if(!response.ok)throw Error(envelope.error_code);return envelope.data;},{operation,args});}
+async function noOverflow(label){const value=await page.evaluate(()=>({viewport:innerWidth,content:document.documentElement.scrollWidth}));if(value.content>value.viewport)throw Error(label+' overflow '+JSON.stringify(value));}
+await page.goto('http://127.0.0.1:18293');await page.locator('[name=username]').fill('preview');await page.locator('[name=password]').fill('preview-password-123');await page.locator('#login button').click();await page.locator('.nav [data-page=library]').click();await page.getByRole('heading',{name:'你的作品媒体库',exact:true}).waitFor();
+
+const mutations=[];page.on('request',request=>{if(request.url().endsWith('/api/command')){const body=request.postDataJSON();if(['library_auto','start'].includes(body?.operation))mutations.push(body);}});
+async function finish(id){for(let n=0;n<900;n++){const job=await command('library_task_status',{job_id:id});if(!['queued','running'].includes(job.state))return job;await page.waitForTimeout(200);}throw Error('Background task did not finish');}
+async function commandResponse(operation){return page.waitForResponse(r=>r.url().endsWith('/api/command')&&r.request().postDataJSON()?.operation===operation);}
+// Popular titles -> automatic resource search -> one explicit download click.
+await page.locator('.nav [data-page=discover]').click();await page.locator('.poster-card').nth(2).click();await page.locator('[data-action=plan]').first().waitFor();
+if(!page.url().includes('#title/movie:3'))throw Error('Title URL not restorable');
+if(await page.locator('.core-options').getAttribute('open')!==null)throw Error('Resource options are not defaulted');
+const starting=commandResponse('start');await page.locator('[data-action=plan]').first().click();const download=(await (await starting).json()).data;
+await page.waitForURL('**/#jobs/'+download.job_id);await page.getByRole('heading',{name:'处理阶段',exact:true}).waitFor();
+if(await page.locator('dialog[open]').count())throw Error('Download required an extra confirmation');
+await page.reload();await page.getByRole('heading',{name:'处理阶段',exact:true}).waitFor();if((await command('jobs')).jobs.length!==1)throw Error('Reload duplicated a download');
+// Search remembers the title/type; TV defaults to a season and hides optional filters.
+await page.locator('.nav [data-page=search]').click();await page.locator('#search [name=query]').fill('岛屿漫游');await page.locator('#search [name=kind]').selectOption('tv');await page.locator('#search button[type=submit]').click();await page.locator('#search-results .poster-card').nth(2).click();await page.locator('[data-action=plan]').first().waitFor();if(await page.locator('#releases [name=season]').inputValue()!=='1')throw Error('Season default missing');
+await page.goBack();await page.locator('#search-results .poster-card').first().waitFor();await page.reload();await page.locator('#search-results .poster-card').first().waitFor();if(await page.locator('#search [name=query]').inputValue()!=='岛屿漫游'||await page.locator('#search [name=kind]').inputValue()!=='tv')throw Error('Search state not restored');
+await page.locator('.nav [data-page=library]').click();await page.getByRole('heading',{name:'你的作品媒体库',exact:true}).waitFor();
+const allResponse=commandResponse('library_auto');await page.getByRole('button',{name:'全库自动整理',exact:true}).click();const all=(await (await allResponse).json()).data;
+await page.waitForURL('**/#tasks/'+all.job_id);await page.locator('#task-status progress').waitFor();await page.getByRole('heading',{name:'文件处理结果',exact:true}).waitFor();
+if(await page.locator('dialog[open]').count())throw Error('Organization opened a confirmation');
+const before=await command('library_task_status',{job_id:all.job_id});
+await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));});
+await context.setOffline(true);await page.waitForTimeout(4000);
+await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));});
+await page.locator('#task-status .task-sync').filter({hasText:'重新连接'}).waitFor();
+if(!await page.locator('#task-status progress').count())throw Error('Connection loss hid existing progress');
+await page.screenshot({path:artifacts+'/offline-preserved-progress.png',fullPage:true});
+await context.setOffline(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+await page.waitForFunction(()=>!document.querySelector('#task-status .task-sync')?.textContent.includes('连接中断'));
+const resumed=await command('library_task_status',{job_id:all.job_id});if(resumed.completed<before.completed)throw Error('Progress regressed');
+await page.reload();await page.locator('#task-status progress').waitFor();if(!page.url().includes(all.job_id))throw Error('Task URL lost on reload');
+// A timed-out polling request must reconnect without another click or mutation.
+let failedPoll=false;const failStatus=async route=>{const body=route.request().postDataJSON();if(!failedPoll&&body?.operation==='library_tasks'){failedPoll=true;await route.abort('timedout');}else await route.continue();};
+await page.route('**/api/command',failStatus);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#background-work')?.textContent.includes('重新连接'));
+await page.unroute('**/api/command',failStatus);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>!document.querySelector('#task-status .task-sync')?.textContent.includes('连接中断'));
+const completed=await finish(all.job_id);if(completed.state!=='completed_with_warnings'||completed.review_count!==1)throw Error('Unexpected result '+JSON.stringify(completed));
+await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#task-status')?.textContent.includes('已完成，部分资源未处理'));
+await page.locator('[data-action=task-results-filter][data-filter=issues]').click();await page.waitForFunction(()=>document.querySelectorAll('.task-result').length===1);await page.locator('.task-result details>summary').click();await page.getByText('Fixture: no reliable matching media information',{exact:true}).waitFor();
+await noOverflow('task exceptions');await page.screenshot({path:artifacts+'/task-result-details.png',fullPage:true});
+await page.locator('[data-action=task-results-filter][data-filter=all]').click();await page.waitForFunction(()=>document.querySelectorAll('.task-result').length===25);let loaded=await page.locator('.task-result').count();while(await page.locator('[data-action=task-results-more]').count()){await page.locator('[data-action=task-results-more]').click();await page.waitForFunction(n=>document.querySelectorAll('.task-result').length>n,loaded);loaded=await page.locator('.task-result').count();}if(loaded!==completed.total)throw Error('Successes or files past the first page missing');
+if(mutations.filter(m=>m.operation==='library_auto').length!==1||mutations.filter(m=>m.operation==='start').length!==1)throw Error('Wake/reload repeated a mutation');
+// A server-created task survives a lost submission response and is recovered by its request key.
+await page.locator('.nav [data-page=library]').click();await page.getByRole('heading',{name:'你的作品媒体库',exact:true}).waitFor();
+const unknown=(await command('collections',{query:'Unclear Interview'})).collections[0];let lostTask;
+const loseReply=async route=>{const body=route.request().postDataJSON();if(body?.operation==='library_auto'){const response=await route.fetch();lostTask=(await response.json()).data;await route.abort('timedout');}else await route.continue();};
+await page.route('**/api/command',loseReply);await page.locator(`[data-action=library-quick-identify][data-id="${unknown.collection_id}"]`).click();await page.waitForFunction(()=>location.hash.startsWith('#tasks/'));await page.unroute('**/api/command',loseReply);
+if(!lostTask||!page.url().endsWith(lostTask.job_id))throw Error('Lost submission receipt was not recovered');await finish(lostTask.job_id);
+const listed=await command('library_tasks',{limit:10});if(listed.tasks.filter(item=>item.automatic).length!==2)throw Error('Recovery duplicated a task');
+// The download path also recovers a committed submission whose response is lost.
+await page.locator('.nav [data-page=search]').click();await page.locator('#search [name=query]').fill('测试剧集');await page.locator('#search [name=kind]').selectOption('tv');await page.locator('#search button[type=submit]').click();await page.locator('#search-results .poster-card').first().click();await page.locator('[data-action=plan]').first().waitFor();let lostDownload;
+const loseDownloadReply=async route=>{const body=route.request().postDataJSON();if(body?.operation==='start'){const response=await route.fetch();lostDownload=(await response.json()).data;await route.abort('timedout');}else await route.continue();};
+await page.route('**/api/command',loseDownloadReply);await page.locator('[data-action=plan]').first().click();await page.waitForURL('**/#jobs/*');await page.unroute('**/api/command',loseDownloadReply);if(!lostDownload||!page.url().endsWith(lostDownload.job_id))throw Error('Lost download receipt not recovered');if((await command('jobs')).jobs.length!==2||mutations.filter(m=>m.operation==='start').length!==2)throw Error('Download recovery repeated submission');
+await page.locator('.nav [data-page=jobs]').click();await page.getByRole('button',{name:'整理与字幕',exact:true}).click();await page.getByRole('heading',{name:'整理与字幕任务',exact:true}).waitFor();await page.locator(`[data-task-card="${all.job_id}"] [data-action=task-open]`).click();await page.locator('#task-status').waitFor();await page.waitForFunction(()=>document.querySelectorAll('.task-result').length===25);for(let attempt=0;attempt<2;attempt++){await page.reload();await page.waitForFunction(()=>document.querySelectorAll('.task-result').length===25);}
+for(const width of [320,390,430,768,1440]){await page.setViewportSize({width,height:844});await noOverflow('task experience '+width);await page.screenshot({path:artifacts+`/task-${width}.png`,fullPage:true});}
+await page.setViewportSize({width:390,height:844});await page.locator('.language-switch').click();await page.locator('[data-action=task-results-filter][data-filter=issues]').waitFor();await page.getByRole('button',{name:'Unresolved only',exact:true}).waitFor();await noOverflow('English task detail');await page.screenshot({path:artifacts+'/task-en.png',fullPage:true});await page.screenshot({path:artifacts+'/task-en-viewport.png'});
+if(errors.length)throw Error(errors.join('\n'));fs.writeFileSync(artifacts+'/result.json',JSON.stringify({passed:true,task_id:all.job_id,total:completed.total,summary:completed.summary,review_count:completed.review_count,checks:['popular -> automatic resource search','one explicit download click','download URL restores without duplicate','search query and type survive reload','TV season defaults and optional filters hidden','durable organization task and visible progress','background task continues while page hidden/offline','offline preserves last progress','visibility/online resumes automatically','poll timeout does not stop monitoring','task route restores after reload','all successes and exceptions paginated','per-file reasons and confidence','lost organization and download responses recovered read-only','no duplicate submission','task center','320–1440px','English','no JS errors']},null,2));console.log('Task experience browser acceptance passed: '+artifacts);await browser.close();
+})().catch(error=>{console.error(error);process.exit(1)});

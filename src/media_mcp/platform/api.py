@@ -158,6 +158,16 @@ class LibraryAutoRun(Input):
     scope: Literal['pending','all'] = 'pending'
 
 
+class LibraryTaskPage(Job):
+    after: int = Field(default=0,ge=0)
+    limit: int = Field(default=25,ge=1,le=50)
+    issues_only: bool = False
+
+
+class SubmissionStatus(Input):
+    idempotency_key: str = Field(min_length=8,max_length=128)
+
+
 class CollectionAnalyze(CollectionScope):
     idempotency_key: str = Field(min_length=8,max_length=128)
     folder: bool = False
@@ -227,6 +237,8 @@ COMMANDS = {
     'inventory_import':InventoryImport, 'inventory':InventoryPage,
     'collections':CollectionsPage,'collection':Collection,'collection_identify':CollectionIdentify,
     'library_auto':LibraryAutoRun,'collection_analyze':CollectionAnalyze,'collection_analysis_plan':LibraryPlan,'collection_analysis_apply':AnalysisApply,
+    'library_tasks':Jobs,'library_task_status':Job,'library_task_details':LibraryTaskPage,
+    'library_auto_status':SubmissionStatus,'download_submission_status':SubmissionStatus,
     'collection_classify':CollectionClassify,'collection_identity_apply':LibraryPlan,'collection_mapping_plan':CollectionScope,
     'collection_mapping_apply':LibraryMappingApply,'collection_subtitles':LibrarySubtitles,'collection_task':Job,
 }
@@ -487,7 +499,7 @@ def create_app(accounts=None, records=None, service_factory=None):
     static = Path(__file__).parent/'static'
     async def asset(request):
         name = request.path_params.get('name', 'index.html')
-        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','library.js') or not (static/name).is_file():
+        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','library.js','tasks.js') or not (static/name).is_file():
             raise ValueError('page_not_found')
         return FileResponse(static/name)
 

@@ -7,6 +7,25 @@ import unittest
 
 
 class SetupScriptTests(unittest.TestCase):
+    def test_control_update_keeps_the_running_worker_and_dependencies_untouched(self):
+        source=Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);shutil.copyfile(source/'setup.sh',root/'setup.sh')
+            (root/'.env').write_text('QBITTORRENT_URL=http://192.0.2.10:8080\n')
+            binary=root/'bin';binary.mkdir();docker=binary/'docker'
+            docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALL_LOG"\ncase "$*" in *"--entrypoint python3"*) printf "%s\\n" "synthetic-control-token-12345678901234567890";; esac\nexit 0\n')
+            docker.chmod(0o755)
+            env={key:value for key,value in os.environ.items() if not key.startswith(('MEDIA_','QBITTORRENT_','JACKETT_'))}
+            env.update(PATH=str(binary)+':'+os.environ['PATH'],CALL_LOG=str(root/'calls'))
+            result=subprocess.run(['sh',str(root/'setup.sh'),'local','control'],env=env,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            calls=(root/'calls').read_text().splitlines()
+            ups=[line for line in calls if ' up -d' in line]
+            self.assertEqual(len(ups),1,calls);self.assertTrue(ups[0].endswith(' up -d local-control'),ups)
+            self.assertFalse(any(' stop ' in line or ' rm ' in line for line in calls),calls)
+            self.assertFalse(any('init-qbittorrent' in line or 'init-jackett' in line for line in calls),calls)
+            self.assertNotIn('synthetic-control-token',result.stdout+result.stderr)
+
     def test_worker_must_be_healthy_and_is_polled_every_five_seconds(self):
         source=Path(__file__).resolve().parents[1]
         for ready_after in (3,0):

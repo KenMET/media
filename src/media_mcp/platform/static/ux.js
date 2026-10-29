@@ -24,3 +24,20 @@ export function collectionCandidate(item,candidates){
   const unique=new Map(matches.map(candidate=>[candidate.title_id,candidate]));
   return unique.size===1?[...unique.values()][0]:null;
 }
+
+// Only read operations belong here: reconnecting must never resubmit a mutation.
+export class ReconnectPoller {
+  constructor(read,{failed=()=>{},visible=()=>true,interval=5000,maxDelay=30000}={}) {
+    Object.assign(this,{read,failed,visible,interval,maxDelay});this.generation=0;this.failures=0;this.stopped=true;
+  }
+  wake(){this.stopped=false;clearTimeout(this.timer);this.controller?.abort();const generation=++this.generation;return this.tick(generation);}
+  stop(){this.stopped=true;++this.generation;clearTimeout(this.timer);this.controller?.abort();}
+  async tick(generation){
+    if(this.stopped||generation!==this.generation)return;
+    if(!this.visible())return;
+    this.controller=new AbortController();
+    try{await this.read(this.controller.signal);if(generation===this.generation)this.failures=0;}
+    catch(error){if(generation!==this.generation||this.stopped)return;this.failures++;this.failed(error);}
+    if(generation===this.generation&&!this.stopped)this.timer=setTimeout(()=>this.tick(generation),Math.min(this.maxDelay,this.interval*2**Math.min(this.failures,3)));
+  }
+}

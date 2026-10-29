@@ -140,7 +140,11 @@ case "$command" in
         rm -f "$state_path/control-pairing.sealed"
         echo '已允许云端重新连接；确认 FRP 仅本机可达后，运行 setup.sh cloud。'; exit 0 ;;
     up) ;;
-    *) echo '用法：sh setup.sh [cloud|local] [up|status|logs|stop|pair]' >&2; exit 2 ;;
+    control)
+        if [ "$topology" != local ]; then echo 'control 仅用于更新 NAS 控制端。' >&2; exit 2; fi
+        app_services='local-control'; managed_services=''; legacy_services=''
+        ;;
+    *) echo '用法：sh setup.sh [cloud|local] [up|status|logs|stop|pair|control]' >&2; exit 2 ;;
 esac
 case "$health_port" in ''|*[!0-9]*) echo '健康检查端口必须是数字。' >&2; exit 1 ;; esac
 if [ "$MEDIA_WEB_PUBLIC" = true ] && [ "$MEDIA_WEB_MODE" != proxy ]; then

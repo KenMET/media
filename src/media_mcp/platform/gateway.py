@@ -218,7 +218,7 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
     static = Path(__file__).parent/'static'
     async def asset(request):
         name = request.path_params.get('name','index.html')
-        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','library.js'):
+        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','library.js','tasks.js'):
             raise ValueError('page_not_found')
         return FileResponse(static/name)
 

@@ -46,3 +46,21 @@ test('batch suggestions reject ambiguity, wrong years and first-result guesses',
   assert.equal(collectionCandidate(item,[{...exact,title:'Completely unrelated'}]),null);
   assert.equal(collectionCandidate(item,[{...exact,title:'Translated',original_title:'Original Title'}]).title_id,'movie:1');
 });
+
+test('task status retries a disconnected read without another user click',async()=>{
+  const {ReconnectPoller}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+  const recovered=deferred();let reads=0,failures=0;
+  const poller=new ReconnectPoller(async()=>{if(++reads===1)throw Error('offline');recovered.resolve();},{interval:5,maxDelay:10,failed:()=>failures++});
+  poller.wake();await recovered.promise;poller.stop();assert.equal(reads,2);assert.equal(failures,1);
+});
+test('resuming replaces a suspended status read and aborts its old request',async()=>{
+  const {ReconnectPoller}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+  const first=deferred();let reads=0,aborted=false;
+  const poller=new ReconnectPoller(async signal=>{if(++reads===1){signal.addEventListener('abort',()=>{aborted=true;first.reject(Error('aborted'));});await first.promise;}},{interval:1000});
+  const old=poller.wake();await Promise.resolve();await poller.wake();await old;poller.stop();assert.equal(reads,2);assert.equal(aborted,true);
+});
+test('a hidden page stops reading and a visibility wake immediately fetches progress',async()=>{
+  const {ReconnectPoller}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+  let visible=false,reads=0;const poller=new ReconnectPoller(async()=>{reads++;},{visible:()=>visible,interval:1000});
+  await poller.wake();assert.equal(reads,0);visible=true;await poller.wake();assert.equal(reads,1);poller.stop();
+});

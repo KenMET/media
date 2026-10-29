@@ -90,6 +90,25 @@ class GatewayTests(unittest.TestCase):
             headers['x-media-client-ip']='203.0.113.2'
             self.assertEqual(client.post('/api/auth/login',json=payload,headers=headers).status_code,200)
 
+    def test_task_progress_and_paginated_results_cross_cloud_without_mutations(self):
+        row=self.records.put('library_task',{'owner':self.admin.id,'action':'auto','automatic':True,
+            'collection_id':None,'files':[],'total':0,'results':[],'summary':{},'work':[]},'completed')
+        app=create_gateway(self.remote,catalog=Mock(),http_request=self.transport.request)
+        with TestClient(app,base_url='http://media.test',client=('127.0.0.1',1234)) as client:
+            login=client.post('/api/auth/login',json={'username':'owner','password':'owner-password-123'}).json()['data']
+            headers={'x-csrf-token':login['csrf']}
+            before=self.records.db.execute('SELECT COUNT(*) FROM media_mcp_record').scalar()
+            for operation,args in [('library_tasks',{}),('library_task_status',{'job_id':row['id']}),
+                                   ('library_task_details',{'job_id':row['id'],'limit':25}),
+                                   ('library_auto_status',{'idempotency_key':'never-submitted-001'}),
+                                   ('download_submission_status',{'idempotency_key':'never-submitted-001'})]:
+                response=client.post('/api/command',json={'operation':operation,'arguments':args},headers=headers)
+                self.assertEqual(response.status_code,200,response.text)
+            self.assertEqual(client.post('/api/command',json={'operation':'library_task_details',
+                'arguments':{'job_id':row['id'],'limit':51}},headers=headers).status_code,400)
+            self.assertEqual(self.records.db.execute('SELECT COUNT(*) FROM media_mcp_record').scalar(),before)
+            self.assertEqual(client.get('/assets/tasks.js').status_code,200)
+
     def test_cloud_login_cookie_csrf_and_user_isolation(self):
         with patch.dict(os.environ, {'MEDIA_WEB_PUBLIC':'true'}):
             app = create_gateway(self.remote, catalog=Mock(), http_request=self.transport.request)

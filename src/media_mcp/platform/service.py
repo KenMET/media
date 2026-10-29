@@ -205,6 +205,24 @@ class PlatformService:
     def collection_task(self,job_id):
         return self._collections().task(job_id)
 
+    def _library_tasks(self):
+        from media_mcp.application.library_tasks import LibraryTasks
+        return LibraryTasks(self)
+
+    def library_tasks(self,after='',limit=10):return self._library_tasks().list(after,limit)
+
+    def library_task_status(self,job_id):return self._library_tasks().task(job_id)
+
+    def library_task_details(self,job_id,after=0,limit=25,issues_only=False):
+        return self._library_tasks().details(job_id,after,limit,issues_only)
+
+    def library_auto_status(self,idempotency_key):return self._library_tasks().lookup_auto(idempotency_key)
+
+    def download_submission_status(self,idempotency_key):
+        key=hashlib.sha256(('acquire:'+self._key(idempotency_key)).encode()).hexdigest()
+        row=self.records.by_key(key)
+        return {'found':bool(row),'task':self.job(row['id']) if row else None}
+
     def inventory_scan(self):
         result = self._inventory().scan(self.actor.id)
         self.accounts.event(self.actor, 'inventory_scanned', 'inventory', result['scan_id'])
