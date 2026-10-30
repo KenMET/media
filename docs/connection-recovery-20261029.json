@@ -1,0 +1,204 @@
+{
+  "date_utc": "2026-10-29",
+  "goal_status": "blocked",
+  "root_cause": {
+    "old_task": "89ea591e36bb483798fa87c61d881272",
+    "connection_failed": 24,
+    "subsequent_skipped": 734,
+    "evidence": "Upstream Responses websocket reset and request sending failures; earlier rate limits; legacy blanket error classification"
+  },
+  "nas_image": "sha256:4af5ff50da121e41c7b14490f0b5048970c408b50ad80eb8a3f17a108a3265c0",
+  "installed_source_parity": {
+    "adapters.codex": "e1971b577b9eac969118a33d06b3c0b27fc3b36a4ebce9e23bb6badebedb13d7",
+    "runtime.model_retry": "1cb8e03607cbcec81c94103ab01a646ca5bb26018ace1d404db612150bf2cf66",
+    "runtime.model_scope": "cf9cb41d1dc4f7f94fa56afe6117e320328144256cc43ce7b88460d944ad7b31",
+    "runtime.library_worker": "08e371b180ea4c58ca8311561204d9e843d1fb2093bb3768e2ff2187a1a1515d",
+    "application.library_analysis": "f81ced44f0edff3c94b68039fc5b34a58572dd98f6e45ad213d7d1ae50bf3d01",
+    "application.library_auto": "90e6398119db2a39bd784969ed396f8db972b45b19c9aa315e08edd01f1ee155",
+    "application.collections": "19ce6dd791b87d6f2be2333808761b9c7174a0f9f42a7ba673e214e0a9ebbd17",
+    "subtitle.services.subtitle_agent": "f1f69843a26e919a80a32e00ece0740f80ba1a6b68df5a0d6e253ef8c9055f5f",
+    "subtitle.domain.translation": "90093314b55cbe412c62ce2379931a21dc2ec54b77859dc92d882edf7618eb28",
+    "storage.model_settings": "9a4d311a914570a04fda4fb830a5633f63a68c8a9398077595941bcfe3cc78a8",
+    "platform.api": "7cc36492a8c0b545102495b7f96fe84cccccb97fd3d479e67b5b2aa980189a21"
+  },
+  "targeted_installed_tests": 82,
+  "browser": {
+    "passed": true,
+    "waiting_model_is_not_completed": true,
+    "legacy_connection_reason_readable": true,
+    "mobile_no_overflow": true,
+    "page_errors": []
+  },
+  "nagatoro": {
+    "checks": [
+      {
+        "key": "m:18",
+        "season": 2,
+        "episode": 1,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:19",
+        "season": 2,
+        "episode": 2,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:20",
+        "season": 2,
+        "episode": 3,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:21",
+        "season": 2,
+        "episode": 4,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:22",
+        "season": 2,
+        "episode": 5,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:23",
+        "season": 2,
+        "episode": 6,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:24",
+        "season": 2,
+        "episode": 7,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:25",
+        "season": 2,
+        "episode": 8,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:26",
+        "season": 2,
+        "episode": 9,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:27",
+        "season": 2,
+        "episode": 10,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:28",
+        "season": 2,
+        "episode": 11,
+        "ready_subtitle": true
+      },
+      {
+        "key": "m:29",
+        "season": 2,
+        "episode": 12,
+        "ready_subtitle": true
+      }
+    ],
+    "video_stats_unchanged": true,
+    "existing_caption_files_unchanged": 11,
+    "e01_video_sha256": "6c65c5e3da308613322dac97ddeed1a45e21c45d8f7366e77f41774edd03baa1",
+    "new_e10_caption_paths": [
+      "/data/media_hub/series/不要欺负我，长瀞同学(イジらないで、長瀞さん)/第02季/不要欺负我，长瀞同学(イジらないで、長瀞さん) - S02E10 - 承蒙八王子学长多多关照 - 2021.ass"
+    ]
+  },
+  "recovery_tasks": [
+    "735d1988d67c486894fda92c2be642ca",
+    "3d36bb8a68544326a64775715ea1402c",
+    "b6b5c4db4e774eb4a564ff802a8d70be"
+  ],
+  "current": {
+    "id": "231fc692e11f464bad39bf412174230f",
+    "state": "queued",
+    "quota_wait": {
+      "record_id": "403ad38e47c44773867f8c48a912397c",
+      "outcome_unknown": true,
+      "checks": 0,
+      "next_check_at": "2026-10-30 03:10:37"
+    },
+    "progress": {
+      "phase": "waiting_quota",
+      "label": "小丑回魂：欢迎来到德里镇(IT： Welcome to Derry)",
+      "done": 121,
+      "total": 746
+    }
+  },
+  "cloud": {
+    "url": "https://nastool.kannooooos.com",
+    "deployed": false,
+    "blocker": "Existing cloud deployment access unavailable; user asked for access location or alias, no secrets requested",
+    "prepared_bundle_sha256": "c0adac70ac377ab62a41cc8f45d6f92bc4d7605441b1b039f3c5e34642bf0a9f",
+    "latest_public_assets": {
+      "/assets/app.js": {
+        "status": 200,
+        "sha256": "eab71a2f5b61324ae905acb611aca10878f982d27c8340d144d9bb166c71acee",
+        "has_model_settings": false,
+        "has_model_upstream_reason": false
+      },
+      "/assets/tasks.js": {
+        "status": 200,
+        "sha256": "cd77f3ebf4d47716402d0864a4d793c208c9c12ff34b8f886f1c12643fc6373d",
+        "has_model_settings": false,
+        "has_model_upstream_reason": false
+      }
+    }
+  },
+  "remaining": [
+    "Observe pending recovery to terminal state and review quarantined unknown outcomes",
+    "Deploy cloud frontend/settings through supported cloud setup entrypoint once access is available"
+  ],
+  "unaffected_services": [
+    "phantom-crawler",
+    "phantom-quant",
+    "Codex"
+  ],
+  "latest_live_observation": {
+    "record_state": "needs_review",
+    "updated_at": "2026-10-29 14:17:01",
+    "progress": {
+      "phase": "paused",
+      "label": "小丑回魂：欢迎来到德里镇(IT： Welcome to Derry)",
+      "done": 121,
+      "total": 746
+    },
+    "queue": []
+  },
+  "unknown_observation": [
+    {
+      "analysis_thread": "01a18804-fbd5-7180-a83c-67940654acd5",
+      "analysis_turn": "01a18804-fc25-72b2-93f4-72da24309797",
+      "ai_inflight": true,
+      "last_model_failure": {
+        "code": "rate_limited",
+        "phase": "model_turn",
+        "outcome_unknown": true,
+        "terminal_observed": false
+      }
+    },
+    {
+      "read_error": "connection_failed"
+    }
+  ],
+  "blocked_audit": {
+    "reason": "Cloud deployment access remains missing; the historical unknown rate-limited task is now scheduled for two-hour observation without replay.",
+    "pending_job_state": "retry: waiting_quota",
+    "progress": {
+      "done": 121,
+      "total": 746
+    },
+    "resume_requires": [
+      "Existing cloud deployment access location or alias",
+      "External observation of original submitted turn terminal state; do not clear unknown flags"
+    ]
+  },
+  "quota_followup_receipt": "quota-wait-20261030.json"
+}

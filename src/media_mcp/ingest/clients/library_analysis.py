@@ -59,5 +59,5 @@ class LibraryAnalysisClient(CodexClient):
 
     def analyze(self,payload,**callbacks):
         self.observed_sources=set();self.search_items=set()
-        result=self.run_json(INSTRUCTIONS,payload,**callbacks)
+        result=self.run_json(INSTRUCTIONS,payload,ephemeral=False,**callbacks)
         return result,ResearchEvidence(sorted(self.observed_sources),len(self.search_items))

@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+from media_mcp.storage.model_settings import (DEFAULT_MODEL, DEFAULT_EFFORT)
 
 from media_mcp.adapters.codex import (
     APP_SERVER_TOKEN_FILES, APP_SERVER_URL, CodexClient,
 )
 
-MODEL = ''
+MODEL = DEFAULT_MODEL
+REASONING_EFFORT = DEFAULT_EFFORT
 CWD = '/tmp'
 TIMEOUT_SECONDS = 300.0
 MAX_RETRIES = 2

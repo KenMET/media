@@ -7,6 +7,7 @@ from sqlalchemy import text
 from media_mcp.application.collections import digest,file_state,library_root,mapping_state,video_changed
 from media_mcp.application.library_analysis import LibraryAnalysis,context_roots
 from media_mcp.config import contained
+from media_mcp.runtime.model_retry import retryable_model_error, ModelServiceDeferred, PERMANENT_MODEL_ERRORS
 from media_mcp.runtime.state import media_mutation_lock,media_job_guard,assert_mutation_lock
 
 
@@ -163,8 +164,12 @@ class LibraryAuto:
                     data['summary']['linked']+=int(result.get('mapping_created',False))
                     data['summary']['subtitles']+=int(result.get('subtitles')=='ready')
             except Exception as error:
+                if child:error.recovery_record_id=child['id']
+                if isinstance(error, ModelServiceDeferred) or getattr(error, 'outcome_unknown', False):raise
                 error_code=code(error)
-                if error_code in AI_UNAVAILABLE:data['ai_error']=error_code
+                if retryable_model_error(error):
+                    raise ModelServiceDeferred(error_code) from error
+                if error_code in AI_UNAVAILABLE or error_code in PERMANENT_MODEL_ERRORS:raise
                 if child:
                     guard();child=self.records.get(child['id'])
                     self.records.update(child,'needs_review',{**child['data'],'error_code':error_code})
@@ -238,14 +243,20 @@ class LibraryAuto:
                             subtitle_agent=SubtitleAgent(defer_ai_usage=True)
                         data['subtitle_inflight']=key;save()
                         with media_job_guard(guard),media_mutation_lock(self.db):
-                            value=process_subtitle(lib,jobs,lib.freeze(current),subtitle_agent)
+                            value=process_subtitle(lib,jobs,lib.freeze(current),subtitle_agent,task_id=child['id'])
                         fresh=next((file for file in lib.files() if file['key']==current['key']),None)
                         if value['state']!='completed' or not fresh or not ready_subtitle(fresh):raise ValueError('automatic_subtitle_review')
                         result['subtitles']='ready'
                         data['subtitle_inflight']=None
                 except Exception as error:
                     error_code=code(error)
-                    if error_code in AI_UNAVAILABLE:data['ai_error']=error_code
+                    if retryable_model_error(error):
+                        data['subtitle_inflight']=None
+                        save()
+                        raise ModelServiceDeferred(error_code) from error
+                    if error_code in AI_UNAVAILABLE or error_code in PERMANENT_MODEL_ERRORS:raise
+                    if error_code=='prior_subtitle_outcome_unknown':
+                        data['subtitle_inflight']=None;save()
                     result.update(state='needs_review',error_code=error_code)
             data['auto_results'].append(result);save()
         guard()

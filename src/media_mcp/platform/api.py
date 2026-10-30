@@ -259,12 +259,20 @@ async def read_input(request, model, limit=65536):
         raise ValueError('invalid_request') from None
 
 
+class ModelPolicy(Input):
+    model: str = Field(min_length=1,max_length=100,pattern=r'^[A-Za-z0-9][A-Za-z0-9._-]*$')
+    effort: Literal['low','medium']
+    revision: int = Field(ge=0)
+
+
 def create_app(accounts=None, records=None, service_factory=None):
     accounts = accounts or Accounts()
     accounts.initialize()
     records = records or Records(accounts.db)
     records.initialize()
     factory = service_factory or (lambda actor:PlatformService(actor, accounts, records))
+    from media_mcp.storage.model_settings import ModelSettings
+    model_settings = ModelSettings(accounts.db)
     catalog = Catalog(accounts.db)
     budget = Budget(accounts.db, accounts.clock)
     public = os.environ.get('MEDIA_WEB_PUBLIC', 'false') == 'true'
@@ -461,6 +469,26 @@ def create_app(accounts=None, records=None, service_factory=None):
         return {'events':await run_in_threadpool(accounts.events, user,
                     int(request.query_params.get('after', 0)), int(request.query_params.get('limit', 50)))}
 
+    async def model_policy(request):
+        user = await run_in_threadpool(actor, request, request.method != 'GET')
+        if not user.admin:
+            raise ValueError('permission_denied')
+        if request.method == 'GET':
+            return await run_in_threadpool(model_settings.get)
+        data = await read_input(request, ModelPolicy)
+        from media_mcp.storage.model_settings import available_models
+        choices = await run_in_threadpool(available_models)
+        if not any(x['model'] == data.model and data.effort in x['efforts'] for x in choices):
+            raise ValueError('model_not_available')
+        return await run_in_threadpool(model_settings.save, **data.model_dump(), actor=user, accounts=accounts)
+
+    async def model_options(request):
+        user = await run_in_threadpool(actor, request)
+        if not user.admin:
+            raise ValueError('permission_denied')
+        from media_mcp.storage.model_settings import available_models
+        return {'models':await run_in_threadpool(available_models)}
+
     async def tokens(request):
         user = await run_in_threadpool(actor, request, request.method != 'GET')
         if request.method == 'GET':
@@ -516,6 +544,8 @@ def create_app(accounts=None, records=None, service_factory=None):
         ('/api/allocations',allocation,['POST']), ('/api/events',events,['GET']),
         ('/api/auth/setup-status',setup_status,['GET']),
         ('/api/tokens',tokens,['GET','POST']), ('/api/tokens/{token_id}',revoke_token,['DELETE']),
+        ('/api/settings/model',model_policy,['GET','POST']),
+        ('/api/settings/model/options',model_options,['GET']),
         ('/api/status',status,['GET']), ('/healthz',health,['GET']),
         ('/api/discover',discover,['GET']), ('/api/detail',detail,['GET']),
         ('/',asset,['GET']), ('/assets/{name}',asset,['GET']),

@@ -416,7 +416,9 @@ def translate_events(
                         }
                         for event in batch
                         if event.index in batch_results
-                    ],
+                    ][-5:],
+                    'retry_instructions': ('Translate only batch.entries; recovered_context is reference, not output. '
+                        'Return every requested ID exactly once, including short utterances and punctuation.'),
                 }
                 logger.warning(
                     'Translation: batch %d/%d retrying missing ids '
@@ -436,6 +438,7 @@ def translate_events(
                 raise SubtitleTranslationError(
                     f'translation batch {batch_number} has no translations list'
                 )
+            pending_ids={event.index for event in pending}
             for item in returned:
                 if not isinstance(item, dict):
                     continue
@@ -443,7 +446,7 @@ def translate_events(
                     item_id = int(item.get('id'))
                 except (TypeError, ValueError):
                     continue
-                if item_id not in expected_ids:
+                if item_id not in expected_ids or item_id not in pending_ids:
                     continue
                 chinese = str(item.get('zh') or '').strip()
                 if chinese:

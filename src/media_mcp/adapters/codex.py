@@ -18,11 +18,12 @@ APP_SERVER_TOKEN_FILES = (
 class CodexError(RuntimeError):
     """Only a sanitized code may cross the transport/audit boundary."""
     def __init__(self, code: str, *, outcome_unknown: bool = False,
-                 terminal_observed: bool = False):
+                 terminal_observed: bool = False, phase: str | None = None):
         super().__init__(code)
         self.code = code
         self.outcome_unknown = outcome_unknown
         self.terminal_observed = terminal_observed
+        self.phase = phase
 
 
 def error_code(exc: Exception) -> str:
@@ -30,11 +31,19 @@ def error_code(exc: Exception) -> str:
         return exc.code
     status = getattr(exc, 'status_code', None)
     message = str(exc).lower()
+    if any(value in message for value in ('unsupported model', 'model is not supported', 'model_not_found')):
+        return 'model_unavailable'
+    if any(value in message for value in ('thread not found', 'thread does not exist', 'unable to load rollout')):
+        return 'thread_unavailable'
+    if any(value in message for value in ('invalid params', 'unrecognized field', 'unknown variant')):
+        return 'model_request_rejected'
+    if any(value in message for value in ('connection reset', 'error sending request', 'upstream connect', 'failed to connect to websocket')):
+        return 'model_upstream_unavailable'
     if 'model is at capacity' in message or 'model at capacity' in message:
         return 'model_at_capacity'
     if status in (401, 403) or '401 unauthorized' in message or '403 forbidden' in message:
         return 'token_rejected'
-    if status == 429 or any(s in message for s in ('rate limit', 'usage limit', 'quota')):
+    if status == 429 or any(s in message for s in ('rate limit', 'rate_limit', 'usage limit', 'usage_limit', 'quota', 'too many requests')):
         return 'rate_limited'
     if status == 503 or 'maintenance' in message:
         return 'maintenance'
@@ -185,8 +194,8 @@ class CodexClient:
     experimental_api = False
 
     def __init__(self, app_server_url: str | None = None, bearer_token: str | None = None,
-                 model: str = '', cwd: str = '/tmp', timeout: float = 300,
-                 reasoning_effort: str = '',
+                 model: str | None = None, cwd: str = '/tmp', timeout: float = 300,
+                 reasoning_effort: str | None = None,
                  max_retries: int = 2, retry_backoff_seconds: float = 3,
                  websocket_factory: Callable[..., Any] | None = None):
         self.app_server_url = app_server_url or os.getenv('CODEX_APP_SERVER_URL') or APP_SERVER_URL
@@ -195,9 +204,11 @@ class CodexClient:
             raise CodexError('token_missing')
         if timeout <= 0 or max_retries < 0 or retry_backoff_seconds < 0:
             raise ValueError('Invalid Codex timeout or retry budget')
-        if reasoning_effort and reasoning_effort not in ('none', 'low', 'medium', 'high', 'xhigh', 'max'):
-            raise ValueError('Invalid reasoning effort')
-        self.model, self.reasoning_effort = model, reasoning_effort
+        from media_mcp.storage.model_settings import DEFAULT_MODEL, DEFAULT_EFFORT, validate_policy
+        self._model_override, self._effort_override = model, reasoning_effort
+        self.model = DEFAULT_MODEL if model is None else model
+        self.reasoning_effort = DEFAULT_EFFORT if reasoning_effort is None else reasoning_effort
+        validate_policy(self.model, self.reasoning_effort)
         self.cwd, self.timeout = cwd, timeout
         self.max_retries, self.retry_backoff_seconds = max_retries, retry_backoff_seconds
         if websocket_factory is None:
@@ -288,16 +299,23 @@ class CodexClient:
                  on_submitting: Callable[[], None] | None = None,
                  on_turn: Callable[[str], None] | None = None,
                  strict: bool = True, timeout: float | None = None) -> dict:
+        from media_mcp.storage.model_settings import load_model_settings
+        policy = load_model_settings()
+        request_model = policy['model'] if self._model_override is None else self._model_override
+        request_effort = policy['effort'] if self._effort_override is None else self._effort_override
+        # One immutable snapshot for this call, including any transport retries.
+        # Existing clients observe later saves only on their next call.
         deadline = time.monotonic() + min(self.timeout, timeout if timeout is not None else self.timeout)
         for attempt in range(self.max_retries + 1):
             session = None
             submitted = False
             completed = False
+            phase = 'app_server_connect'
             try:
                 session = self._connect(deadline)
+                phase = 'thread_start'
                 params = self._thread_params()
-                if self.model:
-                    params['model'] = self.model
+                params['model'] = request_model
                 if thread_id:
                     params['threadId'] = thread_id
                     result = session.rpc('thread/resume', params)
@@ -309,24 +327,26 @@ class CodexClient:
                     raise CodexError('protocol_error')
                 if on_thread:
                     on_thread(current_thread)
+                phase = 'thread_validation'
                 self._validate_thread(session, result)
                 turn_params = {'threadId': current_thread, 'input': [{'type': 'text', 'text':
                     instructions.rstrip() + '\n\nInput:\n' + json.dumps(payload, ensure_ascii=False)}]}
                 turn_params['input'].extend(self._extra_input())
                 if output_schema:
                     turn_params['outputSchema'] = output_schema
-                if self.reasoning_effort:
-                    turn_params['effort'] = self.reasoning_effort
+                turn_params['effort'] = request_effort
                 # Persist intent BEFORE sending. Failure is unknown until a
                 # matching terminal event explicitly establishes the outcome.
                 if on_submitting:
                     on_submitting()
                 submitted = True
+                phase = 'turn_submit'
                 turn = session.rpc('turn/start', turn_params).get('turn') or {}
                 if not turn.get('id'):
                     raise CodexError('protocol_error')
                 if on_turn:
                     on_turn(turn['id'])
+                phase = 'model_turn'
                 raw = session.wait_turn(current_thread, turn['id'])
                 completed = True
                 try:
@@ -338,11 +358,13 @@ class CodexClient:
                     raise CodexError('invalid_output') from None
             except Exception as exc:
                 code = error_code(exc)
+                if code == 'connection_failed':
+                    code = 'app_server_unreachable' if phase == 'app_server_connect' else 'model_connection_lost'
                 terminal = isinstance(exc, CodexError) and exc.terminal_observed
                 unknown = submitted and not completed and not terminal
                 if submitted or session is not None or code in ('token_rejected', 'token_missing', 'login_required') or attempt == self.max_retries:
                     raise CodexError(code, outcome_unknown=unknown,
-                                     terminal_observed=terminal) from None
+                                     terminal_observed=terminal, phase=phase) from None
                 delay = self.retry_backoff_seconds * (attempt + 1)
                 if time.monotonic() + delay >= deadline:
                     raise CodexError('model_timeout') from None

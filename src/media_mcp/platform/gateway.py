@@ -27,7 +27,7 @@ from media_mcp.storage.client import DatabaseClient
 # Only API routes belonging to this application may be forwarded.
 PROXY_ROUTES = (
     r'auth/(?:bootstrap|login|me|logout|password|setup-status)', r'users(?:/[a-f0-9]{32})?',
-    r'command', r'allocations', r'events', r'status', r'tokens(?:/[a-f0-9]{32})?',
+    r'settings/model(?:/options)?', r'command', r'allocations', r'events', r'status', r'tokens(?:/[a-f0-9]{32})?',
 )
 
 

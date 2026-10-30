@@ -1,0 +1,82 @@
+{
+  "observed_at": "2026-10-29T13:10:38.556679+00:00",
+  "status": "NAS deployed; independent cloud web deployment not verified",
+  "default": {
+    "model": "gpt-6.1-terra",
+    "effort": "low"
+  },
+  "entrypoint": "setup.sh local up",
+  "nas_url": "http://192.168.8.1:8109/#settings",
+  "image": "sha256:9281c00cd54f92da4ccd9d4abdc40871f46e00cb723f443de4d05d2e169b4f17",
+  "local_targeted_tests": 25,
+  "deployed_targeted_tests": 25,
+  "test_delivery": "test source streamed into deployed image; all state/account fixtures isolated from real media",
+  "browser": {
+    "passed": true,
+    "real_disposable_http_ui": true,
+    "default_model": true,
+    "save_and_reload": true,
+    "medium_saved": true,
+    "non_admin_hidden": true,
+    "mobile_no_overflow": true,
+    "page_errors": []
+  },
+  "live_model_reload": {
+    "observed_at": "2026-10-29T13:08:08.220250+00:00",
+    "production_policy": {
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "revision": 0,
+      "updated_at": null
+    },
+    "live_calls": [
+      {
+        "requested_model": "gpt-6.1-terra",
+        "resolved_model": "gpt-6.1-terra",
+        "requested_effort": "low",
+        "authenticated_nonce": "passed"
+      },
+      {
+        "requested_model": "gpt-6.1-terra",
+        "resolved_model": "gpt-6.1-terra",
+        "requested_effort": "medium",
+        "authenticated_nonce": "passed"
+      }
+    ],
+    "installed_sha256": {
+      "media_mcp.adapters.codex": "40a54b89b1f5968d6cbf4a764ca19f6424f3934d3df463e3ee730c900738bd78",
+      "media_mcp.ingest.clients.codex": "784157b88ec20b67de496f4f350515c11b17cb58e130c179e42b95e74545fd7d",
+      "media_mcp.storage.model_settings": "9a4d311a914570a04fda4fb830a5633f63a68c8a9398077595941bcfe3cc78a8",
+      "media_mcp.platform.api": "7cc36492a8c0b545102495b7f96fe84cccccb97fd3d479e67b5b2aa980189a21",
+      "media_mcp.platform.gateway": "73daf4a5096bfb3e1848a256c64ec109e0b2bbd65bc46c10340fbf0264daf7a3"
+    },
+    "static_sha256": {
+      "app.js": "0358372180e7cf2de6508e9b8a532be28aca9361c6241c667390375f06fe945f",
+      "i18n.js": "367aee67797d3d6e6fbbc3757490468fa350fa857dfe732c73f56f3799ce2edc"
+    },
+    "same_client_instance_without_restart": true,
+    "configuration_changes_only_in_disposable_db": true,
+    "production_policy_after": {
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "revision": 0,
+      "updated_at": null
+    }
+  },
+  "live_http": {
+    "url": "http://192.168.8.1:8109",
+    "asset_status": 200,
+    "asset_sha256": "0358372180e7cf2de6508e9b8a532be28aca9361c6241c667390375f06fe945f",
+    "unauthenticated_model_settings_status": 401
+  },
+  "likec4_validate": "passed",
+  "source_image_parity": "all modified runtime modules and browser assets matched",
+  "untouched_services": [
+    "phantom-crawler",
+    "phantom-quant",
+    "codex"
+  ],
+  "cloud_web": "gateway whitelist and static assets implemented and exercised with in-process cloud-to-NAS HTTP tests; external cloud endpoint/access pending",
+  "schema": "one revisioned media_model_settings row in shared NAS SQLite; administrator/CSRF check and atomic audit event",
+  "applies": "next model call, including already-created clients; in-flight calls and transport retries retain one snapshot; no model-service restart required"
+}

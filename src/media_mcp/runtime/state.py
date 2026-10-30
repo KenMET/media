@@ -101,8 +101,12 @@ class MediaJobs:
         return self.db.execute('''UPDATE media_processing_job SET lease_until=datetime('now','+120 seconds'),
             updated_at=CURRENT_TIMESTAMP WHERE id=:id AND owner=:owner AND state='running' AND lease_until>CURRENT_TIMESTAMP''',job).rowcount==1
 
-    def finish(self,job,*,error=None,result='{}',review_required=False):
-        delay=min(3600,30*2**min(int(job['attempts']),7))
+    def finish(self,job,*,error=None,result='{}',review_required=False,retry_delay_seconds=None):
+        if retry_delay_seconds is None and error=='model_quota_waiting':
+            from media_mcp.runtime.quota_wait import QUOTA_CHECK_SECONDS
+            retry_delay_seconds=QUOTA_CHECK_SECONDS
+        delay=int(retry_delay_seconds) if retry_delay_seconds is not None else min(3600,30*2**min(int(job['attempts']),7))
+        if delay < 0:raise ValueError('invalid_retry_delay')
         with self.db.begin() as conn:
             owned=conn.execute(text('''SELECT id FROM media_processing_job WHERE id=:id AND owner=:owner
                 AND state='running' AND lease_until>CURRENT_TIMESTAMP'''),job).first()

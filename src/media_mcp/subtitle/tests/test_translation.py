@@ -182,6 +182,23 @@ class SubtitleTranslationTest(unittest.TestCase):
         self.assertEqual(['你好'], translations)
         self.assertEqual([1], [item['id'] for item in calls[1]['batch']['entries']])
 
+    def test_missing_id_retry_bounds_context_and_cannot_overwrite_accepted_lines(self):
+        events=[SubtitleEvent(index=i,start_seconds=float(i),end_seconds=i+0.8,
+                              source_text='Line '+str(i)) for i in range(1,31)]
+        calls=[]
+        def translator(payload):
+            calls.append(payload)
+            if len(calls)==1:
+                return {'success':True,'translations':[{'id':i,'zh':'已译'+str(i)} for i in range(3,31)]}
+            return {'success':True,'translations':[{'id':3,'zh':'错误覆盖'},
+                {'id':1,'zh':'第一句'},{'id':2,'zh':'第二句'}]}
+        translated=translate_events(events,translator,{'title':'fixture'},'en')
+        self.assertEqual(2,len(calls))
+        self.assertEqual([1,2],[entry['id'] for entry in calls[1]['batch']['entries']])
+        self.assertLessEqual(len(calls[1]['recovered_context']),5)
+        self.assertEqual(['第一句','第二句','已译3'],translated[:3])
+        self.assertEqual(30,len(translated))
+
     def test_translation_rejects_ids_missing_after_retries(self):
         events = [
             SubtitleEvent(

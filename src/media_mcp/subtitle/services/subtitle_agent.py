@@ -50,6 +50,7 @@ class SubtitleAgent:
 
     def _run_path_summary_locked(self, raw_path: str, test_mode: bool = False, send_notify: bool = True) -> dict[str, dependencies.Any]:
         self._content_verifications = []
+        self._last_model_error = None
         path = self._resolve_path(raw_path)
         dependencies.logger.info('Input: resolving path=%s mode=%s', path, 'dry-run' if test_mode else 'apply')
         dependencies.logger.info('Lookup: media_link start path=%s', path)
@@ -272,13 +273,18 @@ class SubtitleAgent:
 
     def _external_call(self, call):
         from media_mcp.runtime.state import mutation_lock_is_active,release_mutation_lock_for_io
-        if not mutation_lock_is_active():
-            return call()
-        before = self._model_media_snapshot()
-        # External latency must not prevent another download from being linked or
-        # an approved deletion from running. Reject stale results on return.
-        with release_mutation_lock_for_io(lambda:self._model_media_snapshot()==before):
-            return call()
+        from media_mcp.adapters.codex import CodexError
+        try:
+            if not mutation_lock_is_active():
+                return call()
+            before = self._model_media_snapshot()
+            with release_mutation_lock_for_io(lambda:self._model_media_snapshot()==before):
+                return call()
+        except CodexError as error:
+            # Lower-level subtitle fallbacks may consume the exception. The
+            # durable worker still needs its actual submission certainty.
+            self._last_model_error = error
+            raise
 
     def _call_ai_with_usage_retry(self, call, *, media_label: str, operation: str):
         attempt = 0

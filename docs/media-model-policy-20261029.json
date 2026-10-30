@@ -1,0 +1,20 @@
+{
+  "observed_at": "2026-10-29T12:50:37.783714+00:00",
+  "configured_model": "gpt-6.1-terra",
+  "configured_effort": "low",
+  "subtitle_model": "gpt-6.1-terra",
+  "subtitle_effort": "low",
+  "installed_sha256": "b34b5d4a207683ffeaa352af78d70f1771c8df48e447d5dbc4c6d7b379732c62",
+  "requested_model": "gpt-6.1-terra",
+  "resolved_model": "gpt-6.1-terra",
+  "requested_effort": "low",
+  "authenticated_nonce_probe": "passed",
+  "local_targeted_tests": 8,
+  "deployed_targeted_tests": 8,
+  "deployment_entrypoint": "setup.sh local up",
+  "image": "sha256:2c8f97684491febe10ad7906bef5d87f313eb4e109b4c8ca69f1190023b7779a",
+  "scope": "standalone Media worker/control only; Crawler, Quant and Codex runtime not restarted",
+  "policy": "default low; only explicitly configured medium is allowed; no model or high-effort escalation",
+  "official_configuration_reference": "https://learn.chatgpt.com/docs/config-file/config-reference",
+  "deployed_test_delivery": "8 focused test cases streamed from workspace and executed against installed runtime modules; production image excludes tests"
+}

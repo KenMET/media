@@ -1,0 +1,86 @@
+{
+  "date_utc": "2026-10-30",
+  "status": "deployed_nas",
+  "check_interval_seconds": 7200,
+  "quota_retry_limit": null,
+  "transport_retry_limit": 3,
+  "installed_targeted_tests": 89,
+  "local_targeted_tests": 37,
+  "browser": {
+    "passed": true,
+    "legacy_connection_reason_readable": true,
+    "mobile_no_overflow": true,
+    "page_errors": [],
+    "waiting_quota_is_not_completed": true,
+    "next_check_time_visible": true
+  },
+  "likec4_validated": true,
+  "production": {
+    "policy": {
+      "model": "gpt-6.1-terra",
+      "effort": "low",
+      "revision": 0,
+      "updated_at": null
+    },
+    "task": {
+      "id": "231fc692e11f464bad39bf412174230f",
+      "state": "queued",
+      "quota_wait": {
+        "record_id": "403ad38e47c44773867f8c48a912397c",
+        "outcome_unknown": true,
+        "checks": 0,
+        "next_check_at": "2026-10-30 03:10:37"
+      },
+      "progress": {
+        "phase": "waiting_quota",
+        "label": "小丑回魂：欢迎来到德里镇(IT： Welcome to Derry)",
+        "done": 121,
+        "total": 746
+      }
+    },
+    "queue": [
+      {
+        "id": 10,
+        "state": "retry",
+        "attempts": 1,
+        "next_attempt_at": "2026-10-30 03:10:37",
+        "now": "2026-10-30 01:13:13"
+      }
+    ],
+    "module_hashes": {
+      "runtime.quota_wait": "7db1dd961f1d455b3e02acc82a1d41bc5a976f0e8f3286115ebb40d34089af05",
+      "runtime.state": "0f465f484b04c7aa40f6b3017b974de2a068890173113ce668a08855c3ee5378",
+      "runtime.library_worker": "f870fd791df270baf6f92d48f36e26aa1ea38570a8399855d13df226a569997b",
+      "application.library_auto": "4eb298cedfe6f2350d172b431082a3cce6b51c65774a9b6832c77429bb5a2765",
+      "application.collections": "4a7835bf43d6cff678daece7033330da0880e29dc0e8f0c5d2f6a2259c11de09",
+      "ingest.clients.library_analysis": "3412066eedd564fc1e72ef839060fc48b7c8f18b607f6802faa1f52e9c5375c1"
+    }
+  },
+  "containers": [
+    "/media-standalone-local-worker-1 sha256:2f46bc8f675b66a15313935b8f00d2cf9dc0b0858950a1af24df83a89315f021 2026-10-30T01:12:59.89458618Z healthy",
+    "/media-standalone-local-control-1 sha256:2f46bc8f675b66a15313935b8f00d2cf9dc0b0858950a1af24df83a89315f021 2026-10-30T01:12:59.891533273Z healthy",
+    "/phantom-crawler sha256:f53cbb68c8ca97de2d9e1966fd92e9e81eb63fab47a877501c1133048e496a6a 2026-10-20T11:53:54.627659966Z healthy",
+    "/phantom-quant sha256:024b1d981b377ad402cb8e3b073ed5fa9ee762d9e2739a5dc2461e5c4e3a2f14 2026-10-19T07:40:19.874280996Z healthy"
+  ],
+  "cloud_bundle": {
+    "archive": "/tmp/media-cloud-quota-update-20261030.tar.gz",
+    "sha256": "e638856ddcf98fecef7f196d3d7525142e22f59541caea2838dd373c03f8eb17",
+    "files": 149,
+    "entrypoint_after_sync": "sh setup.sh cloud",
+    "status": "prepared; cloud access still required",
+    "excludes": [
+      ".env",
+      "state",
+      "data",
+      "services",
+      "credentials"
+    ]
+  },
+  "cloud_deployed": false,
+  "first_real_scheduled_check_observed": false,
+  "remaining": [
+    "Observe first real due check at 2026-10-30 03:10:37 UTC",
+    "Historical unknown submission remains fenced unless matching failed/interrupted terminal is observed",
+    "Cloud website needs existing deployment access"
+  ]
+}

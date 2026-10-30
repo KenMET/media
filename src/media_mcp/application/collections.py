@@ -658,4 +658,4 @@ def task_public(row):
     return {'job_id':row['id'],'state':row['state'],'action':data['action'],'automatic':data.get('automatic',False),'result_collection_id':data.get('result_collection_id'),'summary':data.get('summary',{}),
             'collection_id':data['collection_id'],'label':data.get('label'),'analysis_plan_id':data.get('analysis_plan_id'),'analysis_progress':data.get('analysis_progress'),'analysis_applied':data.get('analysis_applied',0),'total':data.get('total',len(data['files'])),
             'completed':len(results), 'results':visible,'review_count':sum(item['state']!='completed' for item in results),
-            'error_code':data.get('error_code'), 'blocked':data.get('blocked',[])}
+            'quota_wait':data.get('quota_wait'), 'error_code':data.get('error_code'), 'model_failure':data.get('model_failure'), 'model_retry_count':data.get('model_retry_count',0), 'blocked':data.get('blocked',[])}

@@ -12,6 +12,7 @@ from media_mcp.application.collections import Collections, mapping_state
 from media_mcp.runtime.state import MediaJobs,media_mutation_lock,assert_mutation_lock,media_job_guard
 from media_mcp.runtime.worker import heartbeat
 from media_mcp.storage.records import Records
+from media_mcp.runtime.model_retry import ModelServiceDeferred, retryable_model_error, MAX_MODEL_RETRIES, PERMANENT_MODEL_ERRORS
 
 
 def repair_mapping(library,jobs,conn,file,operation):
@@ -92,8 +93,10 @@ def repair_mapping(library,jobs,conn,file,operation):
     return {'key':file['key'],'state':'completed'}
 
 
-def process_subtitle(library,jobs,file,subtitle_agent=None):
+def process_subtitle(library,jobs,file,subtitle_agent=None,*,task_id=None):
     library.validate([file])
+    from media_mcp.runtime.model_scope import assert_no_unresolved_subtitle
+    assert_no_unresolved_subtitle(jobs.db,file,exclude_id=task_id)
     if subtitle_agent is None:
         from media_mcp.subtitle.services.subtitle_agent import SubtitleAgent
         subtitle_agent=SubtitleAgent(defer_ai_usage=True)
@@ -106,6 +109,8 @@ def process_subtitle(library,jobs,file,subtitle_agent=None):
     summary=subtitle_agent._run_path_summary_locked(path,send_notify=False)
     counts={key:summary[key] for key in ('handled','media_count','sidecar_count','skipped','failed','missing','review') if type(summary.get(key)) is int}
     incomplete=summary.get('media_count')!=1 or not summary.get('handled') or summary.get('failed') or summary.get('missing') or summary.get('review')
+    failure=getattr(subtitle_agent,'_last_model_error',None)
+    if incomplete and failure is not None:raise failure
     return {'key':file['key'],'state':'needs_review' if incomplete else 'completed','summary':counts}
 
 
@@ -119,8 +124,9 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
     if not row:
         raise ValueError('library_task_not_found')
     row=records.decode(row)
-    if row['state'] in ('completed','completed_with_warnings','needs_review'):
+    if row['state'] in ('completed','completed_with_warnings','needs_review','failed'):
         return
+    from media_mcp.runtime.quota_wait import check_quota_wait
     accounts=Accounts(jobs.db);actor=accounts.actor_by_id(row['data']['owner'])
     if not actor.can_manage_media:
         raise ValueError('media_management_permission_required')
@@ -129,7 +135,16 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
         if not jobs.db.execute("SELECT id FROM media_processing_job WHERE id=:id AND owner=:owner AND state='running' AND lease_until>CURRENT_TIMESTAMP",job).first():
             raise RuntimeError('media_job_lease_lost')
     lease()
-    row=records.update(row,'running')
+    from media_mcp.runtime.quota_wait import QuotaWaiting
+    from datetime import datetime,timezone
+    wait=row['data'].get('quota_wait')
+    if wait and wait.get('next_check_at','')>datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'):
+        raise QuotaWaiting(wait)
+    row=check_quota_wait(records,row,analysis_client,guard=lease)
+    lease()
+    starting_data=dict(row['data'])
+    if row['state']=='queued':starting_data.pop('error_code',None)
+    row=records.update(row,'running',starting_data)
     data=row['data'];completed={item['key'] for item in data['results']}
     if data['action']=='auto':
         from media_mcp.application.library_auto import LibraryAuto
@@ -149,10 +164,14 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
         if analysis_probe is not None:kwargs['probe']=analysis_probe
         LibraryAnalysis(library).process(row,analysis_guard,**kwargs)
         return
+    if data['action']=='subtitles' and data.get('subtitle_inflight'):
+        raise ValueError('automatic_subtitle_outcome_unknown')
     for file in data['files']:
         if file['key'] in completed:
             continue
         lease()
+        if data['action']=='subtitles':
+            data['subtitle_inflight']=file['key'];row=records.update(row,'running',data)
         try:
             with media_job_guard(lease),media_mutation_lock(jobs.db) as conn:
                 # Permission changes and file changes after queueing both fail closed.
@@ -166,19 +185,59 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
                     if subtitle_agent is None:
                         from media_mcp.subtitle.services.subtitle_agent import SubtitleAgent
                         subtitle_agent=SubtitleAgent(defer_ai_usage=True)
-                    result=process_subtitle(library,jobs,file,subtitle_agent)
+                    result=process_subtitle(library,jobs,file,subtitle_agent,task_id=row['id'])
                 assert_mutation_lock()
         except Exception as error:
             if str(error) in ('media_job_lease_lost','media_mutation_lock_lost','media_mutation_scope_invalidated'):
                 raise
-            code=str(error) if isinstance(error,ValueError) else type(error).__name__
+            from media_mcp.adapters.codex import CodexError
+            if isinstance(error,CodexError):
+                if not error.outcome_unknown:
+                    data.pop('subtitle_inflight',None);row=records.update(row,'running',data)
+                if retryable_model_error(error):raise ModelServiceDeferred(error.code) from error
+                if error.outcome_unknown or error.code in PERMANENT_MODEL_ERRORS:raise
+            code=getattr(error,'code',str(error) if isinstance(error,ValueError) else type(error).__name__)
             result={'key':file['key'],'state':'needs_review','error_code':code if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,100}',code) else type(error).__name__}
         lease()
+        data.pop('subtitle_inflight',None)
         data['results'].append(result)
         row=records.update(row,'running',data)
     lease()
     state='completed_with_warnings' if data.get('blocked') or any(item['state']!='completed' for item in data['results']) else 'completed'
     records.update(row,state,data)
+
+
+def record_failure(jobs, job, exc):
+    from media_mcp.runtime.quota_wait import QuotaWaiting,next_quota_check,MAX_QUOTA_CHECKS
+    underlying=exc.__cause__ if isinstance(exc,ModelServiceDeferred) else exc
+    quota=isinstance(exc,QuotaWaiting) or getattr(underlying,'code',None)=='rate_limited' or getattr(exc,'cause',None)=='rate_limited'
+    retry_model=quota or (isinstance(exc,ModelServiceDeferred) or retryable_model_error(exc)) and job['attempts']<=MAX_MODEL_RETRIES
+    candidate=getattr(exc,'cause',None) or getattr(exc,'code',str(exc) if isinstance(exc,ValueError) else type(exc).__name__)
+    if getattr(exc,'outcome_unknown',False):candidate='analysis_ai_outcome_unknown'
+    exhausted=isinstance(exc,QuotaWaiting) and exc.wait.get('checks',0)>=MAX_QUOTA_CHECKS
+    if quota:candidate='quota_checks_exhausted' if exhausted else 'model_quota_waiting'
+    if exhausted:retry_model=False
+    error=candidate if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,100}',candidate) else type(exc).__name__
+    if jobs.renew(job):
+        records=Records(jobs.db)
+        row=jobs.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_task' AND json_extract(data,'$.processing_key')=:key",{'key':job['delivery_key']}).mappings().first()
+        if row:
+            row=records.decode(row)
+            if error=='analysis_ai_outcome_unknown' and (row['data'].get('action')=='subtitles' or row['data'].get('analysis_progress',{}).get('phase')=='subtitles'):
+                error='automatic_subtitle_outcome_unknown'
+            quota_data={}
+            if quota:
+                wait=dict(exc.wait) if isinstance(exc,QuotaWaiting) else {'outcome_unknown':bool(getattr(underlying,'outcome_unknown',False)),
+                    'record_id':getattr(exc,'recovery_record_id',None) or row['id'],'checks':0}
+                wait['next_check_at']=None if exhausted else next_quota_check()
+                quota_data={'quota_wait':wait}
+            records.update(row,'failed' if exhausted else ('queued' if retry_model else 'needs_review'),{**row['data'],**quota_data,'error_code':error,
+                'model_retry_count':job['attempts'],
+                'model_failure':{'code':error,'phase':getattr(exc.__cause__ if isinstance(exc,ModelServiceDeferred) else exc,'phase',None),
+                    'outcome_unknown':bool((quota_data.get('quota_wait') or {}).get('outcome_unknown') or getattr(exc,'outcome_unknown',False) or error in {'analysis_ai_outcome_unknown','automatic_subtitle_outcome_unknown'}),
+                    'terminal_observed':bool(getattr(exc.__cause__ if isinstance(exc,ModelServiceDeferred) else exc,'terminal_observed',False))},
+                'analysis_progress':{**row['data'].get('analysis_progress',{}),'phase':'failed' if exhausted else ('waiting_quota' if quota else ('waiting_model' if retry_model else 'paused'))}})
+    return error, retry_model
 
 
 def run_library_worker():
@@ -197,18 +256,13 @@ def run_library_worker():
                 except Exception:os._exit(1)
         thread=threading.Thread(target=renew,daemon=True);thread.start()
         error=None
+        retry_model=False
         try:
             process_task(jobs,job)
         except Exception as exc:
-            candidate=getattr(exc,'code',str(exc) if isinstance(exc,ValueError) else type(exc).__name__)
-            error=candidate if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,100}',candidate) else type(exc).__name__
-            if jobs.renew(job):
-                records=Records(jobs.db)
-                row=jobs.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_task' AND json_extract(data,'$.processing_key')=:key",{'key':job['delivery_key']}).mappings().first()
-                if row:
-                    row=records.decode(row)
-                    records.update(row,'needs_review',{**row['data'],'error_code':error})
+            error,retry_model=record_failure(jobs,job,exc)
         finally:
             done.set();thread.join(timeout=2)
-        jobs.finish(job,error=error,review_required=bool(error),result=json.dumps({'error':error}))
+        jobs.finish(job,error=error,review_required=bool(error) and not retry_model,result=json.dumps({'error':error}),
+            retry_delay_seconds=7200 if error=='model_quota_waiting' else None)
         heartbeat('library')

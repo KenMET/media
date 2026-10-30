@@ -319,6 +319,10 @@ class LibraryAnalysis:
         accepted=data.get('analysis_decisions',[])
         done={decision['key'] for decision in accepted}
         pending=[file for file in unresolved if file['key'] not in done]
+        if pending:
+            from media_mcp.runtime.model_scope import assert_no_unresolved_analysis
+            pending_keys={file['key'] for file in pending}
+            assert_no_unresolved_analysis(self.db,[file for file in data['files'] if file['key'] in pending_keys],exclude_id=row['id'])
         for index in range(0,len(pending),12):
             chunk=pending[index:index+12]
             if client is None:
@@ -331,7 +335,17 @@ class LibraryAnalysis:
             def turn(ident):data['analysis_turn']=ident;save()
             data['analysis_progress']={'phase':'researching','done':len(accepted),'total':len(unresolved)}
             save();guard();lib.validate(data['files'])
-            result,opened=client.analyze(payload,on_thread=thread,on_submitting=submitting,on_turn=turn)
+            try:
+                result,opened=client.analyze(payload,on_thread=thread,on_submitting=submitting,on_turn=turn)
+            except Exception as error:
+                from media_mcp.adapters.codex import CodexError
+                if isinstance(error, CodexError):
+                    data['last_model_failure']={'code':error.code,'phase':error.phase,
+                        'outcome_unknown':error.outcome_unknown,'terminal_observed':error.terminal_observed}
+                    if not error.outcome_unknown:
+                        data['ai_inflight']=False
+                    save()
+                raise
             guard();lib.validate(data['files'])
             if digest(manifest(roots))!=digest(observed):raise ValueError('analysis_directory_changed')
             parsed=AnalysisOutput.model_validate(result)

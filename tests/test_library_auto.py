@@ -11,6 +11,7 @@ from media_mcp.platform.service import PlatformService
 
 
 class AutoAI:
+    def check_connection(self):pass
     def __init__(self):self.calls=0
     def analyze(self,payload,**callbacks):
         self.calls+=1;callbacks['on_submitting']()
@@ -105,14 +106,34 @@ class AutoTests(unittest.TestCase):
         self.assertEqual(page['collections'][0]['summary']['extras'],2)
         self.assertEqual(page['collections'][0]['summary']['files'],3)
 
-    def test_quota_failure_does_not_flood_ai_for_later_items(self):
+    def test_quota_failure_pauses_task_without_marking_later_files_failed(self):
         from media_mcp.adapters.codex import CodexError
+        from media_mcp.runtime.model_retry import ModelServiceDeferred
+        from media_mcp.runtime.library_worker import record_failure
         from unittest.mock import Mock
         self.fixture(1);self.add_movies(3)
         ai=Mock();ai.analyze.side_effect=CodexError('rate_limited')
-        result=self.run_auto(self.service.library_auto('quota-auto-0001'),ai)
-        self.assertEqual(result['state'],'completed_with_warnings')
-        self.assertEqual(result['completed'],4);self.assertEqual(ai.analyze.call_count,1)
+        job=self.service.library_auto('quota-auto-0001')
+        jobs=MediaJobs();jobs.initialize();claimed=jobs.claim('library')
+        with self.assertRaises(ModelServiceDeferred) as caught:
+            process_task(jobs,claimed,analysis_client=ai,analysis_probe=lambda p:1400)
+        error,retry=record_failure(jobs,claimed,caught.exception)
+        jobs.finish(claimed,error=error,review_required=not retry)
+        result=self.service.collection_task(job['job_id'])
+        self.assertEqual(result['state'],'queued')
+        self.assertEqual(result['completed'],0)
+        self.assertEqual(ai.analyze.call_count,1)
+        self.assertIsNone(jobs.claim('library'))
+        self.db.execute("UPDATE media_processing_job SET next_attempt_at=datetime('now','-1 second') WHERE id=:id",claimed)
+        row=self.records.get(job['job_id'])
+        self.records.update(row,row['state'],{**row['data'],'quota_wait':{**row['data']['quota_wait'],'next_check_at':'2000-01-01 00:00:00'}})
+        resumed=jobs.claim('library')
+        process_task(jobs,resumed,analysis_client=AutoAI(),analysis_probe=lambda p:1400,subtitle_agent=AutoSubtitles())
+        jobs.finish(resumed)
+        result=self.service.collection_task(job['job_id'])
+        self.assertEqual('completed',result['state'])
+        self.assertEqual(4,result['completed'])
+
 
     def test_repeated_start_and_replayed_alias_do_not_start_another_run(self):
         original=self.fixture(1)
