@@ -41,6 +41,24 @@ class ResearchEvidence(list):
 
 
 class LibraryAnalysisClient(CodexClient):
+    @staticmethod
+    def recovered_result(turn):
+        """Rebuild evidence using persisted tool items, never the claimed citations."""
+        from media_mcp.adapters.codex import CodexError
+        sources=set();searches=0;texts=[]
+        for item in turn.get('items', []):
+            kind=item.get('type')
+            if kind not in ('userMessage','agentMessage','reasoning','contextCompaction','webSearch'):
+                raise CodexError('unexpected_tool_call')
+            if kind=='agentMessage':texts.append(CodexClient._extract_text(item))
+            if kind=='webSearch':
+                action=item.get('action') or {}
+                if action.get('type')=='search' or not action and item.get('query'):searches+=1
+                if action.get('type') in ('openPage','findInPage') and isinstance(action.get('url'),str):sources.add(action['url'])
+        if not texts:raise ValueError('analysis_completed_output_unavailable')
+        result=CodexClient._parse_json_response(texts[-1])[0]
+        return result,ResearchEvidence(sorted(sources),searches)
+
     def _thread_params(self):
         params=super()._thread_params()
         params['config']['web_search']='live'

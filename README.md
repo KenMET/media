@@ -38,7 +38,7 @@
 
 媒体库按作品显示海报合集，详情中查看季集与版本，一键全库自动识别、保存、补链与检查字幕，高级选项保留手动维护，见[作品媒体库](docs/collection-library.md)。已有媒体的规则判断、时长探测与 AI 兜底检索由 NAS `local-worker` 执行，见[智能识别](docs/library-ai-identification.md)。
 
-热门、搜索、下载、整理与自动字幕的默认流程、任务进度及断线恢复见[任务与使用体验](docs/task-experience.md)。
+热门、搜索、下载、整理与自动字幕的默认流程、任务进度及断线恢复见[任务与使用体验](docs/task-experience.md)。模型会话与额度等待、自动归档规则见[恢复说明](docs/session-recovery.md)。
 
 ## 日常命令
 

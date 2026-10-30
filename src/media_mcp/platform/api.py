@@ -237,7 +237,7 @@ COMMANDS = {
     'inventory_import':InventoryImport, 'inventory':InventoryPage,
     'collections':CollectionsPage,'collection':Collection,'collection_identify':CollectionIdentify,
     'library_auto':LibraryAutoRun,'collection_analyze':CollectionAnalyze,'collection_analysis_plan':LibraryPlan,'collection_analysis_apply':AnalysisApply,
-    'library_tasks':Jobs,'library_task_status':Job,'library_task_details':LibraryTaskPage,
+    'library_tasks':Jobs,'library_task_status':Job,'library_task_details':LibraryTaskPage,'library_session_recover':Job,
     'library_auto_status':SubmissionStatus,'download_submission_status':SubmissionStatus,
     'collection_classify':CollectionClassify,'collection_identity_apply':LibraryPlan,'collection_mapping_plan':CollectionScope,
     'collection_mapping_apply':LibraryMappingApply,'collection_subtitles':LibrarySubtitles,'collection_task':Job,

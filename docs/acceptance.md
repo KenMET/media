@@ -4,6 +4,8 @@
 
 | 历史资料 | 用途 |
 | --- | --- |
+| [恢复改动自审与交付 Goal](history/session-recovery-review-goal-20261031.md) | 合理性、去重、库复用、目录规范、Git 与容器交付边界 |
+| [会话恢复与归档验收](history/session-recovery-goal-20261030.md) | 额度与会话独立恢复、通知整改、原任务终态及代码审查 |
 | [云端搜索与本地执行验收](history/cloud-execution-goal.md) | 单向端口连接、118 项回归、真实 Provider 与隔离下载入库 |
 | [完整本地功能验收](history/local-functional-acceptance-20261026.md) | 权限、真实下载/字幕、配额和恢复 |
 | [真实 Provider 与双语验收](history/live-acceptance.md) | 榜单、中英文 public 搜索与下载证据 |

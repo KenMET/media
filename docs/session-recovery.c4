@@ -1,0 +1,53 @@
+specification {
+  element component
+  element datastore { style { shape storage } }
+  element external
+}
+
+model {
+  worker = component 'Supervisor, library worker and lease guard'
+  research = component 'Read-only library research' {
+    description 'Frozen file/manifest/input/model binding. Completed chunks persist. Every callback and plan checks worker lease, revision and execution generation.'
+  }
+  recovery = component 'Original session recovery' {
+    description 'Load only the original thread, reconcile completed results, observe live turns with a ten-minute deadline. Three one-minute observations of unavailable history permit one read-only replacement. Preserve unknown history and reject late generations.'
+  }
+  quota = component 'Quota availability' {
+    description 'Independent same-policy nonce probe. Two-hour schedule, ten-check maximum. Legacy observations retain their original budget and are not reported as proven quota shortages. Success does not clear unknown submissions.'
+  }
+  state = datastore 'SQLite records, checkpoints and notification intents'
+  files = datastore 'Media and hardlinks' {
+    description 'Identity and mutation locks remain mandatory. Session recovery does not change source bytes, submit downloads, adopt torrents or add deletion.'
+  }
+  codex = external 'Existing Codex App Server'
+  ui = component 'Task status and gateway'
+  notices = component 'Terminal notification retry'
+  cleanup = component 'Terminal Media research thread archival' {
+    description 'Explicit intents are committed with accepted research chunks or observed terminal failures. Revalidate Media ownership, checkpoint evidence and the exact single terminal turn before archival. Keep unknown and reused human threads. Retry failures without stopping media work or sending notifications.'
+  }
+  delivery = external 'Configured notification target'
+  worker -> recovery 'observes original results before any quota probe, under lease and input binding'
+  worker -> quota 'checks only when original two-hour deadline is due; reserves budget before I/O'
+  worker -> research 'resumes unfinished work only'
+  research -> recovery 'reconciles original unknown request before submission'
+  recovery -> codex 'thread/read and same-ID thread/resume; never turn/start'
+  research -> codex 'read-only research; one controlled replacement per input'
+  quota -> codex 'bounded lightweight same-policy probe'
+  recovery -> state 'CAS history, observation deadline and generation'
+  research -> state 'input binding, accepted chunks and current-generation plan'
+  research -> files 'validates physical identity and unchanged manifest'
+  worker -> state 'owns durable job lease and progress'
+  ui -> state 'shows quota and session recovery separately'
+  notices -> state 'claims persistent terminal notification intent'
+  notices -> delivery 'retries failed delivery; no false delivered status'
+  worker -> cleanup 'drains bounded archival intents after accepted checkpoints'
+  cleanup -> state 'claims only explicit owned research archival intents'
+  cleanup -> codex 'same-thread observation and archive; no delete or new model turn'
+}
+
+views {
+  view recovery_flow {
+    title 'Media session recovery and independent quota checks'
+    include *
+  }
+}

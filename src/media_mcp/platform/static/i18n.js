@@ -2,6 +2,10 @@
 // server data never pass through this dictionary or through HTML translation.
 export const lang = localStorage.getItem('media-language') === 'en' ? 'en' : 'zh-CN';
 const english = {
+  '恢复检测暂时连接失败，按两小时计划再次检查':'The recovery probe could not connect. Checking again on the two-hour schedule.',
+  '最近检测：':'Latest probe: ',
+  '等待额度恢复；已保存成果，旧请求将先核对再恢复。':'Waiting for quota recovery. Saved work is preserved; original requests are reconciled before continuing.',
+"正在恢复旧会话，尚未重新提交识别请求":"Recovering the original session; no replacement request submitted yet.","会话恢复：":"Session recovery: ","旧会话结果尚未确认，正在恢复；这不代表额度不足。":"The original session outcome is unknown. Recovering it; this does not establish a quota shortage.","旧会话尚未加载，正在尝试恢复。":"The original session is not loaded. Attempting recovery.","旧会话记录不可用，正在按安全规则恢复识别。":"Original session history is unavailable. Recovering identification safely.","旧请求结果尚未确认。":"The original request outcome is unknown.","旧请求仍在运行，未提交新请求。":"The original request is still running. No replacement submitted.","会话恢复未成功，已保留原请求隔离并停止自动重试。":"Session recovery failed. The original request remains fenced; automatic retry stopped.","新会话结果再次未知，已停止自动替代。":"The replacement session outcome is unknown. Automatic replacement stopped.","原请求仍在运行，已停止自动替代，等待核对。":"The original request is still running. Automatic replacement stopped for review.",
   '恢复检查：':'Recovery checks: ',
   '已完成 10 次恢复检查，仍未能安全继续；任务已停止，已有成果保留。':'Ten recovery checks could not establish safe continuation. The task stopped; completed work is preserved.',
   '模型额度不足，已暂停；每两小时检查一次':'Model quota exhausted. Paused; checking every two hours.',

@@ -33,7 +33,9 @@ def error_code(exc: Exception) -> str:
     message = str(exc).lower()
     if any(value in message for value in ('unsupported model', 'model is not supported', 'model_not_found')):
         return 'model_unavailable'
-    if any(value in message for value in ('thread not found', 'thread does not exist', 'unable to load rollout')):
+    if 'thread not loaded' in message:
+        return 'thread_not_loaded'
+    if any(value in message for value in ('thread not found', 'thread does not exist', 'unable to load rollout', 'no rollout')):
         return 'thread_unavailable'
     if any(value in message for value in ('invalid params', 'unrecognized field', 'unknown variant')):
         return 'model_request_rejected'
@@ -394,6 +396,21 @@ class CodexClient:
     def read_thread(self, thread_id: str) -> dict:
         """Recovery is observation only: never resume or submit a replacement turn."""
         return self._control('thread/read', {'threadId': thread_id, 'includeTurns': True})
+
+    def recover_thread(self, thread_id: str) -> dict:
+        """Load only the original history; never start a turn or override its policy."""
+        try:
+            result = self.read_thread(thread_id)
+        except CodexError as error:
+            if error.code != 'thread_not_loaded':
+                raise
+            loaded = self._control('thread/resume', {'threadId': thread_id})
+            if (loaded.get('thread') or {}).get('id') != thread_id:
+                raise CodexError('protocol_error')
+            result = self.read_thread(thread_id)
+        if (result.get('thread') or {}).get('id') != thread_id:
+            raise CodexError('protocol_error')
+        return result
 
     def interrupt_turn(self, thread_id: str, turn_id: str) -> dict:
         return self._control('turn/interrupt', {'threadId': thread_id, 'turnId': turn_id})

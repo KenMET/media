@@ -213,6 +213,8 @@ class PlatformService:
 
     def library_task_status(self,job_id):return self._library_tasks().task(job_id)
 
+    def library_session_recover(self,job_id):return self._library_tasks().recover_session(job_id)
+
     def library_task_details(self,job_id,after=0,limit=25,issues_only=False):
         return self._library_tasks().details(job_id,after,limit,issues_only)
 

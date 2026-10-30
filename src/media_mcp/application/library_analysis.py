@@ -212,6 +212,8 @@ class LibraryAnalysis:
         chosen=set(selection)
         with media_mutation_lock(self.db):
             row=lib.owned(plan_id,'library_analysis');data=row['data']
+            from media_mcp.runtime.session_recovery import assert_generation
+            assert_generation(self.records,data['task_id'],data.get('analysis_generation',0))
             if row['state']=='applied':
                 if chosen!=set(data['receipt']['keys']):raise ValueError('analysis_selection_already_applied')
                 return data['receipt']
@@ -242,12 +244,16 @@ class LibraryAnalysis:
         lib.service.accounts.event(lib.actor,'library_analysis_applied','library',plan_id)
         return receipt
 
-    def process(self,row,guard,client=None,probe=probe_duration):
+    def process(self,row,guard,client=None,probe=probe_duration,*,allow_new_research=True):
         lib=self.library;data=row['data']
+        from media_mcp.runtime.session_recovery import assert_generation,recover_analysis
+        generation=data.get('analysis_generation',0)
+        parent_guard=guard
+        def guard():
+            parent_guard();assert_generation(self.records,row['id'],generation)
         def save():
             nonlocal row
             guard();row=self.records.update(row,'running',data)
-        if data.get('ai_inflight'):raise ValueError('analysis_ai_outcome_unknown')
         guard();lib.validate(data['files'])
         current={f['key']:f for f in lib.files()}
         files=[{**current[f['key']],'state':f['state']} for f in data['files']]
@@ -325,25 +331,73 @@ class LibraryAnalysis:
             assert_no_unresolved_analysis(self.db,[file for file in data['files'] if file['key'] in pending_keys],exclude_id=row['id'])
         for index in range(0,len(pending),12):
             chunk=pending[index:index+12]
+            if 'analysis_policy' not in data:
+                from media_mcp.storage.model_settings import ModelSettings
+                policy=ModelSettings(self.db).get()
+                if data.get('ai_inflight') and policy['revision']!=0:
+                    raise ValueError('analysis_recovery_policy_unverified')
+                data['analysis_policy']=policy;save()
+            policy=data['analysis_policy']
             if client is None:
                 from media_mcp.ingest.clients.library_analysis import LibraryAnalysisClient
-                client=LibraryAnalysisClient(timeout=300,max_retries=0)
+                client=LibraryAnalysisClient(timeout=300,max_retries=0,model=policy['model'],reasoning_effort=policy['effort'])
             payload={'requested_files':chunk,'directory_files':[item['path'] for item in observed],
                      'video_probes':facts,'peer_median_seconds':median,'rules_succeeded':proposals}
+            original_request=data.get('analysis_request') or {}
+            original_keys={f['key'] for f in original_request.get('payload',{}).get('requested_files',[])}
+            bound=data.get('ai_inflight') or data.get('recovered_analysis_turn') or original_request.get('pending_replacement')
+            if original_request.get('payload') and (bound or original_keys=={f['key'] for f in chunk}):
+                # Rule/cache enrichment may change between workers. Reuse the
+                # exact submitted input, after checking its physical scope below.
+                original_payload=original_request['payload']
+                if {f['key'] for f in original_payload['requested_files']}!={f['key'] for f in chunk}:
+                    raise ValueError('analysis_recovery_input_changed')
+                payload=original_payload
+            binding={'input_digest':digest(payload),'files_digest':digest(data['files']),
+                     'manifest_digest':digest(observed),'policy':policy,'profile':'library-readonly-web-v1'}
+            if data.get('ai_inflight'):
+                row,_=recover_analysis(self.records,row,client,guard,binding,[f['key'] for f in chunk])
+                data=row['data'];generation=data.get('analysis_generation',0)
+            recovered=data.get('recovered_analysis_turn')
+            if recovered and recovered['binding']!=binding:raise ValueError('analysis_recovery_input_changed')
             def thread(ident):data['analysis_thread']=ident;save()
             def submitting():data['ai_inflight']=True;save()
             def turn(ident):data['analysis_turn']=ident;save()
             data['analysis_progress']={'phase':'researching','done':len(accepted),'total':len(unresolved)}
             save();guard();lib.validate(data['files'])
             try:
-                result,opened=client.analyze(payload,on_thread=thread,on_submitting=submitting,on_turn=turn)
+                if recovered:
+                    from media_mcp.ingest.clients.library_analysis import LibraryAnalysisClient
+                    result,opened=LibraryAnalysisClient.recovered_result(recovered['turn'])
+                else:
+                    if not allow_new_research:
+                        from media_mcp.runtime.session_recovery import ResearchRequired
+                        raise ResearchRequired()
+                    data.update(analysis_request={'binding':binding,'generation':generation,'payload':payload},analysis_thread=None,analysis_turn=None)
+                    save()
+                    result,opened=client.analyze(payload,on_thread=thread,on_submitting=submitting,on_turn=turn)
             except Exception as error:
                 from media_mcp.adapters.codex import CodexError
                 if isinstance(error, CodexError):
+                    from media_mcp.runtime.session_recovery import now_text
                     data['last_model_failure']={'code':error.code,'phase':error.phase,
-                        'outcome_unknown':error.outcome_unknown,'terminal_observed':error.terminal_observed}
+                        'outcome_unknown':error.outcome_unknown,'terminal_observed':error.terminal_observed,
+                        'thread':data.get('analysis_thread'),'turn':data.get('analysis_turn'),
+                        'generation':generation,'input_digest':binding['input_digest'],'at':now_text()}
+                    if error.code=='rate_limited':
+                        from media_mcp.runtime.quota_wait import next_quota_check
+                        data['last_model_failure']['quota_next_check_at']=next_quota_check(data['last_model_failure']['at'])
+                        error.quota_next_check_at=data['last_model_failure']['quota_next_check_at']
                     if not error.outcome_unknown:
                         data['ai_inflight']=False
+                    if error.terminal_observed and not error.outcome_unknown and data.get('analysis_thread') and data.get('analysis_turn'):
+                        from media_mcp.runtime.thread_cleanup import archive_intent
+                        data.setdefault('analysis_request_history',[]).append({
+                            'thread':data['analysis_thread'],'turn':data['analysis_turn'],
+                            'generation':generation,'binding':binding,'status':'failed_or_interrupted',
+                            'terminal_observed':True})
+                        data.setdefault('thread_archive_intents',[]).append(
+                            archive_intent(data,[f['key'] for f in chunk],'failed_or_interrupted'))
                     save()
                 raise
             guard();lib.validate(data['files'])
@@ -357,7 +411,13 @@ class LibraryAnalysis:
                 if selected['state']['status']=='conflict':
                     decision['applicable']=False;decision['reason']='mapping_conflict_requires_review; '+decision['reason']
                 accepted.append(decision)
-            data['analysis_decisions']=accepted;data['ai_inflight']=False;save()
+            data['analysis_decisions']=accepted;data['ai_inflight']=False
+            from media_mcp.runtime.thread_cleanup import archive_intent
+            intent=archive_intent(data,[f['key'] for f in chunk])
+            if intent:
+                intents=data.setdefault('thread_archive_intents',[])
+                if not any(v['key']==intent['key'] for v in intents):intents.append(intent)
+            data.pop('recovered_analysis_turn',None);data.pop('session_recovery',None);save()
         decisions=proposals+accepted
         if {d['key'] for d in decisions}!={f['key'] for f in data['files']}:
             raise ValueError('analysis_selection_changed')
@@ -366,6 +426,6 @@ class LibraryAnalysis:
         plan=self.records.put('library_analysis',{'owner':lib.actor.id,'files':data['files'],'roots':roots,'manifest':observed,
             'public_files':[{'key':f['key'],'name':f['name'],'source_path':f.get('source_path'),
                 'target_path':f.get('target_path'),'duration_seconds':durations.get(f['source_path'] if f['state']['source'] else f['target_path'])} for f in files],
-            'task_id':row['id'],'decisions':decisions,'expires_at':time.time()+86400,'ai_used':bool(unresolved)},'preview')
+            'task_id':row['id'],'analysis_generation':generation,'decisions':decisions,'expires_at':time.time()+86400,'ai_used':bool(unresolved)},'preview')
         guard();data['analysis_plan_id']=plan['id'];data['results']=[{'key':d['key'],'state':'completed' if d['applicable'] else 'needs_review'} for d in decisions]
         self.records.update(row,'completed' if all(d['applicable'] for d in decisions) else 'completed_with_warnings',data)

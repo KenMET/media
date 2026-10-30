@@ -197,4 +197,4 @@ if __name__ == '__main__':
             catalog_type.return_value = Catalog(records.db, tmdb=PreviewTMDB())
             app = create_app(accounts, records, lambda actor:PlatformService(
                 actor, accounts, records, tmdb=PreviewTMDB(), indexer=PreviewIndexer()))
-        uvicorn.run(app, host='127.0.0.1', port=18293, proxy_headers=False)
+        uvicorn.run(app, host='127.0.0.1', port=int(os.environ.get('MEDIA_PREVIEW_PORT','18293')), proxy_headers=False)

@@ -126,7 +126,6 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
     row=records.decode(row)
     if row['state'] in ('completed','completed_with_warnings','needs_review','failed'):
         return
-    from media_mcp.runtime.quota_wait import check_quota_wait
     accounts=Accounts(jobs.db);actor=accounts.actor_by_id(row['data']['owner'])
     if not actor.can_manage_media:
         raise ValueError('media_management_permission_required')
@@ -135,12 +134,13 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
         if not jobs.db.execute("SELECT id FROM media_processing_job WHERE id=:id AND owner=:owner AND state='running' AND lease_until>CURRENT_TIMESTAMP",job).first():
             raise RuntimeError('media_job_lease_lost')
     lease()
-    from media_mcp.runtime.quota_wait import QuotaWaiting
-    from datetime import datetime,timezone
-    wait=row['data'].get('quota_wait')
-    if wait and wait.get('next_check_at','')>datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'):
-        raise QuotaWaiting(wait)
-    row=check_quota_wait(records,row,analysis_client,guard=lease)
+    from media_mcp.runtime.recovery_coordinator import coordinate
+    def recovery_guard():
+        lease()
+        if not accounts.actor_by_id(row['data']['owner']).can_manage_media:
+            raise ValueError('media_management_permission_required')
+    row=coordinate(records,row,library,analysis_client,analysis_probe,guard=recovery_guard)
+    if row['state'] in ('completed','completed_with_warnings','needs_review','failed'):return
     lease()
     starting_data=dict(row['data'])
     if row['state']=='queued':starting_data.pop('error_code',None)
@@ -148,21 +148,13 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
     data=row['data'];completed={item['key'] for item in data['results']}
     if data['action']=='auto':
         from media_mcp.application.library_auto import LibraryAuto
-        def auto_guard():
-            lease()
-            if not accounts.actor_by_id(data['owner']).can_manage_media:
-                raise ValueError('media_management_permission_required')
-        LibraryAuto(library).process(jobs,row,auto_guard,analysis_client,analysis_probe,subtitle_agent)
+        LibraryAuto(library).process(jobs,row,recovery_guard,analysis_client,analysis_probe,subtitle_agent)
         return
     if data['action']=='analysis':
         from media_mcp.application.library_analysis import LibraryAnalysis
-        def analysis_guard():
-            lease()
-            if not accounts.actor_by_id(data['owner']).can_manage_media:
-                raise ValueError('media_management_permission_required')
         kwargs={'client':analysis_client}
         if analysis_probe is not None:kwargs['probe']=analysis_probe
-        LibraryAnalysis(library).process(row,analysis_guard,**kwargs)
+        LibraryAnalysis(library).process(row,recovery_guard,**kwargs)
         return
     if data['action']=='subtitles' and data.get('subtitle_inflight'):
         raise ValueError('automatic_subtitle_outcome_unknown')
@@ -208,36 +200,114 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
 
 
 def record_failure(jobs, job, exc):
-    from media_mcp.runtime.quota_wait import QuotaWaiting,next_quota_check,MAX_QUOTA_CHECKS
+    from media_mcp.runtime.quota_wait import QuotaWaiting,next_quota_check,MAX_QUOTA_CHECKS,retain_quota_budget
+    from media_mcp.runtime.session_recovery import SessionWaiting,now_text,SESSION_CHECK_SECONDS
+    records=Records(jobs.db)
+    value=jobs.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_task' AND json_extract(data,'$.processing_key')=:key",{'key':job['delivery_key']}).mappings().first()
+    row=records.decode(value) if value else None
+    previous=row['data'] if row else {}
+    session=exc.recovery if isinstance(exc,SessionWaiting) else None
+    if session is None and getattr(exc,'outcome_unknown',False) and getattr(exc,'code',None)!='rate_limited':
+        ident=getattr(exc,'recovery_record_id',None)
+        if ident:
+            target=records.get(ident)['data']
+            if target.get('ai_inflight') and target.get('analysis_thread') and target.get('analysis_turn') and not target.get('subtitle_inflight'):
+                session={'record_id':ident,'checks':0,'state':'observing','observation':'original_turn_unknown','next_check_at':now_text(SESSION_CHECK_SECONDS)}
     underlying=exc.__cause__ if isinstance(exc,ModelServiceDeferred) else exc
     quota=isinstance(exc,QuotaWaiting) or getattr(underlying,'code',None)=='rate_limited' or getattr(exc,'cause',None)=='rate_limited'
-    retry_model=quota or (isinstance(exc,ModelServiceDeferred) or retryable_model_error(exc)) and job['attempts']<=MAX_MODEL_RETRIES
+    transport=isinstance(exc,ModelServiceDeferred) or retryable_model_error(exc)
+    transport=bool(transport and not quota and session is None)
+    retries=previous.get('transport_retry_count')
+    if retries is None:
+        # Old queue claim totals included quota/session observations. Only a
+        # known prior transport failure can contribute to its conservative cap.
+        from media_mcp.runtime.model_retry import RETRYABLE_MODEL_ERRORS
+        failure=previous.get('model_failure') or {}
+        retries=min(previous.get('model_retry_count',0),MAX_MODEL_RETRIES) if failure.get('code') in RETRYABLE_MODEL_ERRORS-{'rate_limited'} else 0
+    retries+=int(transport)
+    retry_model=quota or transport and retries<=MAX_MODEL_RETRIES
     candidate=getattr(exc,'cause',None) or getattr(exc,'code',str(exc) if isinstance(exc,ValueError) else type(exc).__name__)
     if getattr(exc,'outcome_unknown',False):candidate='analysis_ai_outcome_unknown'
-    exhausted=isinstance(exc,QuotaWaiting) and exc.wait.get('checks',0)>=MAX_QUOTA_CHECKS
+    wait=None
+    if quota:
+        wait=dict(exc.wait) if isinstance(exc,QuotaWaiting) else {'outcome_unknown':bool(getattr(underlying,'outcome_unknown',False)),
+            'record_id':getattr(exc,'recovery_record_id',None) or (row['id'] if row else None),'checks':0,
+            'next_check_at':getattr(underlying,'quota_next_check_at',None) or next_quota_check()}
+        if not isinstance(exc,QuotaWaiting):
+            wait=retain_quota_budget(records,previous,{**wait,'observation':'rate_limited'})
+    exhausted=quota and wait.get('checks',0)>=MAX_QUOTA_CHECKS
     if quota:candidate='quota_checks_exhausted' if exhausted else 'model_quota_waiting'
     if exhausted:retry_model=False
+    if session is not None:
+        candidate='model_session_waiting';retry_model=True
     error=candidate if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,100}',candidate) else type(exc).__name__
     if jobs.renew(job):
-        records=Records(jobs.db)
-        row=jobs.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_task' AND json_extract(data,'$.processing_key')=:key",{'key':job['delivery_key']}).mappings().first()
         if row:
-            row=records.decode(row)
             if error=='analysis_ai_outcome_unknown' and (row['data'].get('action')=='subtitles' or row['data'].get('analysis_progress',{}).get('phase')=='subtitles'):
                 error='automatic_subtitle_outcome_unknown'
             quota_data={}
+            if not retry_model:
+                quota_data['terminal_notice_event']={'reason':error,'at':now_text()}
+            if session is not None:quota_data['session_recovery']=session
             if quota:
-                wait=dict(exc.wait) if isinstance(exc,QuotaWaiting) else {'outcome_unknown':bool(getattr(underlying,'outcome_unknown',False)),
-                    'record_id':getattr(exc,'recovery_record_id',None) or row['id'],'checks':0}
-                wait['next_check_at']=None if exhausted else next_quota_check()
-                quota_data={'quota_wait':wait}
-            records.update(row,'failed' if exhausted else ('queued' if retry_model else 'needs_review'),{**row['data'],**quota_data,'error_code':error,
-                'model_retry_count':job['attempts'],
+                if exhausted:wait['next_check_at']=None
+                elif not wait.get('next_check_at') or isinstance(exc,QuotaWaiting) and exc.checked and not wait.get('probe_reserved_at'):
+                    wait['next_check_at']=next_quota_check()
+                quota_data['quota_wait']=wait
+                quota_data['quota_resume']=None
+                if not isinstance(exc,QuotaWaiting) and wait.get('outcome_unknown'):
+                    from media_mcp.runtime.recovery_coordinator import strong_request
+                    detail=records.get(wait['record_id'])['data']
+                    if strong_request(detail):
+                        quota_data['session_recovery']={'record_id':wait['record_id'],'checks':0,
+                            'state':'observing','next_check_at':now_text(SESSION_CHECK_SECONDS),
+                            'independent_observation':True}
+            unknown=bool(session is not None or (quota_data.get('quota_wait') or {}).get('outcome_unknown')
+                or getattr(exc,'outcome_unknown',False) or error in {'analysis_ai_outcome_unknown','automatic_subtitle_outcome_unknown'})
+            if not unknown:
+                context=quota_data.get('quota_wait') or row['data'].get('quota_wait') or row['data'].get('session_recovery') or {}
+                ident=getattr(exc,'recovery_record_id',None) or context.get('record_id') or row['id']
+                try:
+                    active=records.get(ident)['data']
+                    unknown=bool(active.get('ai_inflight') or active.get('subtitle_inflight'))
+                except ValueError:pass
+            updated=records.update(row,'failed' if exhausted else ('queued' if retry_model else 'needs_review'),{**row['data'],**quota_data,'error_code':error,
+                'model_retry_count':retries,'transport_retry_count':retries,
                 'model_failure':{'code':error,'phase':getattr(exc.__cause__ if isinstance(exc,ModelServiceDeferred) else exc,'phase',None),
-                    'outcome_unknown':bool((quota_data.get('quota_wait') or {}).get('outcome_unknown') or getattr(exc,'outcome_unknown',False) or error in {'analysis_ai_outcome_unknown','automatic_subtitle_outcome_unknown'}),
+                    'outcome_unknown':unknown,
                     'terminal_observed':bool(getattr(exc.__cause__ if isinstance(exc,ModelServiceDeferred) else exc,'terminal_observed',False))},
-                'analysis_progress':{**row['data'].get('analysis_progress',{}),'phase':'failed' if exhausted else ('waiting_quota' if quota else ('waiting_model' if retry_model else 'paused'))}})
+                'analysis_progress':{**row['data'].get('analysis_progress',{}),'phase':'failed' if exhausted else ('waiting_session' if session is not None else ('waiting_quota' if quota else ('waiting_model' if retry_model else 'paused')))}})
+            if not retry_model:
+                from media_mcp.runtime.task_notifications import enqueue
+                enqueue(records,updated,error)
     return error, retry_model
+
+
+def retry_delay(jobs,job,error):
+    """Use persisted independent deadlines, never total queue claims as retries."""
+    if error is None:return None
+    from datetime import datetime,timezone
+    import math
+    value=jobs.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_task' AND json_extract(data,'$.processing_key')=:key",{'key':job['delivery_key']}).mappings().first()
+    if not value:return None
+    data=Records.decode(value)['data'];deadlines=[]
+    wait=data.get('quota_wait') or {};session=data.get('session_recovery') or {}
+    if error in {'model_quota_waiting','model_session_waiting'}:
+        if wait.get('next_check_at'):deadlines.append(wait['next_check_at'])
+        independent=session.get('independent_observation') and session.get('record_id')==wait.get('record_id')
+        if independent:
+            source=Records(jobs.db).get(session['record_id'])
+            independent=bool(source['data'].get('ai_inflight'))
+        if (error=='model_session_waiting' or independent) and session.get('state','observing')=='observing' and session.get('next_check_at'):
+            deadlines.append(session['next_check_at'])
+        if deadlines:
+            due=min(datetime.strptime(v,'%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc) for v in deadlines)
+            return max(0,math.ceil((due-datetime.now(timezone.utc)).total_seconds()))
+        return 60 if error=='model_session_waiting' else 7200
+    from media_mcp.runtime.model_retry import RETRYABLE_MODEL_ERRORS
+    if error in RETRYABLE_MODEL_ERRORS:
+        return min(3600,30*2**min(data.get('transport_retry_count',1),7))
+    return None
 
 
 def run_library_worker():
@@ -264,5 +334,5 @@ def run_library_worker():
         finally:
             done.set();thread.join(timeout=2)
         jobs.finish(job,error=error,review_required=bool(error) and not retry_model,result=json.dumps({'error':error}),
-            retry_delay_seconds=7200 if error=='model_quota_waiting' else None)
+            retry_delay_seconds=retry_delay(jobs,job,error) if retry_model else None)
         heartbeat('library')

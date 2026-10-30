@@ -1,0 +1,100 @@
+{
+  "status": "completed_internal_logic_scope",
+  "scope": "internal_logic_only_existing_configuration_preserved",
+  "nas_recovery_deployed": true,
+  "task": {
+    "id": "231fc692e11f464bad39bf412174230f",
+    "before": 121,
+    "observed_after": 746,
+    "total": 746,
+    "terminal": true,
+    "state": "completed_with_warnings",
+    "result_states": {
+      "needs_review": 662,
+      "completed": 84
+    },
+    "review_reasons": {
+      "analysis_ai_outcome_unknown": 97,
+      "automatic_match_uncertain": 553,
+      "completed": 84,
+      "prior_subtitle_outcome_unknown": 12
+    },
+    "original_results_preserved": true
+  },
+  "file_safety": {
+    "file_counts": {
+      "source": 746,
+      "target": 745,
+      "hardlink_pairs": 745
+    },
+    "file_identity_changes": [],
+    "sample_source_hash_unchanged": true
+  },
+  "notification_incident": {
+    "delivered_before_suppression": 104,
+    "pending_suppressed": 16,
+    "no_further_historical_delivery_observed": true,
+    "permanent_event_scoped_fix": "deployed"
+  },
+  "thread_cleanup": {
+    "visible_count": 14,
+    "has_more": false,
+    "visible_owned_media": 0,
+    "other_visible_entries_untouched": 14,
+    "archive_states": [
+      [
+        "archived",
+        58
+      ]
+    ]
+  },
+  "public_assets": {
+    "model_settings_present": true,
+    "waiting_session_present": false,
+    "status": "existing_public_static_assets_unchanged_outside_latest_logic_only_scope"
+  },
+  "remaining": [],
+  "validation": {
+    "installed_python_tests": 125,
+    "javascript_tests": 12,
+    "browser": {
+      "passed": true,
+      "languages": [
+        "zh-CN",
+        "en"
+      ],
+      "widths": [
+        320,
+        390,
+        768,
+        1440
+      ],
+      "page_errors": 0
+    },
+    "likec4": "passed",
+    "existing_configuration_unchanged": true,
+    "other_services_unchanged": true,
+    "runtime_hashes_match": true
+  },
+  "outside_current_scope": [
+    "public static assets remain at existing deployed version",
+    "strict delivery-root FIFO remains separate unfinished foundation"
+  ],
+  "subsequent_review": {
+    "source_tests": 126,
+    "scope": "deduplicate_recovery_logic_and_fix_settled_history_scan",
+    "removed_unused_manual_observation_api": true,
+    "new_dependencies": false,
+    "runtime_package_structure_changed": false,
+    "preexisting_unfinished_fifo_preserved": true,
+    "commit_or_push_performed": false,
+    "deployment": "verified_media_only",
+    "installed_related_tests": 126,
+    "final_archive_tests": 7,
+    "removed_one_time_archive_helper": true,
+    "configuration_unchanged": true,
+    "other_services_unchanged": true,
+    "source_hashes_match": true,
+    "results_and_hardlinks_preserved": true
+  }
+}

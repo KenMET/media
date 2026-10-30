@@ -65,6 +65,45 @@ class LibraryTasks:
 
     def task(self,job_id):return self.public(self.owned(job_id))
 
+    def recover_session(self,job_id):
+        """Migrate observation-only legacy waiting without resetting its budget."""
+        from sqlalchemy import text
+        from media_mcp.application.collections import Collections
+        from media_mcp.runtime.state import media_mutation_lock
+        from media_mcp.runtime.session_recovery import now_text
+        from media_mcp.runtime.quota_wait import MAX_QUOTA_CHECKS
+        with media_mutation_lock(self.db):
+            row=self.owned(job_id,full=True);data=row['data']
+            if data.get('session_recovery_migrated'):return self.task(job_id)
+            wait=data.get('quota_wait') or {}
+            if row['state']!='queued' or wait.get('checks',0)>=MAX_QUOTA_CHECKS or wait.get('actual_probe_checks'):
+                raise ValueError('session_recovery_not_eligible')
+            if not wait.get('outcome_unknown') or wait.get('observation') not in {'original_turn_unavailable','original_turn_not_terminal','completed_requires_reconciliation'}:
+                raise ValueError('session_recovery_not_eligible')
+            child=row
+            if data.get('action')=='auto':
+                child=self.records.by_key(digest(['library-auto-item',row['id'],data.get('next_work',0)]))
+            if not child or child['id']!=wait.get('record_id') or child['data'].get('action')!='analysis':
+                raise ValueError('session_recovery_identity_mismatch')
+            if child['data'].get('owner')!=self.actor.id or not child['data'].get('ai_inflight') or child['data'].get('subtitle_inflight'):
+                raise ValueError('session_recovery_not_eligible')
+            Collections(self.service).validate(child['data']['files'])
+            with self.db.begin() as conn:
+                job=conn.execute(text("SELECT * FROM media_processing_job WHERE delivery_key=:key AND stage='library'"),{'key':data['processing_key']}).mappings().one()
+                if job['state'] not in ('queued','retry') or job['owner']:
+                    raise ValueError('session_recovery_job_active')
+                original=dict(wait)
+                wait={**wait,'legacy_observation_checks':wait.get('checks',0),'next_check_at':now_text()}
+                updated={**data,'quota_wait':wait,'session_recovery_migrated':True,
+                         'quota_history':data.get('quota_history',[])+[{**original,'observation':'legacy_session_wait_migrated'}]}
+                changed=conn.execute(text("UPDATE media_mcp_record SET data=:data,revision=revision+1,updated_at=CURRENT_TIMESTAMP WHERE id=:id AND revision=:revision AND state='queued'"),
+                    {'data':json.dumps(updated,ensure_ascii=False),'id':row['id'],'revision':row['revision']}).rowcount
+                if changed!=1:raise RuntimeError('stale_job_revision')
+                changed=conn.execute(text("UPDATE media_processing_job SET next_attempt_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=:id AND state IN ('queued','retry') AND owner IS NULL"),job).rowcount
+                if changed!=1:raise RuntimeError('media_job_lease_lost')
+            self.service.accounts.event(self.actor,'library_session_recovery_requested','library_task',job_id)
+            return self.task(job_id)
+
     def list(self,after='',limit=10):
         self.manage()
         if after:self.owned(after)

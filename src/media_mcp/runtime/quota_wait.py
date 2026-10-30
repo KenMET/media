@@ -7,13 +7,26 @@ MAX_QUOTA_CHECKS = 10
 
 class QuotaWaiting(RuntimeError):
     code = 'model_quota_waiting'
-    def __init__(self, wait):
+    def __init__(self, wait, *, checked=True):
         self.wait = wait
+        self.checked = checked
         super().__init__(self.code)
 
 
-def next_quota_check():
-    return (datetime.now(timezone.utc) + timedelta(seconds=QUOTA_CHECK_SECONDS)).strftime('%Y-%m-%d %H:%M:%S')
+def next_quota_check(at=None):
+    base=datetime.strptime(at,'%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc) if at else datetime.now(timezone.utc)
+    return (base + timedelta(seconds=QUOTA_CHECK_SECONDS)).strftime('%Y-%m-%d %H:%M:%S')
+
+
+def retain_quota_budget(records, data, wait):
+    """Carry the same work's budget until it produces accepted progress."""
+    resume = data.get('quota_resume') or {}
+    if (resume.get('record_id') == wait.get('record_id')
+            and resume.get('completed') == len(data.get('results', []))):
+        target = records.get(wait['record_id'])
+        if len(target['data'].get('analysis_decisions', [])) <= resume.get('accepted_count', 0):
+            return {**resume['wait'], **wait, 'checks': resume['wait'].get('checks', 0)}
+    return wait
 
 
 def check_quota_wait(records, row, client=None, guard=lambda: None):
@@ -23,54 +36,55 @@ def check_quota_wait(records, row, client=None, guard=lambda: None):
     guard()
     if client is None:
         from media_mcp.ingest.clients.library_analysis import LibraryAnalysisClient
-        client = LibraryAnalysisClient(timeout=30, max_retries=0)
+        from media_mcp.storage.model_settings import ModelSettings
+        target=records.get(wait.get('record_id') or row['id'])
+        policy=target['data'].get('analysis_policy') or ModelSettings(records.db).get()
+        client = LibraryAnalysisClient(timeout=30, max_retries=0,model=policy['model'],reasoning_effort=policy['effort'])
     wait = dict(wait)
+    if wait.get('checks',0)>=MAX_QUOTA_CHECKS:
+        raise QuotaWaiting(wait,checked=False)
     wait['checks'] = wait.get('checks', 0) + 1
-    if wait.get('outcome_unknown'):
-        # A successful probe cannot prove the outcome of an earlier submission.
-        target = records.get(wait.get('record_id') or row['id'])
-        data = target['data']
-        thread, turn = data.get('analysis_thread'), data.get('analysis_turn')
-        if not thread or not turn or data.get('subtitle_inflight'):
-            wait['observation'] = 'submission_identity_unavailable'
-            raise QuotaWaiting(wait)
-        try:
-            result = client.read_thread(thread)
-            guard()
-        except Exception as error:
-            if str(error)=='media_job_lease_lost':raise
-            wait['observation'] = 'original_turn_unavailable'
-            raise QuotaWaiting(wait) from error
-        observed = result.get('thread') or {}
-        match = next((t for t in observed.get('turns', []) if t.get('id') == turn), None)
-        if observed.get('id') != thread or not match or match.get('status') not in ('failed', 'interrupted'):
-            wait['observation'] = 'completed_requires_reconciliation' if match and match.get('status') == 'completed' else 'original_turn_not_terminal'
-            raise QuotaWaiting(wait)
-        # Only a matching failed/interrupted research turn establishes safe replay.
-        proof={'thread': thread, 'turn': turn, 'status': match['status']}
-        if not data.get('ai_inflight') and data.get('quota_terminal_observation') != proof:
-            wait['observation'] = 'submission_state_changed'
-            raise QuotaWaiting(wait)
-        guard()
-        if data.get('ai_inflight'):
-            target = records.update(target, target['state'], {**data, 'ai_inflight': False,
-                'quota_terminal_observation': proof})
-        if target['id'] == row['id']:
-            row = target
-        wait['outcome_unknown'] = False
+    # Quota availability and an earlier request's outcome are independent.
+    # Never clear unknown flags here; LibraryAnalysis reconciles that request
+    # under its file snapshot, generation and worker lease before any new turn.
+    if wait.get('observation') in {'original_turn_unavailable', 'original_turn_not_terminal',
+                                  'submission_identity_unavailable', 'completed_requires_reconciliation'}:
+        wait.setdefault('legacy_observation_checks', wait.get('checks', 1) - 1)
+    # Reserve the finite budget and next deadline before external I/O. A crash
+    # cannot erase an attempted check or cause an immediate duplicate probe.
+    from media_mcp.runtime.session_recovery import now_text
+    wait.update(probe_attempts=wait.get('probe_attempts',0)+1,probe_inflight=True,
+                probe_reserved_at=now_text(),next_check_at=next_quota_check(),observation='probe_started')
+    guard();row=records.update(row,row['state'],{**row['data'],'quota_wait':wait})
     try:
         guard()
         client.check_connection()
         guard()
     except Exception as error:
         if str(error)=='media_job_lease_lost':raise
+        from media_mcp.adapters.codex import error_code
+        wait['probe_inflight']=False
+        wait['actual_probe_checks']=wait.get('actual_probe_checks',0)+1
+        wait['probe_error_code'] = error_code(error)
+        wait['observation'] = 'rate_limited' if getattr(error, 'code', '') == 'rate_limited' else 'probe_unavailable'
+        guard();records.update(row,row['state'],{**row['data'],'quota_wait':wait})
         from media_mcp.runtime.model_retry import PERMANENT_MODEL_ERRORS
-        if getattr(error, 'code', '') in PERMANENT_MODEL_ERRORS:
-            raise
-        wait['observation'] = 'probe_not_ready'
+        if getattr(error, 'code', '') in PERMANENT_MODEL_ERRORS:raise
         raise QuotaWaiting(wait) from error
     guard()
     data = dict(row['data'])
+    wait['probe_inflight']=False
+    wait['actual_probe_checks']=wait.get('actual_probe_checks',0)+1
+    wait.pop('probe_error_code',None)
+    wait['observation']='quota_available'
+    data['quota_history'] = data.get('quota_history', []) + [dict(wait)]
+    target=records.get(wait.get('record_id') or row['id'])
+    data['quota_resume']={'wait':wait,'record_id':target['id'],
+        'completed':len(data.get('results',[])),
+        'accepted_count':len(target['data'].get('analysis_decisions',[])),
+        'input_digest':(target['data'].get('analysis_request') or {}).get('binding',{}).get('input_digest')}
+    from media_mcp.application.collections import digest
+    data['quota_resume']['failure_key']=digest(target['data'].get('last_model_failure') or {})
     data.pop('quota_wait', None)
     data.pop('error_code', None)
     return records.update(row, 'queued', data)

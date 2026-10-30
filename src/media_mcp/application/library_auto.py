@@ -9,6 +9,7 @@ from media_mcp.application.library_analysis import LibraryAnalysis,context_roots
 from media_mcp.config import contained
 from media_mcp.runtime.model_retry import retryable_model_error, ModelServiceDeferred, PERMANENT_MODEL_ERRORS
 from media_mcp.runtime.state import media_mutation_lock,media_job_guard,assert_mutation_lock
+from media_mcp.runtime.session_recovery import SessionWaiting
 
 
 def ready_subtitle(file):
@@ -165,14 +166,18 @@ class LibraryAuto:
                     data['summary']['subtitles']+=int(result.get('subtitles')=='ready')
             except Exception as error:
                 if child:error.recovery_record_id=child['id']
-                if isinstance(error, ModelServiceDeferred) or getattr(error, 'outcome_unknown', False):raise
+                if isinstance(error, (ModelServiceDeferred,SessionWaiting)) or getattr(error, 'outcome_unknown', False):raise
                 error_code=code(error)
                 if retryable_model_error(error):
                     raise ModelServiceDeferred(error_code) from error
                 if error_code in AI_UNAVAILABLE or error_code in PERMANENT_MODEL_ERRORS:raise
                 if child:
                     guard();child=self.records.get(child['id'])
-                    self.records.update(child,'needs_review',{**child['data'],'error_code':error_code})
+                    child=self.records.update(child,'needs_review',{**child['data'],'error_code':error_code})
+                    if error_code in {'analysis_session_recovery_exhausted','analysis_replacement_exhausted',
+                                      'analysis_original_turn_still_running','analysis_recovery_identity_mismatch',
+                                      'analysis_recovery_input_changed','analysis_recovery_policy_unverified'}:
+                        data['session_recovery_issues']=data.get('session_recovery_issues',0)+1
                 for file in expected:
                     data['results'].append({'key':file['key'],'name':Path(file.get('source_path') or file.get('target_path')).name,
                         'state':'needs_review','error_code':error_code})
@@ -180,7 +185,13 @@ class LibraryAuto:
         guard()
         state='completed_with_warnings' if any(result['state']!='completed' for result in data['results']) else 'completed'
         data['analysis_progress']={'phase':'finished','done':len(data['results']),'total':data['total']}
-        self.records.update(row,state,data)
+        if data.get('session_recovery_issues'):
+            from media_mcp.runtime.session_recovery import now_text
+            data['terminal_notice_event']={'reason':'session_recovery_requires_review','at':now_text()}
+        row=self.records.update(row,state,data)
+        if data.get('session_recovery_issues'):
+            from media_mcp.runtime.task_notifications import enqueue
+            enqueue(self.records,row,'session_recovery_requires_review')
 
     def maintain(self,jobs,child,eligible,guard,phase,subtitle_agent,ai_error=None):
         from media_mcp.runtime.library_worker import repair_mapping,process_subtitle

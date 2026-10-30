@@ -30,6 +30,7 @@ def main():
     jobs.initialize()
     processes = []
     failed_notified = False
+    maintenance_error_at = 0
     try:
         while not stop:
             try:
@@ -60,6 +61,17 @@ def main():
             if any(not process.is_alive() for process in processes):
                 raise RuntimeError('processing_worker_exited')
             heartbeat('monitor')
+            try:
+                from media_mcp.runtime.task_notifications import deliver
+                deliver(records)
+                from media_mcp.runtime.thread_cleanup import drain
+                drain(records)
+            except Exception as exc:
+                # Optional delivery/archival must not terminate active model or
+                # subtitle calls. Durable intents remain available for retry.
+                if time.monotonic()-maintenance_error_at>=60:
+                    print('Media background maintenance deferred: '+type(exc).__name__,flush=True)
+                    maintenance_error_at=time.monotonic()
             for row in records.active():
                 if stop:
                     break

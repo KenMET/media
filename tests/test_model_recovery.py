@@ -179,31 +179,29 @@ class QuotaWaitTests(unittest.TestCase):
         self.assertGreaterEqual(seconds,7198);self.assertLessEqual(seconds,7200)
         self.assertEqual('waiting_quota',self.service.collection_task(task['job_id'])['analysis_progress']['phase'])
 
-    def test_unknown_quota_check_only_observes_original_turn(self):
-        from media_mcp.runtime.quota_wait import QuotaWaiting,check_quota_wait
+    def test_quota_probe_is_independent_and_never_clears_original_unknown(self):
+        from media_mcp.runtime.quota_wait import check_quota_wait
         task,jobs,job=self.start();parent=self.records.get(task['job_id'])
         child=self.records.put('library_auto_item',{'ai_inflight':True,'analysis_thread':'thread','analysis_turn':'turn'})
         exc=CodexError('rate_limited',outcome_unknown=True);exc.recovery_record_id=child['id']
-        error,retry=record_failure(jobs,job,exc)
+        record_failure(jobs,job,exc)
         parent=self.records.get(parent['id']);client=Mock()
-        client.read_thread.return_value={'thread':{'id':'thread','turns':[{'id':'turn','status':'inProgress'}]}}
-        with self.assertRaises(QuotaWaiting):check_quota_wait(self.records,parent,client)
-        client.check_connection.assert_not_called();client.analyze.assert_not_called()
-        self.assertTrue(self.records.get(child['id'])['data']['ai_inflight'])
-        client.read_thread.return_value={'thread':{'id':'thread','turns':[{'id':'turn','status':'failed'}]}}
         row=check_quota_wait(self.records,parent,client)
-        self.assertNotIn('quota_wait',row['data']);self.assertFalse(self.records.get(child['id'])['data']['ai_inflight'])
+        self.assertNotIn('quota_wait',row['data'])
+        self.assertTrue(self.records.get(child['id'])['data']['ai_inflight'])
+        self.assertEqual('quota_available',row['data']['quota_history'][-1]['observation'])
         client.check_connection.assert_called_once()
+        client.read_thread.assert_not_called();client.analyze.assert_not_called()
 
-    def test_completed_or_wrong_turn_is_never_replayed(self):
-        from media_mcp.runtime.quota_wait import QuotaWaiting,check_quota_wait
+    def test_quota_success_does_not_reconcile_or_replay_original_request(self):
+        from media_mcp.runtime.quota_wait import check_quota_wait
         task,jobs,job=self.start();row=self.records.get(task['job_id'])
         row=self.records.update(row,'queued',{**row['data'],'ai_inflight':True,'analysis_thread':'t','analysis_turn':'v','quota_wait':{'outcome_unknown':True}})
-        for thread in [{'id':'t','turns':[{'id':'v','status':'completed'}]}, {'id':'other','turns':[{'id':'v','status':'failed'}]}]:
-            client=Mock();client.read_thread.return_value={'thread':thread}
-            with self.assertRaises(QuotaWaiting):check_quota_wait(self.records,row,client)
-            client.check_connection.assert_not_called()
-        self.assertTrue(self.records.get(row['id'])['data']['ai_inflight'])
+        client=Mock()
+        result=check_quota_wait(self.records,row,client)
+        self.assertTrue(result['data']['ai_inflight'])
+        self.assertEqual('t',result['data']['analysis_thread']);self.assertEqual('v',result['data']['analysis_turn'])
+        client.analyze.assert_not_called();client.read_thread.assert_not_called()
 
     def test_probe_failure_preserves_wait_and_success_allows_resume(self):
         from media_mcp.runtime.quota_wait import QuotaWaiting,check_quota_wait
@@ -212,7 +210,24 @@ class QuotaWaitTests(unittest.TestCase):
         with self.assertRaises(QuotaWaiting):check_quota_wait(self.records,row,client)
         self.assertIn('quota_wait',self.records.get(row['id'])['data'])
         client.check_connection.side_effect=None
+        row=self.records.get(row['id'])
         self.assertNotIn('quota_wait',check_quota_wait(self.records,row,client)['data'])
+
+    def test_probe_budget_is_persisted_before_external_io_and_survives_crash(self):
+        from media_mcp.runtime.quota_wait import check_quota_wait,QuotaWaiting
+        task,jobs,job=self.start();record_failure(jobs,job,CodexError('rate_limited',terminal_observed=True))
+        row=self.records.get(task['job_id']);seen={}
+        def crash():
+            seen.update(self.records.get(row['id'])['data']['quota_wait'])
+            raise KeyboardInterrupt()
+        client=Mock();client.check_connection.side_effect=crash
+        with self.assertRaises(KeyboardInterrupt):check_quota_wait(self.records,row,client)
+        self.assertEqual(1,seen['checks']);self.assertTrue(seen['probe_inflight'])
+        self.assertTrue(seen['next_check_at']);self.assertEqual(1,seen['probe_attempts'])
+        row=self.records.get(row['id']);wait={**row['data']['quota_wait'],'checks':10}
+        row=self.records.update(row,row['state'],{**row['data'],'quota_wait':wait})
+        with self.assertRaises(QuotaWaiting) as caught:check_quota_wait(self.records,row,client)
+        self.assertFalse(caught.exception.checked);self.assertEqual(1,client.check_connection.call_count)
 
     def test_existing_stopped_quota_task_can_be_scheduled_without_clearing_fence(self):
         from media_mcp.runtime.quota_wait import schedule_existing_quota_task
