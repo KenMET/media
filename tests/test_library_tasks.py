@@ -41,6 +41,8 @@ class TaskViewsTests(unittest.TestCase):
         self.assertEqual(first['results'][0]['state'],'completed')
         status=self.service.library_task_status(job['job_id'])
         self.assertEqual((status['completed'],status['review_count'],status['total']),(120,60,120))
+        self.assertEqual(status['succeeded'],60)
+        self.assertEqual(self.service.library_tasks()['tasks'][0]['succeeded'],60)
 
     def test_resume_lookup_is_read_only_and_owned(self):
         self.fixture(1);job=self.service.library_auto('recover-request01')

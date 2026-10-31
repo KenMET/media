@@ -31,7 +31,12 @@ Return exactly one JSON object: {"decisions":[{"key":"m:1","category":"main|extr
 "original_title":"Original","date":"2024-01-01","original_language":"en","poster_url":null},
 "season":null,"episode":null,"confidence":0.0,"runtime_seconds":null,"reason":"why and duration assessment",
 "sources":["https://www.themoviedb.org/movie/123-title"]}]}. For main TV provide season and episode;
-for extras the identity can be the parent work, but season/episode must be null. Cite actual opened/attempted sources, including the indexed TMDB link and accessible corroborating pages. runtime_seconds is the matched movie/episode duration from opened sources, or null when unavailable; never copy the measured file duration into it.
+for extras the identity can be the parent work, but season/episode must be null.
+For every main TV decision, research and cite the matching TMDB season URL
+(https://www.themoviedb.org/tv/ID/season/NUMBER), not only the series homepage.
+The validator requires this season-specific evidence; a series homepage alone cannot confirm a season.
+Use indexed season links if the body is blocked, and corroborate episode numbering with reliable references.
+Cite actual opened/attempted sources, including the indexed TMDB link and accessible corroborating pages. runtime_seconds is the matched movie/episode duration from opened sources, or null when unavailable; never copy the measured file duration into it.
 '''
 
 

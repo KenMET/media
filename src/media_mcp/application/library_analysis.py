@@ -132,6 +132,7 @@ def source_key(url):
 
 def validate_decision(item,opened,search_count=0):
     result=item.model_dump();result['source']='ai';result['applicable']=False
+    result['review_code']='automatic_match_uncertain'
     claimed={tmdb_source(url) for url in item.sources if tmdb_source(url)}
     keys={source_key(url) for url in item.sources if source_key(url)}
     result['sources']=sorted(url for url in opened if public_source(url) and (source_key(url) in keys or tmdb_source(url) in claimed))
@@ -150,16 +151,18 @@ def validate_decision(item,opened,search_count=0):
         poster=identity.get('poster_url')
         if poster and not re.fullmatch(r'https://image\.tmdb\.org/t/p/(?:w342|w500|original)/[A-Za-z0-9_.-]+',poster):identity['poster_url']=None
         sources=[url for url in result['sources'] if tmdb_source(url)==item.identity.title_id]
-        if not sources:return result
+        if not sources:
+            result['review_code']='analysis_identity_evidence_missing';return result
         if item.category=='main' and item.identity.kind=='tv':
             if item.season is None or item.episode is None:return result
-            if not any(re.search(r'/season/'+str(item.season)+r'(?:/|$)',urlsplit(url).path) for url in sources):return result
+            if not any(re.search(r'/season/'+str(item.season)+r'(?:/|$)',urlsplit(url).path) for url in sources):
+                result['review_code']='analysis_season_evidence_missing';return result
         if item.identity.kind=='movie' and (item.season is not None or item.episode is not None):return result
         result['identity']=identity
     elif item.category=='extra':
         # Classification without a parent identity remains explicitly labelled as such.
         if not result['sources']:return result
-    result['applicable']=True
+    result['applicable']=True;result.pop('review_code',None)
     return result
 
 
@@ -328,7 +331,18 @@ class LibraryAnalysis:
         if pending:
             from media_mcp.runtime.model_scope import assert_no_unresolved_analysis
             pending_keys={file['key'] for file in pending}
-            assert_no_unresolved_analysis(self.db,[file for file in data['files'] if file['key'] in pending_keys],exclude_id=row['id'])
+            observer=client
+            if observer is None:
+                from media_mcp.ingest.clients.library_analysis import LibraryAnalysisClient
+                observer=LibraryAnalysisClient(timeout=30,max_retries=0)
+            blocked=assert_no_unresolved_analysis(self.db,[file for file in data['files'] if file['key'] in pending_keys],
+                exclude_id=row['id'],owner=data['owner'],client=observer,guard=guard,partial=True)
+            for file in pending:
+                if file['key'] in blocked:
+                    accepted.append({'key':file['key'],'category':'unknown','identity':None,'confidence':0,'sources':[],
+                        'source':'rule','applicable':False,'review_code':'analysis_ai_outcome_unknown','reason':'原识别请求结果尚未确认，保留隔离；其他文件继续处理。'})
+            pending=[file for file in pending if file['key'] not in blocked]
+            data['analysis_decisions']=accepted;save()
         for index in range(0,len(pending),12):
             chunk=pending[index:index+12]
             if 'analysis_policy' not in data:

@@ -39,6 +39,7 @@ class LibraryTasks:
         data=row['data'];result=task_public(row)
         for name in ('completed_count','review_count'):
             if name in row:result['completed' if name=='completed_count' else name]=row[name]
+        result['succeeded']=result['completed']-result['review_count']
         result.update(created_at=str(row['created_at']),updated_at=str(row['updated_at']))
         processing=self.db.execute("""SELECT state,lease_until,updated_at,
             CASE WHEN state='running' AND lease_until>CURRENT_TIMESTAMP THEN 1 ELSE 0 END lease_active

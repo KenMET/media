@@ -151,6 +151,16 @@ class AnalysisTests(unittest.TestCase):
         tv={**base,'identity':Provider().detail('tv:123'),'season':2,'episode':1,'sources':['https://www.themoviedb.org/tv/123-test/season/1']}
         self.assertFalse(validate_decision(Decision.model_validate(tv),set(tv['sources']))['applicable'])
 
+    def test_tv_season_evidence_has_specific_rejection_and_season_link_is_accepted(self):
+        root='https://www.themoviedb.org/tv/123-test'
+        data={'key':'m:1','category':'main','identity':Provider().detail('tv:123'),
+              'season':2,'episode':1,'confidence':.98,'reason':'Matched','sources':[root]}
+        rejected=validate_decision(Decision.model_validate(data),set(),search_count=1)
+        self.assertFalse(rejected['applicable'])
+        self.assertEqual(rejected['review_code'],'analysis_season_evidence_missing')
+        data['sources'].append(root+'/season/2')
+        self.assertTrue(validate_decision(Decision.model_validate(data),set(),search_count=1)['applicable'])
+
     def test_indexed_tmdb_id_can_use_open_attempt_with_corroborating_source(self):
         wiki='https://en.wikipedia.org/wiki/Test_film'
         item=Decision.model_validate({'key':'m:1','category':'main','identity':Provider().detail('movie:42'),

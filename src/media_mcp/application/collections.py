@@ -17,6 +17,7 @@ from media_mcp.storage.records import require_fresh
 from media_mcp.storage.media import _json_object
 
 MAX_FILES = 500
+READY_SUBTITLE_STATUSES = {'translated','linked','exists','completed','verified','extracted','converted','embedded_extracted'}
 EPISODE = re.compile(r'(?i)(?<![a-z0-9])s(\d{1,2})[ ._-]*e(\d{1,3})(?!\d)')
 EXTRA_FOLDER = re.compile(r'(?i)^(?:extras?|bonus(?:[ ._-]+features?)?|featurettes?|behind[ ._-]+the[ ._-]+scenes|deleted[ ._-]+scenes|trailers?|samples?|特典|花絮|幕后|幕后花絮|预告片|附加内容)$')
 EXTRA_NAME = re.compile(r'(?i)(?:^|[\s._\[(-])(?:sample|trailer|featurette|NCOP|NCED|PV|CM)(?:$|[\s._\])\d-])|特典|花絮|幕后制作|删减片段|预告片')
@@ -135,7 +136,7 @@ class Collections:
         subtitles=defaultdict(list);ready_paths=defaultdict(list);known=set()
         for sub in self.db.execute('SELECT matched_video_target_path,target_subtitle_path,language,status,format FROM media_subtitle ORDER BY id').mappings():
             subtitles[sub['matched_video_target_path']].append({key:sub[key] for key in ('language','status','format')})
-            if sub['status'] in ('translated','linked','exists','completed','verified','extracted','converted'):
+            if sub['status'] in READY_SUBTITLE_STATUSES:
                 ready_paths[sub['matched_video_target_path']].append(sub['target_subtitle_path'])
             known.add((sub['matched_video_target_path'],sub['target_subtitle_path']))
         for item in inventory:
@@ -239,7 +240,7 @@ class Collections:
 
     @staticmethod
     def summary(files):
-        ready={'translated','linked','exists','completed','verified','extracted','converted'}
+        ready=READY_SUBTITLE_STATUSES
         main=[f for f in files if f['classification']['category']=='main']
         main_verified=sum(any(s['status'] in ready for s in f['subtitles']) for f in main)
         main_discovered=sum(any(s['status']=='discovered' for s in f['subtitles']) and not any(s['status'] in ready for s in f['subtitles']) for f in main)
@@ -657,5 +658,6 @@ def task_public(row):
     visible=[item for item in results if item['state']!='completed'][:50] if data.get('automatic') else results
     return {'job_id':row['id'],'state':row['state'],'action':data['action'],'automatic':data.get('automatic',False),'result_collection_id':data.get('result_collection_id'),'summary':data.get('summary',{}),
             'collection_id':data['collection_id'],'label':data.get('label'),'analysis_plan_id':data.get('analysis_plan_id'),'analysis_progress':data.get('analysis_progress'),'analysis_applied':data.get('analysis_applied',0),'total':data.get('total',len(data['files'])),
-            'completed':len(results), 'results':visible,'review_count':sum(item['state']!='completed' for item in results),
+            'completed':len(results), 'succeeded':sum(item['state']=='completed' for item in results),
+            'results':visible,'review_count':sum(item['state']!='completed' for item in results),
             'quota_wait':data.get('quota_wait'), 'session_recovery':data.get('session_recovery'), 'error_code':data.get('error_code'), 'model_failure':data.get('model_failure'), 'model_retry_count':data.get('model_retry_count',0), 'blocked':data.get('blocked',[])}

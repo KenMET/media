@@ -147,6 +147,27 @@ class ModelRecoveryTests(unittest.TestCase):
         assert_no_unresolved_subtitle(self.db,{'state':state},exclude_id=prior['id'])
         assert_no_unresolved_subtitle(self.db,{'state':{'source':[1,2,3,5]}},exclude_id='other')
 
+    def test_cross_run_fence_clears_only_exact_observed_terminal_research(self):
+        from media_mcp.runtime.model_scope import assert_no_unresolved_analysis
+        file={'key':'m:1','state':{'source':[1,2,3,4]}}
+        data={'owner':self.admin.id,'action':'analysis','ai_inflight':True,'files':[file],
+              'analysis_thread':'original','analysis_turn':'turn'}
+        row=self.records.put('library_auto_item',data,'needs_review');client=Mock()
+        for thread,turns in [('wrong',[{'id':'turn','status':'completed'}]),
+                             ('original',[{'id':'wrong','status':'completed'}]),
+                             ('original',[{'id':'turn','status':'inProgress'}])]:
+            client.recover_thread.return_value={'thread':{'id':thread,'turns':turns}}
+            with self.assertRaisesRegex(ValueError,'analysis_ai_outcome_unknown'):
+                assert_no_unresolved_analysis(self.db,[file],exclude_id='other',owner=self.admin.id,client=client)
+            self.assertTrue(self.records.get(row['id'])['data']['ai_inflight'])
+        client.recover_thread.return_value={'thread':{'id':'original','turns':[{'id':'turn','status':'completed'}]}}
+        assert_no_unresolved_analysis(self.db,[file],exclude_id='other',owner=self.admin.id,client=client)
+        after=self.records.get(row['id'])
+        self.assertEqual(after['state'],'needs_review')
+        self.assertFalse(after['data']['ai_inflight'])
+        self.assertEqual(after['data']['analysis_request_history'][-1]['observation'],'cross_run_terminal_confirmed')
+        client.analyze.assert_not_called()
+
     def test_error_codes_do_not_leak_raw_server_or_credential_text(self):
         self.assertEqual('model_upstream_unavailable',error_code(RuntimeError('IO error: Connection reset by peer; https://secret.invalid/?api_key=secret')))
         self.assertEqual('rate_limited',error_code(RuntimeError('usage_limit_reached')))

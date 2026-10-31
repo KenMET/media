@@ -91,6 +91,59 @@ class AutoTests(unittest.TestCase):
         self.assertTrue(self.db.execute('SELECT target_path FROM media_link WHERE source_path=:path',{'path':str(sources[0])}).scalar())
         self.assertEqual(unknown.read_bytes(),b'uncertain')
 
+    def test_returned_subtitle_review_can_be_retried_without_unknown_fence(self):
+        from unittest.mock import Mock
+        self.fixture(1)
+        agent=Mock();agent._last_model_error=None
+        agent._run_path_summary_locked.return_value={'media_count':1,'handled':0,'review':1}
+        result=self.run_auto(self.service.library_auto('returned-review-001'),agent=agent)
+        self.assertEqual(result['results'][0]['error_code'],'automatic_subtitle_review')
+        child=self.records.decode(self.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_auto_item'").mappings().one())
+        self.assertIsNone(child['data'].get('subtitle_inflight'))
+        # Simulate the legacy marker left after that same known return.
+        self.records.update(child,child['state'],{**child['data'],'subtitle_inflight':child['data']['files'][0]['key']})
+        result=self.run_auto(self.service.library_auto('returned-review-002'))
+        self.assertEqual(result['state'],'completed',result)
+        self.assertEqual(result['succeeded'],1)
+
+    def test_extracted_chinese_subtitle_is_ready_and_not_processed_again(self):
+        class EmbeddedSubtitles(AutoSubtitles):
+            def _run_path_summary_locked(self,path,send_notify=False):
+                result=super()._run_path_summary_locked(path,send_notify)
+                _client(None).execute("UPDATE media_subtitle SET status='embedded_extracted'")
+                return result
+        self.fixture(1);agent=EmbeddedSubtitles()
+        result=self.run_auto(self.service.library_auto('extracted-chinese-001'),agent=agent)
+        self.assertEqual(result['state'],'completed',result)
+        self.assertEqual(result['summary']['subtitles'],1)
+        self.assertEqual(self.service.collections()['collections'][0]['summary']['subtitle_verified'],1)
+        again=self.service.library_auto('extracted-chinese-002')
+        self.assertEqual(again['total'],0)
+        self.assertEqual(agent.calls,1)
+
+    def test_unknown_file_does_not_block_other_files_in_same_collection(self):
+        self.fixture(2)
+        task=self.service.library_auto('partially-fenced-001')
+        file=self.records.get(task['job_id'])['data']['files'][0]
+        self.records.put('library_auto_item',{'owner':self.admin.id,'action':'analysis',
+            'ai_inflight':True,'files':[file]},'needs_review')
+        ai=AutoAI();result=self.run_auto(task,ai=ai)
+        self.assertEqual(result['review_count'],1,result)
+        self.assertEqual(result['succeeded'],1,result)
+        self.assertEqual(result['results'][0]['error_code'],'analysis_ai_outcome_unknown')
+        self.assertEqual(ai.calls,1)
+
+    def test_unknown_subtitle_transport_keeps_inflight_marker(self):
+        from media_mcp.adapters.codex import CodexError
+        from unittest.mock import Mock
+        self.fixture(1);agent=Mock()
+        agent._run_path_summary_locked.side_effect=CodexError('model_connection_lost',outcome_unknown=True)
+        jobs=MediaJobs();jobs.initialize();task=self.service.library_auto('unknown-subtitle-001');job=jobs.claim('library')
+        with self.assertRaises(CodexError):
+            process_task(jobs,job,analysis_client=AutoAI(),analysis_probe=lambda p:1400,subtitle_agent=agent)
+        child=self.records.decode(self.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_auto_item'").mappings().one())
+        self.assertEqual(child['data']['subtitle_inflight'],child['data']['files'][0]['key'])
+
     def test_automatic_extras_keep_their_parent_collection(self):
         self.fixture(1);source,target=self.paths[0]
         parent=source.parent/'Work';parent.mkdir();moved=parent/source.name;source.rename(moved)

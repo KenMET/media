@@ -156,7 +156,8 @@ class LibraryAuto:
                 for decision in plan['data']['decisions']:
                     original=frozen[decision['key']]
                     result=outcomes.get(decision['key'],{'key':decision['key'],'state':'needs_review',
-                        'error_code':'automatic_match_uncertain','analysis_plan_id':plan['id']})
+                        'error_code':decision.get('review_code','automatic_match_uncertain'),'analysis_plan_id':plan['id'],
+                        'reason':decision.get('reason'),'confidence':decision.get('confidence')})
                     result={**result,'name':Path(original.get('source_path') or original.get('target_path')).name,'category':decision['category']}
                     data['results'].append(result)
                     if decision['key'] in eligible:
@@ -255,12 +256,13 @@ class LibraryAuto:
                         data['subtitle_inflight']=key;save()
                         with media_job_guard(guard),media_mutation_lock(self.db):
                             value=process_subtitle(lib,jobs,lib.freeze(current),subtitle_agent,task_id=child['id'])
+                        data['subtitle_inflight']=None;save()
                         fresh=next((file for file in lib.files() if file['key']==current['key']),None)
                         if value['state']!='completed' or not fresh or not ready_subtitle(fresh):raise ValueError('automatic_subtitle_review')
                         result['subtitles']='ready'
-                        data['subtitle_inflight']=None
                 except Exception as error:
                     error_code=code(error)
+                    if getattr(error,'outcome_unknown',False):raise
                     if retryable_model_error(error):
                         data['subtitle_inflight']=None
                         save()
