@@ -2,6 +2,8 @@
 // server data never pass through this dictionary or through HTML translation.
 export const lang = localStorage.getItem('media-language') === 'en' ? 'en' : 'zh-CN';
 const english = {
+  "上一页":"Previous",
+  "下一页":"Next",
   "文件不存在，请先检查媒体挂载或重新扫描。":"Files are missing. Check the media mount or rescan first.",
   "媒体目录不可用，请检查磁盘挂载后重试。":"Media directories are unavailable. Check the disk mounts and retry.",
   "共享或非空目录已保留。":"Shared or nonempty folders were kept.",

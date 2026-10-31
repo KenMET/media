@@ -41,9 +41,11 @@ def provider_call(command, tmdb, jackett):
         path, params = args.get('path', ''), args.get('params', {})
         if (set(args) != {'path','params'} or not isinstance(path, str) or not re.fullmatch(
             r'(?:search/(?:movie|tv|multi)|(?:movie|tv)/[1-9][0-9]{0,11}|tv/[1-9][0-9]{0,11}/season/[0-9]{1,2}|(?:movie|tv)/top_rated|trending/(?:movie|tv)/(?:day|week))', path)
-            or not isinstance(params, dict) or set(params) - {'query','year','first_air_date_year','include_adult','language'}):
+            or not isinstance(params, dict) or set(params) - {'query','year','first_air_date_year','include_adult','language','page'}):
             raise ValueError('invalid_provider_request')
         for key, value in params.items():
+            if key == 'page' and (type(value) is not int or not 1 <= value <= 500):
+                raise ValueError('invalid_provider_request')
             if key == 'query' and (not isinstance(value, str) or not 1 <= len(value) <= 200):
                 raise ValueError('invalid_provider_request')
             if key in ('year','first_air_date_year') and (type(value) is not int or not 1880 <= value <= 2200):
@@ -200,7 +202,7 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
     async def discover(request):
         user = await authenticate(request)
         return await run_in_threadpool(budget.call,user['id'],'search',catalog.discover, request.query_params.get('source','tmdb'),
-            request.query_params.get('kind','movie'), request.query_params.get('window','week'))
+            request.query_params.get('kind','movie'), request.query_params.get('window','week'), request.query_params.get('page','1'))
 
     async def detail(request):
         user = await authenticate(request)

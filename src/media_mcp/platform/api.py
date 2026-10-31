@@ -523,7 +523,7 @@ def create_app(accounts=None, records=None, service_factory=None):
             raise ValueError('cloud_search_only')
         return await run_in_threadpool(budget.call, user.id, 'search', catalog.discover,
             request.query_params.get('source', 'tmdb'), request.query_params.get('kind', 'movie'),
-            request.query_params.get('window', 'week'))
+            request.query_params.get('window', 'week'), request.query_params.get('page', '1'))
 
     async def detail(request):
         user = await run_in_threadpool(actor, request)

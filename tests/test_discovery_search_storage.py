@@ -32,5 +32,5 @@ class TopRatedTests(unittest.TestCase):
         self.tmdb.get.return_value={'results':[{'id':389,'title':'Classic','vote_average':8.5}]}
         result=self.catalog.discover('tmdb','movie','top')
         self.assertEqual(result['items'][0]['title_id'],'movie:389')
-        self.tmdb.get.assert_called_once_with('movie/top_rated')
+        self.tmdb.get.assert_called_once_with('movie/top_rated',page=1)
         self.catalog.discover('tmdb','movie','top');self.assertEqual(self.tmdb.get.call_count,1)

@@ -154,7 +154,11 @@ class GatewayTests(unittest.TestCase):
             tmdb.get.assert_not_called()
             tmdb.get.return_value = {'results':[]}
             command['arguments']['path'] = 'trending/movie/week'
+            command['arguments']['params'] = {'page':2}
             self.assertEqual(client.post('/internal/provider',json=command,headers=headers).status_code,200)
+            tmdb.get.assert_called_once_with('trending/movie/week', page=2)
+            command['arguments']['params'] = {'page':True}
+            self.assertEqual(client.post('/internal/provider',json=command,headers=headers).status_code,400)
 
     def test_mutation_transport_does_not_retry_on_lost_response(self):
         session = Mock()

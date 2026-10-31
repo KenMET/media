@@ -21,6 +21,44 @@ class CatalogTests(unittest.TestCase):
         self.tmdb, self.session = Mock(), MagicMock()
         self.catalog = Catalog(DatabaseClient(), self.tmdb, self.session, lambda:self.now)
 
+    def test_pages_are_isolated_and_keep_stale_metadata(self):
+        self.tmdb.get.side_effect = lambda path, page: {
+            'results':[{'id':page, 'title':str(page)}], 'total_pages':3}
+        first = self.catalog.discover(page='1')
+        second = self.catalog.discover(page='2')
+        self.assertEqual(first['items'][0]['title_id'], 'movie:1')
+        self.assertEqual(second['items'][0]['title_id'], 'movie:2')
+        self.assertTrue(second['has_next'])
+        self.assertEqual(second['total_pages'], 3)
+        self.assertEqual(self.catalog.discover(page=1), first)
+        self.now += 10801
+        self.tmdb.get.side_effect = RuntimeError('tmdb_unavailable')
+        stale = self.catalog.discover(page=2)
+        self.assertTrue(stale['stale'])
+        self.assertEqual(stale['items'], second['items'])
+        self.assertEqual(stale['total_pages'], 3)
+        unavailable = self.catalog.discover(page=3)
+        self.assertEqual(unavailable['items'], [])
+        self.assertFalse(unavailable['has_next'])
+
+    def test_invalid_pages_do_not_call_provider(self):
+        for page in (0, -1, 501, True, 1.5, '01', 'bad'):
+            with self.subTest(page=page), self.assertRaises(ValueError):
+                self.catalog.discover(page=page)
+        self.tmdb.get.assert_not_called()
+
+    def test_simkl_all_hundred_items_share_cache_across_pages(self):
+        self.simkl_response([{'title':str(i), 'ids':{'simkl_id':i}}
+                             for i in range(1, 101)])
+        first = self.catalog.discover('simkl', page=1)
+        last = self.catalog.discover('simkl', page=5)
+        self.assertEqual(len(first['items']), 20)
+        self.assertEqual(last['items'][0]['rank'], 81)
+        self.assertEqual(last['items'][-1]['rank'], 100)
+        self.assertEqual(last['total_pages'], 5)
+        self.assertFalse(last['has_next'])
+        self.assertEqual(self.session.get.call_count, 1)
+
     def test_known_title_detail_cache_and_stale_fallback(self):
         self.tmdb.get.return_value={'id':123,'name':'Known','poster_path':'/known.jpg'}
         first=self.catalog.detail('tv:123')

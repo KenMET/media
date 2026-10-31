@@ -62,10 +62,14 @@ class Catalog:
                 {'key':key,'payload':json.dumps(result,ensure_ascii=False),'now':now})
             return result
 
-    def discover(self, source='tmdb', kind='movie', window='week'):
+    def discover(self, source='tmdb', kind='movie', window='week', page=1):
         if source not in ('tmdb', 'douban', 'simkl') or kind not in ('movie', 'tv') or window not in ('day', 'week','top') or window=='top' and source!='tmdb':
             raise ValueError('invalid_catalog_request')
-        key = f'{source}:{kind}:{window}'
+        if isinstance(page, str) and re.fullmatch(r'[1-9][0-9]{0,2}', page):
+            page = int(page)
+        if type(page) is not int or not 1 <= page <= 500:
+            raise ValueError('invalid_catalog_request')
+        key = f'pages-v1:{source}:{kind}:{window}' + (f':{page}' if source == 'tmdb' else '')
         with self.lock:
             now = self.clock()
             cached = self.db.execute('SELECT * FROM platform_catalog_cache WHERE key=:key',
@@ -73,25 +77,27 @@ class Catalog:
             ttl = 3600 if source == 'simkl' else 10800
             if cached and ((not cached['error_code'] and now-cached['fetched_at'] < ttl)
                            or now-cached['attempted_at'] < 300):
-                return self._response(source, cached)
+                return self._response(source, cached, page)
             error = None
             updated = cached['source_updated_at'] if cached else None
             try:
                 if source == 'tmdb':
-                    raw = self.tmdb.get(f'{kind}/top_rated' if window=='top' else f'trending/{kind}/{window}').get('results', [])
-                    items = [self.tmdb_item(kind, item) for item in raw[:40]]
+                    raw = self.tmdb.get(f'{kind}/top_rated' if window=='top' else f'trending/{kind}/{window}', page=page)
+                    items = [self.tmdb_item(kind, item) for item in raw.get('results', [])]
+                    total_pages = min(500, max(1, int(raw.get('total_pages', page))))
                 elif source == 'simkl':
                     items, updated = self._simkl(kind, window, now)
                 else:
                     items = self._douban(kind)
                 if not items:
                     raise RuntimeError('catalog_empty_response')
+                items = {'items':items, 'total_pages':total_pages} if source == 'tmdb' else {'items':items}
             except Exception as exc:
                 candidate = str(exc)
                 error = candidate if candidate in ('douban_unavailable', 'douban_invalid_response',
                     'tmdb_not_configured', 'tmdb_unavailable', 'catalog_empty_response',
                     'simkl_unavailable', 'simkl_invalid_response', 'simkl_outdated') else 'catalog_unavailable'
-                items = json.loads(cached['payload']) if cached else []
+                items = json.loads(cached['payload']) if cached else {'items':[], 'total_pages':page}
                 updated = cached['source_updated_at'] if cached else None
             fetched = now if not error else (cached['fetched_at'] if cached else 0)
             self.db.execute('''INSERT INTO platform_catalog_cache(key,payload,fetched_at,attempted_at,error_code,source_updated_at)
@@ -101,10 +107,16 @@ class Catalog:
                 {'key':key, 'payload':json.dumps(items, ensure_ascii=False),
                 'fetched':fetched, 'attempted':now, 'error':error, 'updated':updated})
             return self._response(source, {'payload':json.dumps(items), 'fetched_at':fetched,
-                                          'error_code':error, 'source_updated_at':updated})
+                                          'error_code':error, 'source_updated_at':updated}, page)
 
-    def _response(self, source, row):
-        return {'source':source, 'items':json.loads(row['payload']), 'fetched_at':row['fetched_at'] or None,
+    def _response(self, source, row, page):
+        payload = json.loads(row['payload'])
+        items = payload['items']
+        total_pages = payload.get('total_pages', max(1, (len(items)+19)//20))
+        if source != 'tmdb':
+            items = items[(page-1)*20:page*20]
+        return {'source':source, 'items':items, 'page':page,
+                'total_pages':total_pages, 'has_next':page < total_pages, 'fetched_at':row['fetched_at'] or None,
                 'source_updated_at':row['source_updated_at'],
                 'stale':bool(row['error_code']), 'error_code':row['error_code'],
                 'status':'stale' if row['error_code'] and row['fetched_at'] else (
@@ -139,7 +151,7 @@ class Catalog:
         if not isinstance(rows, list):
             raise RuntimeError('simkl_invalid_response')
         items = []
-        for rank, row in enumerate(rows[:40], 1):
+        for rank, row in enumerate(rows[:100], 1):
             if not isinstance(row, dict) or not isinstance(row.get('title'), str) or not row['title'].strip():
                 continue
             ids = row.get('ids')
