@@ -21,6 +21,22 @@ class CatalogTests(unittest.TestCase):
         self.tmdb, self.session = Mock(), MagicMock()
         self.catalog = Catalog(DatabaseClient(), self.tmdb, self.session, lambda:self.now)
 
+    def test_known_title_detail_cache_and_stale_fallback(self):
+        self.tmdb.get.return_value={'id':123,'name':'Known','poster_path':'/known.jpg'}
+        first=self.catalog.detail('tv:123')
+        self.assertEqual(first['poster_url'],'https://image.tmdb.org/t/p/w342/known.jpg')
+        self.assertEqual(self.catalog.detail('tv:123'),first)
+        self.tmdb.get.assert_called_once_with('tv/123')
+        self.now+=86401;self.tmdb.get.side_effect=RuntimeError('tmdb_unavailable')
+        self.assertEqual(self.catalog.detail('tv:123'),first)
+        self.assertEqual(self.catalog.detail('tv:123'),first)
+        self.assertEqual(self.tmdb.get.call_count,2)
+
+    def test_detail_rejects_other_identity(self):
+        self.tmdb.get.return_value={'id':456,'name':'Other'}
+        with self.assertRaisesRegex(ValueError,'provider_identity_mismatch'):
+            self.catalog.detail('tv:123')
+
     def test_tmdb_cache_stale_fallback_and_failure_backoff(self):
         self.tmdb.get.return_value = {'results':[{'id':1, 'title':'Example', 'poster_path':'/a.jpg'}]}
         first = self.catalog.discover()

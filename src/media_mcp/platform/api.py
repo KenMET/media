@@ -522,7 +522,7 @@ def create_app(accounts=None, records=None, service_factory=None):
         user = await run_in_threadpool(actor, request)
         if os.environ.get('MEDIA_EXECUTION_ONLY') == 'true':
             raise ValueError('cloud_search_only')
-        return await run_in_threadpool(budget.call,user.id,'search',catalog.detail, request.query_params.get('title_id', ''))
+        return await run_in_threadpool(budget.call,user.id,'metadata',catalog.detail, request.query_params.get('title_id', ''))
 
     static = Path(__file__).parent/'static'
     async def asset(request):

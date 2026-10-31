@@ -88,6 +88,8 @@ const english = {
   "操作锁已失效，任务已停止写入。":"The operation lock was lost. The task stopped writing.",
   "AI 服务额度暂不可用。":"AI service quota is temporarily unavailable.",
   "AI 服务认证失效。":"AI service authentication expired.",
+  "全库仅处理待办，请在单部作品中重新识别。":"Library-wide processing handles pending items only. Re-identify within a single work.",
+  "仅处理待办，复用已确认身份、映射和字幕。":"Only process pending items; reuse confirmed identities, mappings and subtitles.",
   "后台未完成此项，展开可查看具体原因。":"This item could not be completed. Expand it for details.",
   "后台任务状态":"Background task status",
   "连接中断，正在重新连接；显示上次进度。":"Reconnecting. Showing the last known progress.",

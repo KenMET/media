@@ -10,7 +10,7 @@ from media_mcp.storage.client import FileLock
 
 
 # Count, window seconds, concurrent expensive calls. Independent of browser UI.
-POLICIES = {'search':(30,60,2), 'plan':(10,60,2), 'submission':(10,600,2),
+POLICIES = {'search':(30,60,2), 'metadata':(120,60,2), 'plan':(10,60,2), 'submission':(10,600,2),
             'token':(5,3600,1)}
 
 

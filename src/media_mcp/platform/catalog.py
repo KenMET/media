@@ -35,11 +35,32 @@ class Catalog:
     def detail(self, title_id):
         from media_mcp.config import parse_title_id
         kind, ident = parse_title_id(title_id)
-        row = self.tmdb.get(f'{kind}/{ident}')
-        return {**self.tmdb_item(kind, row), 'genres':[g['name'] for g in row.get('genres', [])],
-                'seasons':[{'season':s['season_number'], 'name':s.get('name'),
-                            'episodes':s.get('episode_count')} for s in row.get('seasons', [])
-                           if type(s.get('season_number')) is int and 0 <= s['season_number'] <= 99]}
+        key = 'detail:'+title_id
+        with self.lock:
+            now = self.clock()
+            cached = self.db.execute('SELECT * FROM platform_catalog_cache WHERE key=:key',
+                                     {'key':key}).mappings().first()
+            if cached and (now-cached['fetched_at'] < 86400 or
+                           cached['error_code'] and now-cached['attempted_at'] < 300):
+                return json.loads(cached['payload'])
+            try:
+                row = self.tmdb.get(f'{kind}/{ident}')
+                if row.get('id') != ident:raise ValueError('provider_identity_mismatch')
+                result = {**self.tmdb_item(kind, row), 'genres':[g['name'] for g in row.get('genres', [])],
+                          'seasons':[{'season':s['season_number'], 'name':s.get('name'),
+                                      'episodes':s.get('episode_count')} for s in row.get('seasons', [])
+                                     if type(s.get('season_number')) is int and 0 <= s['season_number'] <= 99]}
+            except (RuntimeError, requests.RequestException):
+                if cached:
+                    self.db.execute('UPDATE platform_catalog_cache SET attempted_at=:now,error_code=:error WHERE key=:key',
+                                    {'now':now,'error':'tmdb_unavailable','key':key})
+                    return json.loads(cached['payload'])
+                raise
+            self.db.execute('''INSERT INTO platform_catalog_cache(key,payload,fetched_at,attempted_at)
+                VALUES(:key,:payload,:now,:now) ON CONFLICT(key) DO UPDATE SET
+                payload=excluded.payload,fetched_at=excluded.fetched_at,attempted_at=excluded.attempted_at,error_code=NULL''',
+                {'key':key,'payload':json.dumps(result,ensure_ascii=False),'now':now})
+            return result
 
     def discover(self, source='tmdb', kind='movie', window='week'):
         if source not in ('tmdb', 'douban', 'simkl') or kind not in ('movie', 'tv') or window not in ('day', 'week'):

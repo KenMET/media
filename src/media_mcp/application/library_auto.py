@@ -49,6 +49,8 @@ class LibraryAuto:
 
     def queue(self,idempotency_key,collection_id=None,scope='pending'):
         lib=self.lib;lib.manage()
+        if scope not in ('pending','all'):raise ValueError('invalid_library_auto_scope')
+        if scope=='all' and not collection_id:raise ValueError('library_auto_all_requires_collection')
         from media_mcp.runtime.state import MediaJobs
         MediaJobs().initialize()
         intent={'collection_id':collection_id,'scope':scope}

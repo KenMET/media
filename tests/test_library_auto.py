@@ -80,6 +80,24 @@ class AutoTests(unittest.TestCase):
         again=self.service.library_auto('whole-library-002')
         self.assertEqual(again['total'],0);self.assertEqual(again['state'],'completed')
 
+    def test_global_missing_subtitle_reuses_confirmed_identity_without_ai(self):
+        self.fixture(1)
+        first=self.run_auto(self.service.library_auto('confirmed-global-first'))
+        self.assertEqual(first['state'],'completed')
+        for row in self.db.execute('SELECT target_subtitle_path FROM media_subtitle').mappings():
+            Path(row['target_subtitle_path']).unlink()
+        ai=AutoAI()
+        second=self.run_auto(self.service.library_auto('confirmed-global-repair'),ai=ai)
+        self.assertEqual(second['state'],'completed',second)
+        self.assertEqual(second['succeeded'],1)
+        self.assertEqual(ai.calls,0)
+
+    def test_global_all_is_rejected_before_queue_or_ai(self):
+        self.fixture(1)
+        with self.assertRaisesRegex(ValueError,'library_auto_all_requires_collection'):
+            self.service.library_auto('global-all-blocked',scope='all')
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM media_mcp_record WHERE kind='library_task'").scalar(),0)
+
     def test_unknown_one_does_not_stop_other_work(self):
         self.fixture(1);sources=self.add_movies(1);unknown=sources[0].parent/'Mystery.mkv';unknown.write_bytes(b'uncertain')
         inv=Inventory(self.records);scan=inv.scan(self.admin.id);inv.adopt(scan['scan_id'],self.admin.id)

@@ -204,7 +204,7 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
 
     async def detail(request):
         user = await authenticate(request)
-        return await run_in_threadpool(budget.call,user['id'],'search',catalog.detail, request.query_params.get('title_id',''))
+        return await run_in_threadpool(budget.call,user['id'],'metadata',catalog.detail, request.query_params.get('title_id',''))
 
     async def provider(request):
         require_service(request)
