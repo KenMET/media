@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 path_builder.py
-根据结构化媒体分类结果生成确定性的硬链接目标路径。
+Build deterministic hardlink destinations from structured media classifications.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ def build_hardlink_path(result: Dict[str, Any], extension: str, media_root: str 
             media_root,
             'series',
             base_title,
-            f'第{season:02d}季',
+            f'\u7b2c{season:02d}\u5b63',
             filename,
         )
         return path
@@ -68,6 +68,6 @@ def build_hardlink_path(result: Dict[str, Any], extension: str, media_root: str 
         extra_type = sanitize_segment(str(result.get('extra_type')).upper())
         extra_index = int(result.get('extra_index'))
         filename = f'{base_title} - {extra_type}{extra_index:02d} - {year}{extension}'
-        return os.path.join(media_root, 'series', base_title, '特典', filename)
+        return os.path.join(media_root, 'series', base_title, '\u7279\u5178', filename)
 
     raise ValueError(f'Unsupported media_type: {media_type}')

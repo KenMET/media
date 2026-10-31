@@ -14,25 +14,25 @@ from media_mcp.storage.records import Records
 
 
 class PreviewTMDB:
-    titles = ('远山来信 · 测试作品','午夜航线 · 测试作品','岛屿漫游 · 测试作品',
-              '秋日留声 · 测试作品','星海旅人 · 测试作品','风的另一边 · 测试作品')
+    titles = ('\u8fdc\u5c71\u6765\u4fe1 · \u6d4b\u8bd5\u4f5c\u54c1','\u5348\u591c\u822a\u7ebf · \u6d4b\u8bd5\u4f5c\u54c1','\u5c9b\u5c7f\u6f2b\u6e38 · \u6d4b\u8bd5\u4f5c\u54c1',
+              '\u79cb\u65e5\u7559\u58f0 · \u6d4b\u8bd5\u4f5c\u54c1','\u661f\u6d77\u65c5\u4eba · \u6d4b\u8bd5\u4f5c\u54c1','\u98ce\u7684\u53e6\u4e00\u8fb9 · \u6d4b\u8bd5\u4f5c\u54c1')
 
     def get(self, path, **params):
         import re
         match = re.fullmatch(r'(movie|tv)/(\d+)(?:/season/(\d+))?', path)
         ident = int(match[2]) if match else 1
         if match and match[3]:
-            return {'episodes':[{'episode_number':index,'name':f'测试第 {index} 集'} for index in range(1,4)]}
-        item = {'id':1, 'title':'远山来信 · 测试作品', 'original_title':'Letters from the Mountain',
-                'release_date':'2025-01-01', 'overview':'仅用于界面验证的虚构作品，不会访问真实资源站或下载器。',
-                'original_language':'zh', 'vote_average':8.4, 'poster_path':f'/preview-{ident}.jpg', 'genres':[{'name':'剧情'}]}
+            return {'episodes':[{'episode_number':index,'name':f'\u6d4b\u8bd5\u7b2c {index} \u96c6'} for index in range(1,4)]}
+        item = {'id':1, 'title':'\u8fdc\u5c71\u6765\u4fe1 · \u6d4b\u8bd5\u4f5c\u54c1', 'original_title':'Letters from the Mountain',
+                'release_date':'2025-01-01', 'overview':'\u4ec5\u7528\u4e8e\u754c\u9762\u9a8c\u8bc1\u7684\u865a\u6784\u4f5c\u54c1，\u4e0d\u4f1a\u8bbf\u95ee\u771f\u5b9e\u8d44\u6e90\u7ad9\u6216\u4e0b\u8f7d\u5668。',
+                'original_language':'zh', 'vote_average':8.4, 'poster_path':f'/preview-{ident}.jpg', 'genres':[{'name':'\u5267\u60c5'}]}
         if path.startswith('trending/') or path.startswith('search/') or path.endswith('/top_rated'):
             return {'results':[{**item,'id':index+1,'title':title} for index,title in enumerate(
                 self.titles)]}
         item.update(id=ident, title=self.titles[(ident-1)%len(self.titles)])
-        if ident>=100:item['title']=f'批量样本 {ident}'
+        if ident>=100:item['title']=f'\u6279\u91cf\u6837\u672c {ident}'
         if match and match[1] == 'tv':
-            item['seasons'] = [{'season_number':n,'name':f'第 {n} 季 · 测试','episode_count':3} for n in (1,2)]
+            item['seasons'] = [{'season_number':n,'name':f'\u7b2c {n} \u5b63 · \u6d4b\u8bd5','episode_count':3} for n in (1,2)]
         return item
 
     def search(self, query, kind, year=None):
@@ -61,7 +61,7 @@ class PreviewTMDB:
 class PreviewIndexer:
     def search(self, query, kind=None):
         return {'releases':[{'name':query+' 2025 1080p WEB-DL', 'size':4*1024**3,
-            'seeders':28,'resolution':1080,'indexer':'测试站点', 'indexer_id':'preview',
+            'seeders':28,'resolution':1080,'indexer':'\u6d4b\u8bd5\u7ad9\u70b9', 'indexer_id':'preview',
             'categories':[5000 if kind == 'tv' else 2000], 'download_url':'magnet:?xt=urn:btih:'+'a'*40}],
             'diagnostics':[{'site':'preview','status':'ok','raw_count':1}]}
 
@@ -85,14 +85,14 @@ if __name__ == '__main__':
         if os.environ.get('MEDIA_PREVIEW_EMPTY') != 'true':
             (downloads/'Letters.from.the.Mountain.2025.mkv').write_bytes(b'disposable-preview-video')
             if os.environ.get('MEDIA_PREVIEW_NO_LINKS') == 'true':
-                (library/'远山来信 (2025).mkv').write_bytes(b'independent-library-file')
+                (library/'\u8fdc\u5c71\u6765\u4fe1 (2025).mkv').write_bytes(b'independent-library-file')
             else:
-                os.link(downloads/'Letters.from.the.Mountain.2025.mkv', library/'远山来信 (2025).mkv')
-            (library/'远山来信 (2025).zh.srt').write_text('1\n00:00:01,000 --> 00:00:02,000\n测试字幕\n')
+                os.link(downloads/'Letters.from.the.Mountain.2025.mkv', library/'\u8fdc\u5c71\u6765\u4fe1 (2025).mkv')
+            (library/'\u8fdc\u5c71\u6765\u4fe1 (2025).zh.srt').write_text('1\n00:00:01,000 --> 00:00:02,000\n\u6d4b\u8bd5\u5b57\u5e55\n')
             (downloads/'Midnight.Route.S01E01.1080p.mkv').write_bytes(b'unorganized-preview-video')
-            (library/'岛屿漫游 (2024).mp4').write_bytes(b'library-only-preview-video')
-            (library/'尚未匹配的字幕.ass').write_text('[Script Info]\nTitle: Preview')
-            (downloads/'失效的软链接.mkv').symlink_to(downloads/'missing.mkv')
+            (library/'\u5c9b\u5c7f\u6f2b\u6e38 (2024).mp4').write_bytes(b'library-only-preview-video')
+            (library/'\u5c1a\u672a\u5339\u914d\u7684\u5b57\u5e55.ass').write_text('[Script Info]\nTitle: Preview')
+            (downloads/'\u5931\u6548\u7684\u8f6f\u94fe\u63a5.mkv').symlink_to(downloads/'missing.mkv')
         records = Records(_client(None))
         records.initialize()
         accounts = Accounts(records.db)
@@ -108,11 +108,11 @@ if __name__ == '__main__':
             for season,episode in ((1,1),(1,2),(2,1)):
                 source=downloads/f'Island.S{season:02d}E{episode:02d}.mkv'
                 source.write_bytes(b'preview-episode')
-                target=library/'series/岛屿漫游'/f'第{season:02d}季'/f'岛屿漫游 - S{season:02d}E{episode:02d} - 2025.mkv'
+                target=library/'series/\u5c9b\u5c7f\u6f2b\u6e38'/f'\u7b2c{season:02d}\u5b63'/f'\u5c9b\u5c7f\u6f2b\u6e38 - S{season:02d}E{episode:02d} - 2025.mkv'
                 target.parent.mkdir(parents=True,exist_ok=True);os.link(source,target)
                 upsert_media_link(None,str(source),str(target),media_name=target.stem,status='linked')
                 if season==1 and episode==1:
-                    subtitle=target.with_suffix('.zh.srt');subtitle.write_text('1\n00:00:01,000 --> 00:00:02,000\n测试字幕\n')
+                    subtitle=target.with_suffix('.zh.srt');subtitle.write_text('1\n00:00:01,000 --> 00:00:02,000\n\u6d4b\u8bd5\u5b57\u5e55\n')
                     upsert_media_subtitle(None,str(subtitle),str(subtitle),matched_video_source_path=str(source),matched_video_target_path=str(target),language='zh',format='srt',status='verified')
             for ident in (1,2,4,5):
                 title=PreviewTMDB().detail('movie:'+str(ident))
@@ -121,7 +121,7 @@ if __name__ == '__main__':
                 source=parent/f'Preview.Movie.{ident}.mkv';source.write_bytes(b'preview-movie')
                 target=library/'movie'/(title['title']+' - 2025.mkv');target.parent.mkdir(exist_ok=True);os.link(source,target)
                 upsert_media_link(None,str(source),str(target),media_name=title['title'],media_type='movie',media_tmdb_id=ident,year=2025,status='linked')
-                records.put('library_title',{'identity':title,'overview':'用于界面验收的虚构作品。'},key_hash=digest('library-title:'+title['title_id']))
+                records.put('library_title',{'identity':title,'overview':'\u7528\u4e8e\u754c\u9762\u9a8c\u6536\u7684\u865a\u6784\u4f5c\u54c1。'},key_hash=digest('library-title:'+title['title_id']))
             if os.environ.get('MEDIA_PREVIEW_EXTRAS')=='true':
                 bonus=downloads/'First Movie/Featurettes/Deleted Scenes';bonus.mkdir(parents=True)
                 (bonus/'Chandler Charters.mkv').write_bytes(b'preview-bonus')
@@ -130,7 +130,7 @@ if __name__ == '__main__':
                 (other/'Interview.mkv').write_bytes(b'preview-extra')
                 (other/'Clip.mkv').write_bytes(b'preview-extra')
                 (downloads/'Unclear Interview.mkv').write_bytes(b'preview-ambiguous')
-                wind=library/'movie/风的另一边 · 测试作品 - 2025.mkv'
+                wind=library/'movie/\u98ce\u7684\u53e6\u4e00\u8fb9 · \u6d4b\u8bd5\u4f5c\u54c1 - 2025.mkv'
                 if os.environ.get('MEDIA_PREVIEW_ANALYSIS')=='true':
                     parent=downloads/'Unmatched Feature (2025)';parent.mkdir()
                     source=parent/'Feature.mkv';source.write_bytes(b'preview-unknown-movie');os.link(source,wind)
@@ -157,7 +157,7 @@ if __name__ == '__main__':
                 def _run_path_summary_locked(self,path,**kwargs):
                     row=records.db.execute('SELECT * FROM media_link WHERE source_path=:path OR target_path=:path',{'path':path}).mappings().one()
                     target=Path(row['target_path']).with_suffix('.zh.srt')
-                    if not target.exists():target.write_text('1\n00:00:01,000 --> 00:00:02,000\n隔离测试字幕\n')
+                    if not target.exists():target.write_text('1\n00:00:01,000 --> 00:00:02,000\n\u9694\u79bb\u6d4b\u8bd5\u5b57\u5e55\n')
                     upsert_media_subtitle(None,str(target),str(target),matched_video_source_path=row['source_path'],matched_video_target_path=row['target_path'],language='zh',format='srt',status='verified')
                     return {'handled':1,'media_count':1,'failed':0,'missing':0,'review':0}
             class PreviewAnalysis:

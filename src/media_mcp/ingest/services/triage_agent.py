@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 media_agent.py
-Codex 驱动的媒体分类版本，本地负责最终路径生成、校验、硬链接与落库。
+Codex media classification with local path generation, validation, hardlinking and persistence.
 """
 
 from __future__ import annotations

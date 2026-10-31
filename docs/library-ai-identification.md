@@ -1,61 +1,60 @@
-# 已有媒体：规则优先、AI 兜底
+# Existing media: rules first, AI fallback
 
-识别、目录枚举、时长探测、AI 调用与 SQLite 保存均由 NAS 的 `local-worker` 执行。cloud 负责网页和原有手动 TMDB 搜索；新智能识别不需要 NAS 回调 cloud，不需要移动 TMDB key，也不改变单向部署配置。
+NAS `local-worker` owns identification, directory enumeration, duration probing, model calls and SQLite persistence. Cloud owns web assets and existing manual TMDB search. Intelligent identification needs no NAS-to-cloud callback, relocated TMDB key or topology change.
 
-## 默认全自动
+## Automatic workflow
 
-媒体库点击“全库自动整理”即可开始，无需勾选作品、选择范围或确认保存。任务覆盖全库待识别、映射异常或字幕未就绪的资源，不受网页搜索、筛选和分页影响。作品行“整理”和详情“自动整理这部作品”只处理该作品；更多菜单中的“重新整理全部资源”包含已完成资源，仍保留有效映射和字幕。
+Whole-library automatic organization covers pending identity, abnormal mapping and unready subtitles independently of current page/search/filter. Work-row/detail actions handle one work. Current whole-library scope is pending only; explicit reidentification belongs in a single-work detail page. Existing valid mappings/subtitles are retained.
 
-NAS local-worker 自动完成规则与时长检查、必要的 AI 检索、身份/分类保存、安全补链和缺失字幕处理。规则确定或 AI 结果可用且置信度至少 0.9 时直接保存；未知、低置信度、来源变化、映射冲突或字幕未就绪只列入未处理结果，不阻塞其他作品，也不要求逐项批准正常结果。附加内容保留索引并归组，跳过常规正片补链和字幕处理；只有整理文件的资源不虚构下载源。
+The worker checks rules/duration, researches when necessary, saves identity/classification, repairs safe missing links and processes missing subtitles. Deterministic results or usable AI confidence at least 0.9 can save automatically. Unknown/low-confidence results, changed sources, conflicts and subtitle failures remain individual unresolved results without blocking other works or requiring approval for reliable items. Extras stay indexed/grouped but skip ordinary feature linking/subtitles. Library-only files never acquire invented download sources.
 
-关闭页面或刷新不取消后台任务。页面显示文件进度、识别/新建映射/字幕就绪数量，异常逐项详情按需展开。点击自动整理后直接打开独立任务页，显示当前子步骤、作品/文件进度和全部分页结果；锁屏或断网后自动恢复查询，见[任务与使用体验](task-experience.md)。重复点击正在运行的相同范围返回原任务；全库是一个父任务，内部按作品分组，不受网页一页 24 部或账户十个并行任务上限截断。每组最多 500 个已索引视频，一次全库最多 20000 个文件；超限明确报错。
+Background work persists after closing/refreshing. Dedicated task links expose substeps, work/file progress, overlapping identified/new mapping/subtitle counts, and all paginated results. Reconnection follows [task experience](task-experience.md). Duplicate active scope returns the original task. One whole-library parent internally groups works beyond 24-card pages and the account's ten-task admission limit. Each group supports 500 indexed videos; one whole-library request supports 20,000 files; larger requests fail explicitly.
 
-“高级选项”保留仅预览识别建议、手动选择作品、范围勾选、分类、映射预览和字幕复核，供例外情况使用。只有主动选择这些高级工具时才进入原来的预览/确认流程。未索引资源仍先通过扫描导入进入媒体库。
+Advanced controls retain preview-only suggestions, manual identity selection, file scope, classification, mapping previews and subtitle review. Only these explicit tools use preview/confirm. Unindexed files must first be imported.
 
-## 分流与上下文
+## Rules and context
 
-本地先用既有身份、文件指纹、明确附加内容标记和实测时长判断。已确认且指纹/时长正常的文件可直接形成规则建议；明确附加标记且较短的文件可形成附加分类建议。
+Use saved identity, complete fingerprints, explicit extra markers and measured duration first. Confirmed unchanged normal-duration files can use deterministic identity; explicit short extras can use classification rules.
 
-未知身份、规则无法确定、探测不可用、时长相对同组中位数小于约 55% / 大于约 170%、与已保存资料时长相差超过 `max(5 分钟, 25%)`，或标为附加内容却长于 20 分钟时交给 AI。阈值只决定是否需要 AI，不把短视频直接判为无用文件。相同物理视频的源/整理路径复用探测结果。
+Send to AI when identity/rules are uncertain, probing is unavailable, duration is below about 55% or above 170% of group median, differs from saved reference by more than `max(5 minutes, 25%)`, or an extra exceeds 20 minutes. Thresholds trigger research rather than discarding short media. Source/library paths of one physical video share a probe result.
 
-向现有 AI 连接发送：请求文件的完整源路径与整理路径、相关目录内文件的完整路径清单、实测视频时长、已有作品线索及规则为何不能确定。不会读取字幕或其他文件的正文；跳过软链接、隐藏目录及 `.env` 文件。单文件位于公共下载根目录或电影分类目录时，只带该文件及同名前缀的伴随文件，不发送无关作品列表。明确选择整目录时才扩展。扩展后保留原目录范围，不因为某个硬链接指向别处就枚举另一个源目录。
+Model context includes full source/target paths, related directory paths, measured durations, known work clues and why rules were insufficient. It never reads subtitle/other file bodies; skip symlinks, hidden directories and `.env`. A selected file in a shared download/category root includes only itself and same-prefix companions, not unrelated works. Expand full directories only when explicitly selected. Retain selected directory scope rather than enumerating another directory reached through a hardlink.
 
-单任务最多 500 个已索引视频，上下文最多 2000 个文件、500 个物理视频及约 600KB 的路径/指纹清单。超过范围明确报错，请按季或具体文件夹分组；不会截断后声称处理完整目录。AI 每组最多 12 个请求文件，每次最多 24 个检索项、300 秒；目录上下文保留供整组判断。
+A task supports 500 indexed videos; context supports 2,000 files, 500 physical videos and about 600KB of paths/fingerprints. Exceeding limits asks for narrower season/folder groups, never silently truncates. Each AI group contains at most 12 requested files, 24 search items per call and a 300-second budget, with directory context retained.
 
-## AI 检索及证据边界
+## Research evidence
 
-媒体库使用专门的只读 App Server 会话。允许 AI 自主网页搜索、打开和查找资料；shell、文件编辑、MCP、插件、子代理和交互授权关闭。其他媒体/字幕客户端仍使用原有工具策略，不全局开放检索。
+Library research uses a dedicated read-only App Server profile. Web search/open/find are allowed; shell, file editing, MCP, plugins, subagents and interactive approval are disabled. Other media/subtitle client tool policies remain unchanged.
 
-AI 可以从上级目录理解不明文件名，查询对应作品及真实季集，并区分正片、特典、采访、删减场景、预告、短片和未知。要求保存每个请求 key，不能把上下文中的其他文件冒充为请求文件。判断理由包含时长解释，资料时长无法获取时保持空值。
+AI may infer context from parent directories, research real titles/seasons/episodes, and distinguish features, extras, interviews, deleted scenes, trailers, shorts and unknowns. Every result must retain its requested key; context files cannot impersonate request files. Reasons explain duration, with unavailable reference duration left null.
 
-程序记录实际网页检索与打开操作。网页正文受限时，AI 可使用检索摘要和引用链接，并用可信资料交叉核对片名、年份、时长或季集，在理由中说明访问限制；不能仅因 HTTP 拦截就否定强匹配。身份建议仍要求与提供 ID 对应的 TMDB 引用；TV 正片还要求对应季的引用。无身份的附加分类可以使用其他已检索的公开背景资料。
+Record actual search/open activity. When page bodies are blocked, search snippets/citations may support a match after cross-checking title/year/duration/episodes and explaining access limits. Blocking alone does not invalidate a strong match. Identity proposals require matching TMDB IDs/citations; TV features also require the corresponding season citation. Identity-free extras can use researched public context.
 
-来源明确分为“已发起页面打开”和“检索引用 · 未确认正文可读”。只有记录到实际检索活动，才接受 AI 报告的索引引用；没有工具活动又未打开来源的纯记忆结果不能保存。只展示 HTTPS 公网链接，过滤私网地址与非网页协议。
+Sources distinguish attempted page opens from search citations whose bodies were not confirmed readable. Accept reported search citations only with recorded search activity; unaudited memory-only claims cannot save. Display public HTTPS links only, rejecting private/non-web targets.
 
-程序不把引用伪装成正文已读，也不宣称做过 TMDB API 逐字段认证。索引引用是否准确、内容是否可靠由 AI 判断，所报告的引用链接仍可能有错误；管理员可在高级预览中查看来源。默认自动流程采用更高的置信度门槛，不能消除模型误判。身份、来源链接与数值格式会进行一致性检查，但这不是对网页内容真实性的独立认证。错误 key、低于 0.8 的结果或真正未知的身份不能直接保存。
+Citations are not claims that page bodies were read or TMDB API fields independently verified. AI judges source relevance/reliability and may return wrong links. Advanced previews expose evidence. Automatic confidence thresholds reduce but cannot eliminate model errors. Identity/link/value consistency checks are not independent factual verification. Wrong keys, confidence below 0.8 and genuinely unknown identity cannot save directly.
 
-实现依据：[官方 App Server 事件文档](https://learn.chatgpt.com/docs/app-server)、[官方检索配置文档](https://learn.chatgpt.com/docs/web-search)。
+Protocol references: [App Server events](https://learn.chatgpt.com/docs/app-server), [web search configuration](https://learn.chatgpt.com/docs/web-search).
 
-## 持久化与安全
+## Persistence and safety
 
-任务保存在 `library_task`，使用既有 library worker、SQLite 租约、续租、权限及队列预算。探测缓存按完整文件指纹匹配；目录清单、规则结果、AI 来源及预览保存在私有 SQLite 中。
+`library_task` uses existing workers, SQLite leases/renewal, permissions and queue budgets. Probe cache keys contain complete fingerprints. Private SQLite stores manifests, rule results, sources and previews.
 
-AI 只输出结构化判断，文件操作由程序执行。自动保存记录 `approval_mode=automatic`，不会伪装为用户确认。保存前重新检查目录、文件、权限和重叠任务，在媒体操作锁内原子更新身份及分类；补链复用版本恢复日志，只创建缺失硬链接，不覆盖目标。源视频字节与既有字幕保留。目标冲突、身份变化和权限撤销不会因自动模式绕过检查。
+AI outputs structured decisions only; code owns file mutations. Automatic saving records `approval_mode=automatic`, not fabricated user approval. Recheck directories/files/permissions/overlapping work and update identity/classification atomically under the mutation lock. Linking reuses version recovery, creates only missing hardlinks and never overwrites targets or source/subtitle bytes. Automatic mode cannot bypass conflicts, changed identity or revoked permission.
 
-模型提交前记录意图及 thread/turn 标识。请求结果未知或 worker 中断时不会静默重复模型提交；已完成分组与已提交链接可恢复。字幕外部调用同样在调用前持久化意图，结果未知不盲目重发。配额、认证或网络明确不可用时停止本轮后续 AI 请求，规则可处理项继续，剩余项保留可理解结果。
+Persist intent and thread/turn identity before model submission. Unknown outcomes or interruption never silently resubmit; accepted groups and committed links recover. Subtitle calls also persist intent before external work and retain unknown fencing. Definite quota/auth/network failures stop further AI for the pass while deterministic work may continue.
 
-自动整理先检查已验证字幕的实际文件，再调用现有字幕链路；处理器声称成功还必须有就绪字幕文件与记录，否则显示字幕未就绪，不假报完成。高级手动建议有效 24 小时，重复确认相同选择返回原回执。
+Verify existing subtitle files before invoking the established engine. Claimed success still requires ready files/records; otherwise report unready. Advanced manual proposals expire after 24 hours; repeated identical confirmation returns its receipt.
 
-## 隔离复验
+## Disposable verification
 
 ```sh
 PYTHONPATH=src MEDIA_PREVIEW_EMPTY=true MEDIA_PREVIEW_COLLECTIONS=true \
   MEDIA_PREVIEW_EXTRAS=true MEDIA_PREVIEW_ANALYSIS=true MEDIA_PREVIEW_MANY_MOVIES=30 \
   MEDIA_PREVIEW_MANIFEST=/tmp/media-collections-preview.json \
   nice -n 15 python3 tests/manual/preview_platform.py
-
 PLAYWRIGHT_MODULE=/path/to/playwright-core CHROME_EXECUTABLE=/path/to/chrome \
   nice -n 15 node tests/manual/acceptance_auto_library_browser.cjs
 ```
 
-预览使用一次性媒体与 SQLite、模拟 AI 和时长探测；真实网页/队列/自动保存/补链链路保留。此模式不连接真实下载器、AI 或字幕服务。真实 AI 连接的独立验收只发送虚构路径，不对生产 SQLite 或真实媒体运行测试。
+The preview uses disposable media/SQLite and fake AI/probes, retaining real HTTP/queue/save/hardlink paths. It does not connect to real downloader/model/subtitle services. Separate live model acceptance sends fictional paths only, never production SQLite or media.

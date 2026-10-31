@@ -14,7 +14,7 @@ from media_mcp.ingest.domain.result_schema import normalize_result, validate_str
 
 class TvExtraClassificationTest(unittest.TestCase):
     def test_relife_nced_is_tv_extra(self):
-        source = 'ReLIFE 重返17岁 无字幕片尾曲1(ReLIFE NCED1) - 2016.mkv'
+        source = 'ReLIFE \u91cd\u8fd417\u5c81 \u65e0\u5b57\u5e55\u7247\u5c3e\u66f21(ReLIFE NCED1) - 2016.mkv'
 
         parsed = parse_media_filename(source)
 
@@ -24,7 +24,7 @@ class TvExtraClassificationTest(unittest.TestCase):
         self.assertEqual(2016, parsed.year)
 
     def test_tv_extra_normalization_and_path(self):
-        source = 'ReLIFE 重返17岁 无字幕片尾曲1(ReLIFE NCED1) - 2016.mkv'
+        source = 'ReLIFE \u91cd\u8fd417\u5c81 \u65e0\u5b57\u5e55\u7247\u5c3e\u66f21(ReLIFE NCED1) - 2016.mkv'
         parsed = parse_media_filename(source)
         result = normalize_result(
             {
@@ -33,9 +33,9 @@ class TvExtraClassificationTest(unittest.TestCase):
                 'source_path': source,
                 'tmdb_id': 66941,
                 'title': {
-                    'zh': 'ReLIFE 重返17岁',
+                    'zh': 'ReLIFE \u91cd\u8fd417\u5c81',
                     'original': 'ReLIFE',
-                    'base': 'ReLIFE 重返17岁',
+                    'base': 'ReLIFE \u91cd\u8fd417\u5c81',
                 },
                 'year': 2016,
                 'confidence': 0.95,
@@ -49,9 +49,9 @@ class TvExtraClassificationTest(unittest.TestCase):
             os.path.join(
                 '/data/media_hub',
                 'series',
-                'ReLIFE 重返17岁(ReLIFE)',
-                '特典',
-                'ReLIFE 重返17岁(ReLIFE) - NCED01 - 2016.mkv',
+                'ReLIFE \u91cd\u8fd417\u5c81(ReLIFE)',
+                '\u7279\u5178',
+                'ReLIFE \u91cd\u8fd417\u5c81(ReLIFE) - NCED01 - 2016.mkv',
             ),
             target,
         )
@@ -63,7 +63,7 @@ class TvExtraClassificationTest(unittest.TestCase):
         )
 
     def test_filename_classification_overrides_movie_response(self):
-        source = 'ReLIFE 重返17岁 无字幕片尾曲1(ReLIFE NCED1) - 2016.mkv'
+        source = 'ReLIFE \u91cd\u8fd417\u5c81 \u65e0\u5b57\u5e55\u7247\u5c3e\u66f21(ReLIFE NCED1) - 2016.mkv'
         parsed = parse_media_filename(source)
 
         result = normalize_result(
@@ -71,7 +71,7 @@ class TvExtraClassificationTest(unittest.TestCase):
                 'success': True,
                 'kind': 'movie',
                 'source_path': source,
-                'title': {'zh': 'ReLIFE 重返17岁', 'base': 'ReLIFE 重返17岁'},
+                'title': {'zh': 'ReLIFE \u91cd\u8fd417\u5c81', 'base': 'ReLIFE \u91cd\u8fd417\u5c81'},
                 'year': 2016,
                 'confidence': 0.9,
             },
@@ -83,7 +83,7 @@ class TvExtraClassificationTest(unittest.TestCase):
         self.assertEqual(1, result['extra_index'])
 
     def test_normalization_preserves_original_language_and_country(self):
-        parsed = parse_media_filename('孤独摇滚！ S01E01 - 2022.mkv')
+        parsed = parse_media_filename('\u5b64\u72ec\u6447\u6eda！ S01E01 - 2022.mkv')
 
         result = normalize_result(
             {
@@ -92,9 +92,9 @@ class TvExtraClassificationTest(unittest.TestCase):
                 'source_path': parsed.source_path,
                 'tmdb_id': 119100,
                 'title': {
-                    'zh': '孤独摇滚！',
+                    'zh': '\u5b64\u72ec\u6447\u6eda！',
                     'original': 'ぼっち・ざ・ろっく！',
-                    'base': '孤独摇滚！(ぼっち・ざ・ろっく！)',
+                    'base': '\u5b64\u72ec\u6447\u6eda！(ぼっち・ざ・ろっく！)',
                 },
                 'original_language': 'ja',
                 'production_countries': [{'iso_3166_1': 'JP', 'name': 'Japan'}],
@@ -116,7 +116,7 @@ class TvExtraClassificationTest(unittest.TestCase):
             'source_path': '/data/downloads/Unusual Release Name.mkv',
             'season': 1,
             'episode': 4,
-            'hardlink_path': '/data/media_hub/series/Example Show/第01季/Example Show - S01E04 - 2024.mkv',
+            'hardlink_path': '/data/media_hub/series/Example Show/\u7b2c01\u5b63/Example Show - S01E04 - 2024.mkv',
         }
 
         self.assertEqual((True, 'ok'), validate_result(result))
@@ -128,7 +128,7 @@ class TvExtraClassificationTest(unittest.TestCase):
             'source_path': '/data/downloads/Unusual Release Name.mkv',
             'season': 1,
             'episode': 4,
-            'hardlink_path': '/data/media_hub/series/Example Show/第01季/Example Show - S01E05 - 2024.mkv',
+            'hardlink_path': '/data/media_hub/series/Example Show/\u7b2c01\u5b63/Example Show - S01E05 - 2024.mkv',
         }
 
         self.assertEqual(

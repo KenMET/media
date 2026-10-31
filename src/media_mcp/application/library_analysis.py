@@ -340,7 +340,7 @@ class LibraryAnalysis:
             for file in pending:
                 if file['key'] in blocked:
                     accepted.append({'key':file['key'],'category':'unknown','identity':None,'confidence':0,'sources':[],
-                        'source':'rule','applicable':False,'review_code':'analysis_ai_outcome_unknown','reason':'原识别请求结果尚未确认，保留隔离；其他文件继续处理。'})
+                        'source':'rule','applicable':False,'review_code':'analysis_ai_outcome_unknown','reason':'The original identification outcome is unknown. Keep it fenced and continue with other files.'})
             pending=[file for file in pending if file['key'] not in blocked]
             data['analysis_decisions']=accepted;save()
         for index in range(0,len(pending),12):

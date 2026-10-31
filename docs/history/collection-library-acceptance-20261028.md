@@ -1,35 +1,19 @@
-# 作品媒体库验收 · 2026-10-28
+# Collection library acceptance: 2026-10-28
 
-## 实现范围
+Replaced file lists with work collections, filtering permissions/grouping before pagination. The original layout used two-column mobile posters and season/episode/version details. Whole-work/season/file identity, mapping previews/repair and subtitle maintenance used cloud metadata, NAS identity baselines and persistent maintenance jobs.
 
-文件列表改为作品合集，后端先鉴权、聚合再分页；手机两列海报，详情按季集和版本展开。支持整部、整季、所选文件的身份确认、映射预览与修复、字幕维护。识别资料在 cloud 获取，NAS 保存 SQLite 索引与身份基线并执行维护任务。
+Preserved video bytes, valid links/subtitles, preferred-version demotion, target conflict rejection, changed-source review, zero-match subtitle rejection, leases/locks/version recovery.
 
-维护保留原视频字节、既有硬链接与有效字幕。旧首选版本不会被自动恢复，目标冲突拒绝覆盖；源身份变化要求重新确认。字幕处理器零匹配不会报告成功。维护沿用租约、文件操作锁与版本恢复日志。
+## Disposable evidence
 
-## 隔离验证
+Python suite: 163 passed, then 17 collection tests passed after the final recovery fence. Frontend: eight passed. Browser: five collections, one TV work with three files/two seasons, partial confirmation retained grouping, linking preserved source inode, subtitle work retained existing sidecars, refresh/back/forward, bilingual UI and 320–1440px without overflow/JS errors. Inventory browser regression passed. Providers/posters/subtitle engine were fictional; this established queue/UI behavior, not provider quality.
 
-- Python 全套 163 项通过；最后的映射恢复保护调整后，17 项合集回归再次通过。
-- 前端 i18n/交互测试 8 项通过。
-- 浏览器在一次性 SQLite、虚构媒体及 Provider 下通过：5 个作品合集，剧集 3 文件分为 2 季；确认一季不拆散合集；补链保持源 inode；字幕任务保持已有字幕；刷新和浏览器返回/前进正常；320–1440px 无横向溢出；中英文正常，无页面 JS 错误。
-- 字幕浏览器验收使用模拟处理器，证明队列和界面链路；不代表真实字幕 Provider 或内容质量验收。
-- 原扫描导入浏览器回归通过。
-- 本机浏览器证据：`/tmp/media-collections-acceptance/result.json`、`mobile-library-after.png`、`mobile-series-detail.png`。截图使用虚构海报与作品。
+Artifacts: `/tmp/media-collections-acceptance/result.json`, `mobile-library-after.png`, `mobile-series-detail.png`.
 
-## NAS 实际数据验证
+## NAS evidence and cloud boundary
 
-通过项目支持的 `sh setup.sh local` 更新 local-control 与 local-worker。更新前保留私有 SQLite 备份；未修改或提交 `.env`。
+`sh setup.sh local` updated control/worker after a private SQLite backup; `.env` was unchanged. Read-only state retained 807 mappings and 2879 inventory entries. 816 visible videos grouped into 80 confirmed/pending collections; Cyberpunk: Edgerunners' ten files remained one work. Filename seasons remained clues, not official metadata.
 
-只读检查现有库：807 条映射、2879 条文件索引保留；816 个可见视频（包含未整理资源）聚合为 80 个作品/待确认合集。截图中的《赛博朋克：边缘行者》10 个文件归入同一合集。文件名中的季号仅为待确认线索，不作为真实官方季集。
+Library heartbeat and installed-module parity passed. No production bulk identification/linking/subtitle maintenance was run; identity/maintenance counts remained zero.
 
-独立 library worker 心跳正常。没有对真实媒体执行批量识别、补链或字幕操作；确认身份记录和维护任务均为 0。最终容器模块哈希与工作区源码核对一致。
-
-## 未部署端
-
-cloud 无可用 SSH 入口，未部署，也未声称公网网页已经更新。完整新页面与云端识别转发需要在云端仓库拉取本次提交后执行：
-
-```sh
-git pull --ff-only
-sh setup.sh cloud
-```
-
-云端部署完成前，公网仍可能显示旧页面；不能用本机浏览器验收代替公网验收。
+Cloud SSH was unavailable; public assets were not deployed. On the cloud host, `git pull --ff-only` then `sh setup.sh cloud` was still required. Local browser/NAS evidence did not establish public deployment.

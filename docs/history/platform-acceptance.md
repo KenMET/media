@@ -1,43 +1,21 @@
-# Media 0.3 首版本地验收
+# Initial Media 0.3 local acceptance
 
-日期：2026-10-25。按用户确认，local/cloud 两组均在 NAS 192.168.8.1 测试；新加坡实际部署和豆瓣真实榜单接通暂缓，不属于本次首版通过条件。
+Date: 2026-10-25. Both roles ran on NAS `192.168.8.1`; Singapore deployment and successful Douban integration were explicitly outside first-release acceptance. Later real discovery/public search/Sintel/model/subtitle/bilingual/recovery evidence is in [live acceptance](live-acceptance.md); this page retains the earlier fixture stage.
 
-后续补充：真实 TMDB/SIMKL 榜单、public Jackett 中英文搜索、Sintel 实际下载及真实模型/字幕、双语网页和恢复验收已完成，见 [真实验收记录](live-acceptance.md)。本文件保留首版隔离验收时的结果与当时的演示说明。
+Implemented shared web/MCP search/plans/idempotent acquisition/progress/history/allowed retries/library/subtitles; administrator bootstrap/accounts/passwords/roles/grants/audit; one-time expiring/revocable personal tokens invalidated by account/password/role changes; unchanged default owner LAN mode; TMDB details/cache/backoff and honest Douban unavailability; NAS authority with authenticated cloud forwarding and no remote media/SQLite mounts; role setup and the historical `start.sh` alias with per-dependency URL selection.
 
-## 已实现
+## Results
 
-- 网页与 MCP 共用现有业务服务：作品/资源搜索、计划确认、幂等提交、进度、历史、允许的重试、媒体库与字幕维护。
-- 网页初始化管理员、登录退出、密码修改、用户创建/角色/启停、read/manage 分配、分配及操作记录。
-- 个人 MCP 令牌：一次展示、过期、撤销；用户禁用或密码/角色变化后令牌失效。传统个人 LAN MCP 默认免登录保留。
-- TMDB 发现/详情、电影/剧集、来源区分、缓存和失败退避；豆瓣只有适配器和明确不可用状态，不假冒接通。
-- 本地统一账号/会话/权限/任务；cloud 网页/MCP 经受保护接口调用 local，并提供元数据/Jackett 通路。cloud 不挂载媒体或远程 SQLite。
-- `setup.sh local/cloud`、`start.sh` 兼容入口、按每个依赖 URL 独立选择外部或内置容器。
+- Installed NAS package: 71 tests passed serial nice 15, 0.5 CPU, offline container.
+- Wheel 0.3.0: four CLIs/three assets.
+- Actual TCP web/provider/MCP: one submission on repeated keys, 503 while disconnected, preserved root-object media_status protocol.
+- Disposable SQLite/ffmpeg/canonical hardlink/sidecar/lease/completion passed.
+- Actual setup local/cloud started separate copies with reachable qBittorrent/Jackett UI/API, login and MCP user tokens. No real download was submitted in that Compose stage.
+- Browser covered login/discovery/release selection/confirmation/details/history/users/grants/accounts.
+- Old media-monitor/Quant/Crawler stayed running without database/task adoption.
 
-## 检查结果
+Fixed LAN HTTP lacking randomUUID by using getRandomValues, and OpenWrt lacking od by generating tokens with image Python, failing closed on empty/generation errors. Search/download/model fixtures and empty sites did not establish real credentials/transfers. SQLite used marked disposable mounts only.
 
-| 检查 | 结果 |
-| --- | --- |
-| NAS 安装包完整回归 | 71 项通过；串行、nice 15、0.5 CPU、禁外网容器 |
-| Wheel/入口/静态资源 | 0.3.0 安装成功；四个 CLI 入口和三个网页资源存在 |
-| 实际 TCP 网页 + Provider + MCP | 通过；网页与 MCP 重试同一请求仅一个下载提交，断线返回 503；保留 media_status 根对象协议 |
-| SQLite/文件处理验收 | 通过；实际 ffmpeg、命名、硬链接 inode、字幕旁车文件、租约和持久完成记录 |
-| 实际 setup local/cloud | 两组在独立测试副本启动成功；实际 qBittorrent、Jackett 管理/API 可达，网页登录和 MCP 令牌认证通过 |
-| Compose 测试下载数量 | 0；没有向下载器添加实际资源 |
-| 浏览器 QA | NAS HTTP 登录、发现、资源选择、确认、任务详情、历史筛选、用户/分配/账号页面通过 |
-| 旧服务 | media-monitor、Quant、Crawler 等保持运行，未迁移其数据库或接管其任务 |
+Historical preview: `http://192.168.8.1:18314`, private account in ignored `state/preview-login.txt`; container `media-platform-preview-20261025` had fictional metadata/releases and temporary SQLite, no downloader/worker, queued tasks without downloads, and reset on restart. Its historical stop command was `docker stop media-platform-preview-20261025`. The role Compose acceptance copy under ignored `state/platform-compose-acceptance-20261025` was stopped; ordinary developer previews stopped too. The demo remained for inspection at that checkpoint.
 
-修复了实测发现的两项兼容问题：LAN HTTP 不支持 randomUUID 时改用 getRandomValues；OpenWrt 缺少 od 时用已构建容器的 Python 生成令牌，生成失败或空值时禁止启动后续服务。
-
-测试外部搜索、下载与模型使用受控样本或空站点配置；没有验证真实资源站账户、模型认证或真实影片下载速度。SQLite 验收只使用有标记的新建状态目录和可丢弃媒体挂载。
-
-## 当前演示
-
-演示地址：`http://192.168.8.1:18314`。固定演示账号保存在忽略的 `state/preview-login.txt`，不在文档或聊天中展示内容。
-
-容器：`media-platform-preview-20261025`，只运行虚构作品/资源、临时 SQLite 和网页。没有真实下载器或 worker；提交的演示任务会等待，不会下载视频。测试数据在容器重启后丢失。停止演示可在 NAS 执行 `docker stop media-platform-preview-20261025`。
-
-local/cloud 的 Compose 启动验收副本位于忽略的 `state/platform-compose-acceptance-20261025`，其临时服务已停止。普通开发机预览进程也已停止。保留演示容器供人工检查。
-
-## 后续使用
-
-正式填写自己的 TMDB、模型端点、站点、下载器地址前，先阅读 [同机测试说明](../platform-testing.md)。当前不切换旧生产服务。真正分离到新加坡时再配置 HTTPS、受保护隧道、准确域名和公网入口，重新做对应网络验收。
+Follow [same-host testing](../platform-testing.md) before actual credentials or network deployment. Production services were not cut over; real split HTTPS/tunnel/domain access needed separate acceptance.

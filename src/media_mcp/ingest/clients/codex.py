@@ -19,6 +19,7 @@ MAX_RETRIES = 2
 RETRY_BACKOFF_SECONDS = 3.0
 
 STRICT_JSON_INSTRUCTIONS = '''You are a media classification and naming API for a Chinese-first media library.
+Write all reasons and operational explanations in English; preserve original media names and requested subtitle languages.
 Return exactly one JSON object and nothing else.
 Do not include markdown fences, explanations, bullet points, or prose.
 If uncertain, still return valid JSON with success=false.
@@ -42,19 +43,19 @@ Naming policy:
 
 Single-item output schema:
 TV success:
-{"success": true, "kind": "tv", "source_path": "...", "tmdb_id": 123, "title": {"zh": "中文剧名", "original": "原始语言剧名", "base": "中文剧名(原始语言剧名)"}, "original_language": "ja", "origin_country": "JP", "year": 2009, "season": 2, "episode": 24, "episode_title": {"zh": "中文集名", "original": "原始语言集名", "base": "中文集名"}, "confidence": 0.95}
+{"success": true, "kind": "tv", "source_path": "...", "tmdb_id": 123, "title": {"zh": "Chinese series title", "original": "Original series title", "base": "Chinese series title(Original series title)"}, "original_language": "ja", "origin_country": "JP", "year": 2009, "season": 2, "episode": 24, "episode_title": {"zh": "Chinese episode title", "original": "Original episode title", "base": "Chinese episode title"}, "confidence": 0.95}
 
 Movie success:
-{"success": true, "kind": "movie", "source_path": "...", "tmdb_id": 123, "title": {"zh": "中文片名", "original": "原始语言片名", "base": "中文片名(原始语言片名)"}, "original_language": "en", "origin_country": "US", "year": 2022, "confidence": 0.95}
+{"success": true, "kind": "movie", "source_path": "...", "tmdb_id": 123, "title": {"zh": "Chinese movie title", "original": "Original movie title", "base": "Chinese movie title(Original movie title)"}, "original_language": "en", "origin_country": "US", "year": 2022, "confidence": 0.95}
 
 TV extra success:
-{"success": true, "kind": "tv_extra", "source_path": "...", "tmdb_id": 123, "title": {"zh": "中文剧名", "original": "原始语言剧名", "base": "中文剧名(原始语言剧名)"}, "original_language": "ja", "origin_country": "JP", "year": 2016, "extra_type": "NCED", "extra_index": 1, "confidence": 0.95}
+{"success": true, "kind": "tv_extra", "source_path": "...", "tmdb_id": 123, "title": {"zh": "Chinese series title", "original": "Original series title", "base": "Chinese series title(Original series title)"}, "original_language": "ja", "origin_country": "JP", "year": 2016, "extra_type": "NCED", "extra_index": 1, "confidence": 0.95}
 
 TV series lookup output schema:
-{"success": true, "kind": "tv_series_lookup", "tmdb_id": 123, "title": {"zh": "中文剧名", "original": "原始语言剧名", "base": "中文剧名(原始语言剧名)"}, "original_language": "ja", "origin_country": "JP", "year": 2009, "season": 2, "confidence": 0.95}
+{"success": true, "kind": "tv_series_lookup", "tmdb_id": 123, "title": {"zh": "Chinese series title", "original": "Original series title", "base": "Chinese series title(Original series title)"}, "original_language": "ja", "origin_country": "JP", "year": 2009, "season": 2, "confidence": 0.95}
 
 TV episode batch output schema:
-{"success": true, "kind": "tv_episode_batch", "tmdb_id": 123, "season": 2, "episodes": [{"episode": 10, "episode_title": {"zh": "中文集名", "original": "原始语言集名", "base": "中文集名"}}, {"episode": 24, "episode_title": {"zh": "中文集名", "original": "原始语言集名", "base": "中文集名"}}], "confidence": 0.95}
+{"success": true, "kind": "tv_episode_batch", "tmdb_id": 123, "season": 2, "episodes": [{"episode": 10, "episode_title": {"zh": "Chinese episode title", "original": "Original episode title", "base": "Chinese episode title"}}, {"episode": 24, "episode_title": {"zh": "Chinese episode title", "original": "Original episode title", "base": "Chinese episode title"}}], "confidence": 0.95}
 
 Media batch output schema:
 {"success": true, "kind": "media_batch", "results": [<single-item success or failure object>, ...]}
@@ -71,7 +72,7 @@ Rules:
 - In media_batch, when multiple files clearly belong to one TV season, infer the series once conceptually and return per-file TV results with season, episode, and episode_title.
 - Prefer structured fields over prose.
 - For TV input, return season and episode matching the input or fail.
-- Treat NCOP, NCED, numbered OP/ED videos, and Chinese labels such as 无字幕片头曲/无字幕片尾曲 as TV extras, never as movies.
+- Treat NCOP, NCED, numbered OP/ED videos, and Chinese labels meaning creditless opening or ending as TV extras, never as movies.
 - For tv_extra input, return kind="tv_extra" and preserve extra_type and extra_index from the input or fail.
 - TV extras belong to their parent series and do not use season or episode fields.
 - Only include TV-only fields for TV results.
@@ -82,6 +83,7 @@ Rules:
 '''
 
 SUBTITLE_JSON_INSTRUCTIONS = '''You are a subtitle classification API for a Chinese-first media library.
+Write reasons and operational explanations in English; keep subtitle language/content decisions unchanged.
 Return exactly one JSON object and nothing else.
 Do not include markdown fences, explanations, bullet points, or prose.
 If uncertain, return success=false with a concise error.

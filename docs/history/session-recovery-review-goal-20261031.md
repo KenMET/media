@@ -1,64 +1,43 @@
-# Goal：会话恢复改动自审与交付
+# Session recovery self-review and delivery goal
 
-## 目标和范围
+## Scope
 
-把“大改先自行 review，再验证、提交、push，并报告容器重建情况”写入项目
-AGENTS.md。按此规则复核本轮会话恢复、额度等待、通知整改和会话归档，提交
-已经验收的实现与文档。端口、域名、凭据、拓扑和原媒体保持现状。
+Recorded substantial-change self-review/checks/commit/push/container reporting in AGENTS.md and reviewed session/quota recovery, notification repair and archival. Preserve ports/domains/credentials/topology/media. Unfinished delivery-root FIFO and independent dirty changes were excluded. Earlier reports' uncommitted status described their own checkpoints.
 
-不包含尚未完成的下载根目录严格 FIFO；不把独立工作区改动一并发布。
-本记录总结前一轮验收和本轮提交前复核；旧验收记录中的“未提交”是当时状态。
+## Review findings
 
-## 自审结论
+- Actual problem: separate session/quota faults and recover original output first. Only provably missing-history read-only research may receive bounded replacement; unknown subtitles never replay.
+- Removed unused early-observation API and one-time historical archival helper.
+- Consolidated quota-budget reuse and lease/permission checks; removed duplicate coordinator waiting writes.
+- Reused CodexClient, Records, supervisor, notification adapter and standard library. No new dependency/queue framework/table.
+- Retained four runtime responsibilities: session state, coordination, terminal intents and archival intents. Current docs/history/manual files remain in required directories.
+- Preserved original thread/turn/generation/input-policy/fingerprints/CAS/leases/locks without adoption/deletion authority.
+- Fixed completed history occupying the bounded unknown-fence scan: reproduced 130 completed rows falsely blocking new work, then limited scan to truly unknown calls while still rejecting real unknowns.
+- Excluded FIFO `runtime/state.py`, its docs/tests and three independent line-ending changes from commit/image.
 
-| 检查 | 结论与处理 |
-| --- | --- |
-| 是否解决实际问题 | 区分额度与会话故障，先核对原结果；仅明确缺少历史的只读研究可有限替代，不重放未知字幕。 |
-| 是否有多余实现 | 删除没有正常流程使用的手动提前观察接口及一次性历史归档辅助函数。 |
-| 是否存在重复逻辑 | 合并额度预算沿用与租约/权限检查，删除协调器重复写入额度等待的操作。 |
-| 是否复用库与现有组件 | 复用 CodexClient、Records、现有 supervisor、通知适配器和 Python 标准库；没有新增依赖、队列框架或数据库表。 |
-| 目录是否合理 | 运行包层级不变；四个 runtime 模块分别承担会话状态、任务协调、终态通知意图和归档意图。当前说明在 docs，日期记录在 docs/history，手工验收在 tests/manual。 |
-| 是否保留安全边界 | 继续校验原 thread/turn、执行代次、输入策略、文件快照、SQLite CAS、任务租约和文件锁；不新增删除或下载接管能力。 |
-| 是否发现实际缺陷 | 已完成的会话历史会占用隔离扫描上限，积累后误阻塞新任务。查询已收窄到真正未知的请求；先复现 130 条历史误阻塞，再验证修复及真实 unknown 仍被拦截。 |
-| 是否混入其他工作 | runtime/state.py 的 FIFO 基础改动、其文档/测试及三份独立换行差异保持在工作区，不纳入本次提交与镜像。 |
+## Results
 
-## 行为和验收结果
+Session observation/quota deadlines persist independently. Two-hour quota checks cap at ten and persist budget before calls; successful nonces without accepted progress do not reset it. Existing completed results can pass while new probes remain unavailable. Missing history allows three observations/one read-only replacement, retaining original unknown audit and rejecting late generations.
 
-- 额度期限与会话观察独立持久化；额度每两小时检查、最多十次。外部检测前先保存预算，重启不会抹掉尝试；没有成果时不因 nonce 成功重置十次预算。
-- 原结果已完成时可直接核对、验收，不要求新的额度检测先成功。缺少历史时最多三次观察、一次只读替代，保留原 unknown 审计并隔离迟到回调。
-- 通知只处理带显式新终态事件的主任务，子项集中汇总，不补发历史终态。通知的跨服务语义仍为至少一次交付，不声称事务性恰好一次。
-- 研究结果验收或明确失败证据落盘后自动归档，后台重新核对 Media 归属和唯一终态 turn；未知、运行中及被人工续用的会话不归档。
-- 原任务从 121/746 继续至 746/746，终态 completed_with_warnings：84 项完成、662 项需复核。其中匹配不确定 553、旧识别未知 97、旧字幕未知 12。不能把全部处理结束表述为全部整理成功。
-- 原 121 项及最终 746 项结果保留；746 个源路径、745 个目标和 745 组硬链接身份不变，抽样源 SHA-256 不变。
-- 累计 58 个 Media 会话已归档；验收时活动列表中可明确归属 Media 的会话为 0，其余 14 项未动。历史通知保持已误发 104、已抑制 16，没有继续补发。
-- 126 项相关安装包回归通过，最后精简归档后另有 7 项安装包复验。此前 12 项 JS 测试、中英文 320/390/768/1440px 隔离浏览器和 LikeC4 校验通过。推送前再次运行当前安装包的 126 项相关回归，全部通过。
+Only new explicit parent terminal events notify; child issues aggregate, old terminal history does not backfill. Cross-service semantics remain at least once. Accepted/terminal-evidenced Media threads archive only after unique-turn checks; unknown/running/manually extended threads remain.
 
-## 发布与人工操作
+Original task advanced 121/746 → 746/746, `completed_with_warnings`: 84 complete/662 review (553 uncertain, 97 old identification unknown, 12 old subtitle unknown). Original 121/final 746 results retained; 746 sources, 745 targets/745 hardlink identities and sampled SHA256 unchanged.
 
-| 位置/服务 | 已有证据与剩余操作 |
-| --- | --- |
-| NAS media-standalone-local-control-1 | 已通过 setup.sh local 重建，当前源码与安装模块哈希匹配，运行中、重启计数 0。 |
-| NAS media-standalone-local-worker-1 | 已通过 setup.sh local 重建，模型与下载器检查通过，运行中、重启计数 0。 |
-| 云端 cloud-web / cloud-mcp | 未在本轮重建。公网 assets/tasks.js 与新版本对照核验；网站状态展示仍须更新云端镜像。 |
-| Codex、Quant、Crawler、Portal | 未重建，原容器标识、镜像与启动时间保持。 |
+Cumulative 58 Media threads archived; zero attributable Media in the active list, fourteen unrelated entries untouched. Historical mistaken notifications stayed delivered 104/suppressed 16 without further backfill.
 
-云端在现有项目目录保留原 .env，拉取本次提交后运行：
+126 installed-package tests passed, plus seven after archival simplification. Earlier twelve JS, bilingual 320/390/768/1440 browser and LikeC4 passed. Final pre-push installed 126 passed again.
+
+## Deployment and Git
+
+NAS control/workers rebuilt through setup, installed/source parity, running/zero restarts, model/downloader checks passed. Cloud web/MCP were not rebuilt; public tasks assets still needed update. Codex/Quant/Crawler/Portal IDs/images/start times remained.
+
+On cloud preserve existing `.env`, then:
 
 ```sh
 git pull --ff-only
 sh setup.sh cloud
 ```
 
-该入口重建 cloud-web、cloud-mcp；无需修改端口、域名、FRP、反代或重建 NAS。
-本轮新增的项目规则与历史报告本身不需要容器重建。662 项需复核属于媒体结果
-的人工核对，不是重新构建镜像就会自动修复的事项。严格 FIFO 仍是单独未完工作。
+No port/domain/FRP/proxy change or repeated NAS rebuild required. Documentation/rules alone require no rebuild. At that checkpoint 662 review files were media-result work, not automatically solved by rebuilding; later reports document recovery. Strict FIFO remained separate.
 
-## Git 收尾验收条件
-
-只暂存本目标范围；检查暂存差异、敏感文件、未跟踪文件、文档链接和测试结果。
-提交至现有 main 并 push origin main。最后用 git ls-remote 核对远端 main 与本地
-HEAD 一致；最终提交号、push 结果及当前回归结果以本轮最终回复为准。
-
-原始私有备份、日志与哈希位于忽略的 state/session-recovery-20261030，不能提交
-Git。公开验收摘要见 [前次记录](session-recovery-goal-20261030.md) 和
-[结构化摘要](session-recovery-20261030.json)。
+Stage only reviewed scope; inspect exact diff/secrets/untracked files/links/tests, commit existing main, push origin main and compare `git ls-remote` with HEAD. Final response supplies actual commit/push status. Private logs/backups/hashes remain ignored under `state/session-recovery-20261030`. See [earlier report](session-recovery-goal-20261030.md) and [structured evidence](session-recovery-20261030.json).

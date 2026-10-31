@@ -182,7 +182,7 @@ class Catalog:
         # No cookie harvesting, login emulation or challenge bypass is performed.
         endpoint = os.environ.get('MEDIA_DOUBAN_ENDPOINT') or 'https://movie.douban.com/j/search_subjects'
         try:
-            with self.session.get(endpoint, params={'type':kind, 'tag':'热门', 'page_limit':40, 'page_start':0},
+            with self.session.get(endpoint, params={'type':kind, 'tag':'\u70ed\u95e8', 'page_limit':40, 'page_start':0},
                     timeout=12, stream=True, allow_redirects=False) as response:
                 if response.status_code != 200:
                     raise RuntimeError('douban_unavailable')
@@ -209,6 +209,6 @@ class Catalog:
                 cover = None
             items.append({'source':'douban', 'source_id':str(row['id']), 'title':title[:200], 'kind':kind,
                 'title_id':None, 'poster_url':cover, 'rating':str(row.get('rate', ''))[:12],
-                'rating_source':'豆瓣', 'source_url':f"https://movie.douban.com/subject/{row['id']}/",
+                'rating_source':'Douban', 'source_url':f"https://movie.douban.com/subject/{row['id']}/",
                 'requires_identity_match':True})
         return items

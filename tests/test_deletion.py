@@ -21,7 +21,7 @@ class DeletionTests(unittest.TestCase):
 
     def media(self,name='Show',episode=1,source_folder=None):
         source=Path(os.environ['MEDIA_DOWNLOAD_ROOT'])/(source_folder or name)/f'E{episode}.mkv'
-        target=Path(os.environ['MEDIA_LIBRARY_ROOT'])/'series'/name/'第01季'/f'E{episode}.mkv'
+        target=Path(os.environ['MEDIA_LIBRARY_ROOT'])/'series'/name/'\u7b2c01\u5b63'/f'E{episode}.mkv'
         source.parent.mkdir(parents=True,exist_ok=True);target.parent.mkdir(parents=True,exist_ok=True)
         source.write_bytes(b'original video');os.link(source,target)
         upsert_media_link(None,str(source),str(target),media_type='tv',media_tmdb_id=123 if name=='Show' else 456,
@@ -154,7 +154,7 @@ class DeletionTests(unittest.TestCase):
         source=Path(os.environ['MEDIA_DOWNLOAD_ROOT']);source.mkdir()
         root=Path(os.environ['MEDIA_LIBRARY_ROOT']);root.mkdir()
         video=root/'Only.mkv';video.write_bytes(b'library only')
-        sub=video.with_suffix('.zh.srt');sub.write_text('1\n00:00:01,000 --> 00:00:02,000\n测试字幕\n')
+        sub=video.with_suffix('.zh.srt');sub.write_text('1\n00:00:01,000 --> 00:00:02,000\n\u6d4b\u8bd5\u5b57\u5e55\n')
         inventory=Inventory(self.records);scan=inventory.scan(self.admin.id);inventory.adopt(scan['scan_id'],self.admin.id)
         group=next(iter(Collections(self.service).groups().values()))
         self.assertIsNone(group['files'][0]['media_id'])

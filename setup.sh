@@ -11,18 +11,18 @@ case "${1:-up}" in
 esac
 command="${1:-up}"
 if ! command -v docker >/dev/null 2>&1; then
-    echo '需要安装并启动 Docker，以及 Docker Compose。' >&2; exit 1
+    echo 'Install and start Docker and Docker Compose.' >&2; exit 1
 fi
 if docker compose version >/dev/null 2>&1; then
     compose() { docker compose --env-file .env -f "$compose_file" "$@"; }
 elif command -v docker-compose >/dev/null 2>&1; then
     compose() { docker-compose --env-file .env -f "$compose_file" "$@"; }
 else
-    echo '没有找到 Docker Compose。' >&2; exit 1
+    echo 'Docker Compose was not found.' >&2; exit 1
 fi
 if [ ! -f .env ]; then
     cp .env.example .env
-    echo '已创建 .env；请按部署位置填写已有依赖地址和凭据。'
+    echo 'Created .env; configure dependency addresses and credentials for this deployment.'
 fi
 chmod 600 .env
 setting() { sed -n "s/^$1=//p" .env | tail -n 1 | tr -d '\r'; }
@@ -57,9 +57,9 @@ if [ "$topology" = cloud ] && [ -z "$MEDIA_CONTROL_URL" ]; then
     MEDIA_CONTROL_PORT="${MEDIA_CONTROL_PORT:-28213}"
 fi
 if [ -n "$MEDIA_CONTROL_PORT" ]; then
-    case "$MEDIA_CONTROL_PORT" in *[!0-9]*) echo '控制映射端口必须是 1–65535 的数字。' >&2; exit 1 ;; esac
+    case "$MEDIA_CONTROL_PORT" in *[!0-9]*) echo 'The control mapping port must be a number from 1 to 65535.' >&2; exit 1 ;; esac
     if [ "$MEDIA_CONTROL_PORT" -lt 1 ] || [ "$MEDIA_CONTROL_PORT" -gt 65535 ]; then
-        echo '控制映射端口必须是 1–65535 的数字。' >&2; exit 1
+        echo 'The control mapping port must be a number from 1 to 65535.' >&2; exit 1
     fi
 fi
 MEDIA_CLOUD_CONTROL_PORT="$MEDIA_CONTROL_PORT"
@@ -72,7 +72,7 @@ MEDIA_WEB_MODE="${MEDIA_WEB_MODE-$(setting MEDIA_WEB_MODE)}"
 if [ -z "$MEDIA_WEB_MODE" ]; then
     if [ "$topology" = cloud ] && [ -z "$legacy_public" ]; then MEDIA_WEB_MODE=proxy; else MEDIA_WEB_MODE=lan; fi
 fi
-case "$MEDIA_WEB_MODE" in lan|proxy) ;; *) echo 'MEDIA_WEB_MODE 只支持 lan 或 proxy。' >&2; exit 1 ;; esac
+case "$MEDIA_WEB_MODE" in lan|proxy) ;; *) echo 'MEDIA_WEB_MODE must be lan or proxy.' >&2; exit 1 ;; esac
 MEDIA_WEB_BIND_HOST="${MEDIA_WEB_BIND_HOST-$(setting MEDIA_WEB_BIND_HOST)}"
 MEDIA_SERVICE_PAIRING="${MEDIA_SERVICE_PAIRING-$(setting MEDIA_SERVICE_PAIRING)}"
 if [ "$topology" = local ] || [ "$topology" = standalone ]; then
@@ -135,44 +135,44 @@ case "$command" in
     stop) compose stop $stop_services $managed_services; exit 0 ;;
     pair)
         if [ "$topology" != local ] || [ "$MEDIA_SERVICE_PAIRING" != true ]; then
-            echo '重新连接只用于显式本机地址监听的 local 控制端。' >&2; exit 1
+            echo 'Re-pairing requires a local control service explicitly bound to a loopback address.' >&2; exit 1
         fi
         rm -f "$state_path/control-pairing.sealed"
-        echo '已允许云端重新连接；确认 FRP 仅本机可达后，运行 setup.sh cloud。'; exit 0 ;;
+        echo 'Cloud re-pairing is enabled. Confirm FRP is loopback-only, then run setup.sh cloud.'; exit 0 ;;
     up) ;;
     control)
-        if [ "$topology" != local ]; then echo 'control 仅用于更新 NAS 控制端。' >&2; exit 2; fi
+        if [ "$topology" != local ]; then echo 'control only updates the NAS control service.' >&2; exit 2; fi
         app_services='local-control'; managed_services=''; legacy_services=''
         ;;
-    *) echo '用法：sh setup.sh [cloud|local] [up|status|logs|stop|pair|control]' >&2; exit 2 ;;
+    *) echo 'Usage: sh setup.sh [cloud|local] [up|status|logs|stop|pair|control]' >&2; exit 2 ;;
 esac
-case "$health_port" in ''|*[!0-9]*) echo '健康检查端口必须是数字。' >&2; exit 1 ;; esac
+case "$health_port" in ''|*[!0-9]*) echo 'The health-check port must be numeric.' >&2; exit 1 ;; esac
 if [ "$MEDIA_WEB_PUBLIC" = true ] && [ "$MEDIA_WEB_MODE" != proxy ]; then
     public_url="${MEDIA_WEB_PUBLIC_URL-$(setting MEDIA_WEB_PUBLIC_URL)}"
-    case "$public_url" in https://?*) ;; *) echo '公网入口需配置 MEDIA_WEB_PUBLIC_URL=https://准确域名，并在反向代理配置 TLS。' >&2; exit 1 ;; esac
+    case "$public_url" in https://?*) ;; *) echo 'Public access requires MEDIA_WEB_PUBLIC_URL=https://your-exact-domain and TLS on the reverse proxy.' >&2; exit 1 ;; esac
     admin_bind="${MEDIA_ADMIN_BIND-$(setting MEDIA_ADMIN_BIND)}"; admin_bind="${admin_bind:-127.0.0.1}"
     if [ -n "$managed_services" ] && [ "$admin_bind" != 127.0.0.1 ]; then
-        echo '公网部署的内置管理端口必须使用 MEDIA_ADMIN_BIND=127.0.0.1。' >&2; exit 1
+        echo 'Public deployments require MEDIA_ADMIN_BIND=127.0.0.1 for the built-in admin port.' >&2; exit 1
     fi
 fi
 multi_user="${MEDIA_MULTI_USER-$(setting MEDIA_MULTI_USER)}"
 auth_mode="${MEDIA_AUTH_MODE-$(setting MEDIA_AUTH_MODE)}"; auth_mode="${auth_mode:-none}"
 if [ "$multi_user" = true ] && [ "$topology" = standalone ] && [ "$auth_mode" != platform ]; then
-    echo '多人独立部署需显式设置 MEDIA_AUTH_MODE=platform；个人 LAN 默认模式保持免认证。' >&2; exit 1
+    echo 'Multiuser standalone deployments require MEDIA_AUTH_MODE=platform; personal LAN mode remains unauthenticated by default.' >&2; exit 1
 fi
 control_file="$(setting MEDIA_CONTROL_TOKEN_FILE)"; control_file="${control_file:-./state/control-token}"
 create_control=false
 pair_control=false
 if [ "$topology" = cloud ]; then
     if [ "$MEDIA_WEB_PUBLIC" = true ] && [ "$MEDIA_WEB_MODE" != proxy ] && [ -z "$(setting MEDIA_ALLOWED_HOSTS)" ]; then
-        echo '公网 cloud 部署需设置准确的 MEDIA_ALLOWED_HOSTS。' >&2; exit 1
+        echo 'Public cloud deployments require exact MEDIA_ALLOWED_HOSTS.' >&2; exit 1
     fi
     if [ ! -s "$control_file" ]; then
         if [ "$MEDIA_WEB_MODE" = proxy ]; then
             mkdir -p "$(dirname -- "$control_file")"
             pair_control=true
         elif [ "$MEDIA_WEB_PUBLIC" = true ] || [ "$control_file" != ./state/control-token ]; then
-            echo '请配置已有的 MEDIA_CONTROL_TOKEN_FILE；拆机时安全同步令牌文件，不要在聊天中传递内容。' >&2; exit 1
+            echo 'Configure an existing MEDIA_CONTROL_TOKEN_FILE. Transfer the token file securely between hosts, never through chat.' >&2; exit 1
         else
             mkdir -p ./state
             create_control=true
@@ -183,7 +183,7 @@ else
     mkdir -p "$state_path" "$data_path/downloads" "$data_path/media_hub"
     if [ ! -s "$control_file" ]; then
         if [ "$control_file" != ./state/control-token ]; then
-            echo 'MEDIA_CONTROL_TOKEN_FILE 指向的文件不存在。' >&2; exit 1
+            echo 'MEDIA_CONTROL_TOKEN_FILE points to a missing file.' >&2; exit 1
         fi
         mkdir -p ./state
         create_control=true
@@ -191,10 +191,10 @@ else
     token_file="$(setting CODEX_TOKEN_FILE)"; token_file="${token_file:-./state/codex-token}"
     if [ ! -f "$token_file" ]; then
         if [ "$token_file" != ./state/codex-token ]; then
-            echo 'CODEX_TOKEN_FILE 指向的文件不存在，请修正 .env。' >&2; exit 1
+            echo 'CODEX_TOKEN_FILE points to a missing file. Correct .env.' >&2; exit 1
         fi
         mkdir -p ./state; : > "$token_file"; chmod 600 "$token_file"
-        echo '尚未配置模型凭据：网页/MCP 可以启动，智能处理等待模型连接。'
+        echo 'Model credentials are not configured. Web/MCP may start; intelligent processing waits for the model connection.'
     fi
 fi
 compose build "$build_service"
@@ -205,7 +205,7 @@ if [ "$pair_control" = true ]; then
     docker run --rm --network host --entrypoint python3 -e MEDIA_CLOUD_CONTROL_URL -e MEDIA_CLOUD_CONTROL_PORT -e MEDIA_CONTROL_URL -e MEDIA_CONTROL_PORT \
         -v "$pairing_parent:/pairing" "$pairing_image" \
         -m media_mcp.platform.pairing "/pairing/$pairing_name"
-    if [ ! -s "$control_file" ]; then echo '自动连接没有生成内部凭据，停止启动。' >&2; exit 1; fi
+    if [ ! -s "$control_file" ]; then echo 'Automatic pairing did not produce internal credentials. Startup stopped.' >&2; exit 1; fi
 fi
 if [ "$create_control" = true ]; then
     # OpenWrt may not ship od/openssl; Python is already guaranteed by our image.
@@ -219,11 +219,11 @@ if [ "$create_control" = true ]; then
     token_temp="$control_file.tmp.$$"
     if ! docker run --rm --network none --entrypoint python3 "$token_image" -c 'import secrets;print(secrets.token_urlsafe(40))' > "$token_temp"; then
         rm -f "$token_temp"
-        echo '无法生成控制通道令牌。' >&2; exit 1
+        echo 'Cannot generate the control channel token.' >&2; exit 1
     fi
     if [ ! -s "$token_temp" ]; then
         rm -f "$token_temp"
-        echo '控制通道令牌生成为空。' >&2; exit 1
+        echo 'The generated control channel token is empty.' >&2; exit 1
     fi
     chmod 600 "$token_temp"
     mv "$token_temp" "$control_file"
@@ -239,7 +239,7 @@ for service in $managed_services; do
     while ! compose exec -T "$service" curl --max-time 3 -fsS "$probe" >/dev/null 2>&1; do
         attempt=$((attempt+1))
         if [ "$attempt" -ge 60 ]; then
-            printf '%s 尚未就绪，请查看相应部署的 setup.sh logs。\n' "$service" >&2; exit 1
+            printf '%s is not ready; inspect setup.sh logs for that deployment.\n' "$service" >&2; exit 1
         fi
         sleep 5
     done
@@ -253,7 +253,7 @@ for legacy_service in $legacy_services; do
         legacy_dir="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$legacy_id")"
         legacy_dir="$(CDPATH= cd -- "$legacy_dir" 2>/dev/null && pwd -P || true)"
         if [ "$legacy_dir" != "$(pwd -P)" ]; then continue; fi
-        printf '迁移旧应用服务 %s；保留状态目录和媒体挂载。\n' "$legacy_service"
+        printf 'Migrate legacy application service %s; preserve state directories and media mounts.\n' "$legacy_service"
         docker stop "$legacy_id" >/dev/null
         docker rm "$legacy_id" >/dev/null
     done
@@ -267,11 +267,11 @@ wait_for_entry() {
     entry_url="http://$entry_host:$entry_port/healthz"
     entry_logs_command='sh setup.sh logs'
     if [ "$topology" != standalone ]; then entry_logs_command="sh setup.sh $topology logs"; fi
-    printf '正在等待%s就绪（本机端口 %s）...\n' "$entry_label" "$entry_port"
+    printf 'Waiting for %s (local port %s)...\n' "$entry_label" "$entry_port"
     entry_attempt=0
     while [ "$entry_attempt" -lt 60 ]; do
         if compose exec -T "$entry_service" python3 -c 'import sys,urllib.request;urllib.request.urlopen(sys.argv[1],timeout=2)' "$entry_url" >/dev/null 2>&1; then
-            printf '%s已就绪。\n' "$entry_label"
+            printf '%s is ready.\n' "$entry_label"
             return 0
         fi
         entry_container="$(compose ps --all --quiet "$entry_service" 2>/dev/null | head -n 1)"
@@ -279,23 +279,23 @@ wait_for_entry() {
             entry_state="$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$entry_container" 2>/dev/null || true)"
             case "$entry_state" in
                 restarting:*|exited:*|dead:*)
-                    printf '%s尚未就绪，容器状态 %s。请检查端口 %s 是否已被占用，并查看 %s。\n' "$entry_label" "$entry_state" "$entry_port" "$entry_logs_command" >&2
-                    printf '继续每 5 秒检查，等待服务恢复。\n' >&2 ;;
+                    printf '%s is not ready; container state: %s. Check whether port %s is occupied and inspect %s.\n' "$entry_label" "$entry_state" "$entry_port" "$entry_logs_command" >&2
+                    printf 'Continue checking every 5 seconds for service recovery.\n' >&2 ;;
             esac
         fi
         entry_attempt=$((entry_attempt+1))
         if [ $((entry_attempt % 5)) -eq 0 ]; then
-            printf '%s仍未就绪，已检查 %s 次；端口 %s。\n' "$entry_label" "$entry_attempt" "$entry_port"
+            printf '%s is still not ready after %s checks; port %s.\n' "$entry_label" "$entry_attempt" "$entry_port"
         fi
         sleep 5
     done
-    printf '%s等待超时，请查看相应部署的 setup.sh logs。\n' "$entry_label" >&2
+    printf 'Timed out waiting for %s; inspect setup.sh logs for that deployment.\n' "$entry_label" >&2
     return 1
 }
-entry_label='本地 MCP'
-if [ "$topology" = cloud ]; then entry_label='云端 MCP'; fi
+entry_label='Local MCP'
+if [ "$topology" = cloud ]; then entry_label='Cloud MCP'; fi
 entry_bind=127.0.0.1
-if [ "$topology" = local ]; then entry_label='本地控制 API'; fi
+if [ "$topology" = local ]; then entry_label='Local control API'; fi
 if [ "$topology" = local ]; then entry_bind="$MEDIA_WEB_BIND_HOST"; fi
 if ! wait_for_entry "$health_service" "$health_port" "$entry_label" "$entry_bind"; then exit 1; fi
 web_port="$(selected MEDIA_LOCAL_CONTROL_PORT MEDIA_WEB_PORT)"
@@ -305,40 +305,40 @@ else
     local_control_port="${MEDIA_LOCAL_CONTROL_PORT-$(setting MEDIA_LOCAL_CONTROL_PORT)}"
     web_port="${local_control_port:-${web_port:-18213}}"
 fi
-case "$web_port" in ''|*[!0-9]*) echo '网页端口必须是数字。' >&2; exit 1 ;; esac
+case "$web_port" in ''|*[!0-9]*) echo 'The web port must be numeric.' >&2; exit 1 ;; esac
 if [ "$health_service" != "$http_service" ]; then
-    if ! wait_for_entry "$http_service" "$web_port" '云端网站网关' "$MEDIA_WEB_BIND_HOST"; then exit 1; fi
+    if ! wait_for_entry "$http_service" "$web_port" 'Cloud web gateway' "$MEDIA_WEB_BIND_HOST"; then exit 1; fi
 fi
 lan_ip="$(setting MEDIA_LAN_IP)"
 if [ -z "$lan_ip" ] && command -v ip >/dev/null 2>&1; then
     lan_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([^ ]*\).*/\1/p' | head -n 1)"
 fi
-lan_ip="${lan_ip:-<主机局域网IP>}"
+lan_ip="${lan_ip:-<host-LAN-IP>}"
 if [ "$topology" = local ] && [ "$MEDIA_WEB_BIND_HOST" != 0.0.0.0 ] && [ "$MEDIA_WEB_BIND_HOST" != :: ]; then
     lan_ip="$MEDIA_WEB_BIND_HOST"
 fi
 if [ "$topology" = cloud ]; then
-    printf 'cloud 已启动：网站端口 %s，MCP 端口 %s；域名和 HTTPS 使用你已有的反向代理。\n' "$web_port" "$health_port"
+    printf 'Cloud started: web port %s, MCP port %s. Use your existing reverse proxy for the domain and HTTPS.\n' "$web_port" "$health_port"
 elif [ "$topology" = local ]; then
-    printf '本地控制服务已启动：http://%s:%s\n' "$lan_ip" "$web_port"
+    printf 'Local control service started: http://%s:%s\n' "$lan_ip" "$web_port"
 else
-    printf '\nMCP 已启动：http://%s:%s/mcp（认证模式：%s）\n' "$lan_ip" "$health_port" "$auth_mode"
-    printf 'Media 网页：http://%s:%s\n' "$lan_ip" "$web_port"
+    printf '\nMCP started: http://%s:%s/mcp (authentication mode: %s)\n' "$lan_ip" "$health_port" "$auth_mode"
+    printf 'Media website: http://%s:%s\n' "$lan_ip" "$web_port"
 fi
 if [ "$topology" = cloud ]; then
-    echo '首次创建网站管理员：初始化令牌在 NAS 的 local 状态目录 web-bootstrap-token，不在云端 state-cloud。'
-    echo '请在 NAS 的项目目录执行：docker compose -f compose.local.yml exec -T local-control cat /state/web-bootstrap-token；只在自己的终端查看，不要分享令牌。'
+    echo 'Initial web administrator: the bootstrap token is in web-bootstrap-token under the NAS local state directory, not cloud state-cloud.'
+    echo 'On the NAS, run in the project directory: docker compose -f compose.local.yml exec -T local-control cat /state/web-bootstrap-token. View it privately; do not share the token.'
 else
-    printf '首次创建网站管理员：初始化令牌位于本机 %s/web-bootstrap-token；不要分享令牌。\n' "$state_path"
+    printf 'Initial web administrator: the bootstrap token is at %s/web-bootstrap-token on this host. Do not share the token.\n' "$state_path"
 fi
-echo '依赖服务：已配置 URL 的复用已有服务，未配置的仅在所属部署端启动对应容器。'
+echo 'Dependencies: configured URLs reuse existing services; otherwise the owning deployment starts the bundled container.'
 if [ "$topology" = standalone ] && [ "$auth_mode" = none ]; then
-    echo '当前为可信个人 LAN MCP；网页用户权限不约束此免认证入口，请限制端口可达范围。'
+    echo 'This is trusted personal LAN MCP. Web user permissions do not restrict this unauthenticated endpoint; limit network reachability.'
 fi
 if [ "$topology" != cloud ]; then
-    echo '正在检查下载器 API（只读取版本，不提交下载）...'
+    echo 'Checking downloader API (read version only; no download submission)...'
     if ! compose exec -T local-worker python3 -m media_mcp.monitor.dependencies; then exit 1; fi
-    echo '正在等待后台 worker 初始化（模型连接与目录检查）...'
+    echo 'Waiting for worker initialization (model connection and directory checks)...'
     worker_ready=false; worker_attempt=0
     while [ "$worker_attempt" -lt 60 ]; do
         if compose exec -T local-worker python3 -m media_mcp.monitor.health >/dev/null 2>&1; then
@@ -346,11 +346,11 @@ if [ "$topology" != cloud ]; then
         fi
         worker_attempt=$((worker_attempt+1))
         if [ $((worker_attempt % 5)) -eq 0 ]; then
-            printf '后台 worker 仍在初始化或重试，已检查 %s 次。\n' "$worker_attempt"
+            printf 'The worker is still initializing or retrying after %s checks.\n' "$worker_attempt"
         fi
         sleep 5
     done
-    if [ "$worker_ready" = true ]; then echo '后台 worker：已就绪。'
-    else echo '后台 worker 等待超时：部署尚未就绪，请查看 setup.sh logs 中的模型和目录错误。' >&2; exit 1; fi
-    echo '本地控制 API、下载器和后台 worker 检查全部通过。'
+    if [ "$worker_ready" = true ]; then echo 'Background worker: ready.'
+    else echo 'Worker readiness timed out. Deployment is not ready; inspect setup.sh logs for model and directory errors.' >&2; exit 1; fi
+    echo 'Local control API, downloader and worker checks all passed.'
 fi

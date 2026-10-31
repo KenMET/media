@@ -155,9 +155,9 @@ def _looks_like_sequel_for_first_season(text: str, request: SubtitleSearchReques
     if request.media_type != 'tv' or int(request.season or 1) != 1:
         return False
     request_title = str(request.title or '')
-    if re.search(r'(?i)\b(?:zoku|2nd|second)\b|续章|續章|続章', request_title):
+    if re.search('(?i)\\b(?:zoku|2nd|second)\\b|\u7eed\u7ae0|\u7e8c\u7ae0|\u7d9a\u7ae0', request_title):
         return False
-    return bool(re.search(r'(?i)\b(?:zoku|2nd|second)\b|续章|續章|続章', text))
+    return bool(re.search('(?i)\\b(?:zoku|2nd|second)\\b|\u7eed\u7ae0|\u7e8c\u7ae0|\u7d9a\u7ae0', text))
 
 
 def _matches_request_title(text: str, request: SubtitleSearchRequest) -> bool:

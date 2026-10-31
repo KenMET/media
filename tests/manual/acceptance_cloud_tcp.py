@@ -22,7 +22,7 @@ def main():
         assert result.get('success'),result.get('error_code')
         return result['data']
     title_ids=[]
-    for query in ('Sintel','辛特尔'):
+    for query in ('Sintel','\u8f9b\u7279\u5c14'):
         titles=command('search_titles',{'query':query,'kind':'movie'})['titles']
         assert titles
         title_ids.append(titles[0]['title_id'])

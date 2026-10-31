@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 classifier.py
-媒体文件名规则解析与结果校验。
-优先用确定性规则抽取信息，降低 LLM 猜错概率。
+Parse media filename rules and validate results.
+Prefer deterministic extraction to reduce model guessing.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 FALLBACK_SPECIAL_KEYWORDS = [
-    '栋笃笑', '棟篤笑', 'stand up', 'stand-up', 'comedy special', 'talk show',
-    '黄子华', '黃子華', 'concert', 'live', 'special'
+    '\u680b\u7b03\u7b11', '\u68df\u7be4\u7b11', 'stand up', 'stand-up', 'comedy special', 'talk show',
+    '\u9ec4\u5b50\u534e', '\u9ec3\u5b50\u83ef', 'concert', 'live', 'special'
 ]
 
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts"}
@@ -28,7 +28,7 @@ COMMON_NOISE_PATTERNS = [
     r"\b(DTS([-. ]?HD([-. ]?MA)?)?)\b",
     r"\b(TrueHD|Atmos|DDP?[0-9.]*)\b",
     r"\b(YTS|RARBG|CMRG|NC-Raws|Lilith-Raws|ZZZFUN)\b",
-    r"\b(CHS|CHT|ENG|JPN|GB|BIG5|简繁|中字|双语|内封|外挂)\b",
+    '\\b(CHS|CHT|ENG|JPN|GB|BIG5|\u7b80\u7e41|\u4e2d\u5b57|\u53cc\u8bed|\u5185\u5c01|\u5916\u6302)\\b',
     r"\b(Proper|REPACK|Extended|Complete|Multi)\b",
 ]
 
@@ -39,8 +39,8 @@ TV_PATTERNS = [
 TV_EXTRA_PATTERNS = [
     ('NCOP', re.compile(r'(?i)\bNC[ ._-]*OP[ ._-]*(?P<index>\d{1,3})?\b')),
     ('NCED', re.compile(r'(?i)\bNC[ ._-]*ED[ ._-]*(?P<index>\d{1,3})?\b')),
-    ('NCOP', re.compile(r'无字幕(?:片头曲|片头|OP)\s*(?P<index>\d{1,3})?', re.IGNORECASE)),
-    ('NCED', re.compile(r'无字幕(?:片尾曲|片尾|ED)\s*(?P<index>\d{1,3})?', re.IGNORECASE)),
+    ('NCOP', re.compile('\u65e0\u5b57\u5e55(?:\u7247\u5934\u66f2|\u7247\u5934|OP)\\s*(?P<index>\\d{1,3})?', re.IGNORECASE)),
+    ('NCED', re.compile('\u65e0\u5b57\u5e55(?:\u7247\u5c3e\u66f2|\u7247\u5c3e|ED)\\s*(?P<index>\\d{1,3})?', re.IGNORECASE)),
     ('OP', re.compile(r'(?i)\bOP[ ._-]*(?P<index>\d{1,3})\b')),
     ('ED', re.compile(r'(?i)\bED[ ._-]*(?P<index>\d{1,3})\b')),
 ]
@@ -178,7 +178,7 @@ def build_tv_group_key(file_path: str, parsed: ParsedMedia) -> str:
 
     candidate = re.sub(r"(?i)\bS\d{1,2}\b", ' ', candidate)
     candidate = re.sub(r"(?i)\bSeason\s*\d{1,2}\b", ' ', candidate)
-    candidate = re.sub(r"(?i)\b第\s*\d{1,2}\s*季\b", ' ', candidate)
+    candidate = re.sub('(?i)\\b\u7b2c\\s*\\d{1,2}\\s*\u5b63\\b', ' ', candidate)
     for pattern in TV_GROUP_TRIM_PATTERNS:
         candidate = pattern.sub(' ', candidate)
     candidate = re.sub(r"\s+", ' ', candidate).strip(' -_.')

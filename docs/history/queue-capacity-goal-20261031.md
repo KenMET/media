@@ -1,25 +1,11 @@
-# Goal：空下载列表却提示任务已达上限
+# Deleted history incorrectly consumed queue capacity
 
-现场只读查询确认：acquisition 为 0，library_task 只有 17 条，且全部为 deleted。
-旧 Budget.admit_job 把这 17 条已删除记录仍计为待处理；网页已隐藏它们，因此看起来
-没有任务，却触发账号 10 项的上限。这是新增删除功能时遗漏更新额度查询造成的。
+Read-only state found zero acquisitions and 17 maintenance tasks, all deleted. `Budget.admit_job` still counted them as pending while the UI hid them, triggering the account limit of ten despite empty visible lists. Deletion had omitted the admission terminal-state update.
 
-修复只在任务准入的终态排除集合中补上 deleted，覆盖下载和整理两种记录。没有
-提高账号 10/全局 100 的上限，没有清空历史、重置额度、移除未知请求保护或提交下载。
-真正排队、运行和下载提交结果未知的任务仍计入额度；审计及幂等记录继续保留。
+Added `deleted` to terminal exclusions for acquisition and maintenance. Limits remain account ten/global 100; no history clearing, quota reset, unknown fencing removal or test downloads. Real queued/running/unknown-submission work still occupies capacity, with audit/idempotency retained.
 
-精简验证：tests/test_limits.py 的 8 项回归串行、nice -n 15 执行通过，SQLite 全部
-为临时目录。新增两项分别验证 200 条已删除下载/整理记录不占位，以及 17 条删除
-历史不妨碍 9 项真实待办准入、但第 10 项真实 unknown 仍会触发限制。既有全局上限、
-跨进程限流和未知提交幂等查询继续通过。
+Eight `tests/test_limits.py` tests passed serial nice 15 on temporary SQLite. Two new cases showed 200 deleted acquisition/maintenance rows occupy no slots, and 17 deleted rows permit nine real pending tasks while a tenth real unknown still blocks admission. Global bounds, cross-process throttling and unknown reconciliation remained covered.
 
-自审核对了两类任务、账号/全局计数、未知状态和审计保留；未混入工作区未完成的
-FIFO 与原有文档/手工验收改动。发布只需 NAS 额度模块更新，云端无需重建。
+Review checked both record kinds, account/global counts, unknown state and audit. Unfinished FIFO/preexisting docs/manual edits were excluded. Only NAS quota code needed deployment; cloud did not.
 
-
-NAS 已在空闲检查点通过 `sh setup.sh local` 更新 local-control、local-worker，均
-healthy、重启 0，安装的 limits.py 哈希与修复源码一致，其他服务未变。现场 17 条
-删除历史属于同一账号；更新后真实待处理计数为 0，未结束处理作业为 0。使用正式
-Budget.admit_job 的队列查询验证已通过；仅在独立检查进程跳过提交频率扣次，避免
-消耗用户名额，没有提交任何测试下载，也没有清理或重置现有数据。
-工作区原有未完成文件摘要保持不变。本次不需要重建 cloud。
+At idle, `sh setup.sh local` updated healthy control/workers, zero restarts and limits-module parity; other services unchanged. The 17 deleted tasks belonged to one account; actual pending and unfinished processing counts were zero. Formal `Budget.admit_job` query passed in an independent check that skipped only submission-rate spending, preserving user budget. No test acquisition/data reset occurred. Existing dirty file digests remained unchanged.

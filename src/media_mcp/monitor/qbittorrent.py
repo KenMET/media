@@ -122,8 +122,8 @@ class MediaMonitor:
                 self.logger.warning('[Codex][startup] check failed (%s); retry in 60s', type(exc).__name__)
                 if not failure_notified:
                     failure_notified = bool(mcp_direct_call_ns(
-                        'notify.send_notification', title='Media Monitor 启动自检失败',
-                        content='Codex 认证或模型调用未通过；媒体处理尚未开始，60秒后重试。',
+                        'notify.send_notification', title='Media Monitor startup check failed',
+                        content='Codex authentication or model check failed; media processing has not started. Retry in 60 seconds.',
                     ))
                     self.logger.info('[Codex][startup] failure notification sent=%s', failure_notified)
                 for _ in range(60):
@@ -139,7 +139,7 @@ class MediaMonitor:
         notified = mcp_direct_call_ns(
             'notify.send_notification',
             title='Media Monitor',
-            content='Started\nCodex 启动自检通过：本地连接、认证及模型响应正常。',
+            content='Started\nCodex startup check passed: local connection, authentication and model response are healthy.',
         )
         if not notified:
             raise RuntimeError('MCP startup notification failed')

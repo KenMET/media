@@ -150,8 +150,8 @@ class AssrtProviderTest(unittest.TestCase):
     def test_download_caches_archive_and_reuses_pack_member(self):
         buffer = BytesIO()
         with zipfile.ZipFile(buffer, 'w') as archive:
-            archive.writestr('[Mushishi][06].ass', 'Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,第六集')
-            archive.writestr('[Mushishi][07].ass', 'Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,第七集')
+            archive.writestr('[Mushishi][06].ass', 'Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,\u7b2c\u516d\u96c6')
+            archive.writestr('[Mushishi][07].ass', 'Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,\u7b2c\u4e03\u96c6')
 
         with tempfile.TemporaryDirectory() as cache_dir:
             provider = AssrtProvider()
@@ -196,7 +196,7 @@ class AssrtProviderTest(unittest.TestCase):
             self.assertTrue(archive_path.endswith('archive.zip'))
             self.assertIsInstance(cached_second, DownloadedSubtitle)
             self.assertEqual(cached_second.file_name, '[Mushishi][07].ass')
-            self.assertIn('第七集'.encode('utf-8'), cached_second.content)
+            self.assertIn('\u7b2c\u4e03\u96c6'.encode('utf-8'), cached_second.content)
 
 
 if __name__ == '__main__':

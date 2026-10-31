@@ -26,7 +26,7 @@ if(!manifest.root.startsWith('/tmp/media-platform-preview-')||fs.readFileSync(pa
   await page.locator('.collection-grid .collection-poster img').nth(5).waitFor();
   const actual=await page.locator('.collection-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
   if(actual!==columns)throw Error(`Expected ${columns} columns at ${width}, got ${actual}`);
-  if(await page.getByText('重新整理全部资源',{exact:true}).count())throw Error('Global forced action still exposed');
+  if(await page.getByText('\u91cd\u65b0\u6574\u7406\u5168\u90e8\u8d44\u6e90',{exact:true}).count())throw Error('Global forced action still exposed');
   if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('Horizontal overflow');
   if(process.env.MEDIA_BROWSER_ARTIFACTS){fs.mkdirSync(process.env.MEDIA_BROWSER_ARTIFACTS,{recursive:true});await page.screenshot({path:path.join(process.env.MEDIA_BROWSER_ARTIFACTS,`library-${width}.png`),fullPage:true});}
  }

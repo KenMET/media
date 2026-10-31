@@ -1,137 +1,59 @@
-# Goal：现有媒体整理恢复与进度含义修复
+# Existing media recovery and progress semantics
 
-## 已核实的问题
+## Diagnosis
 
-截图中的 145/662 是本轮已检查文件数，不是成功数。当时 145 项都需复核，
-已识别 4 只是身份阶段成果。此前任务 231fc692e11f464bad39bf412174230f
-共检查 746 项，其中 84 完整完成、662 需复核；本轮是在处理这 662 项。
-现场已有 807 组源/目标硬链接配对，因此新增映射为 0 本身不是失败。
+Screenshot 145/662 counted inspected files, not successes: all 145 required review, while four identified was an overlapping stage result. Prior task `231fc692e11f464bad39bf412174230f` inspected 746 with 84 complete/662 review. Existing 807 source-target hardlink pairs explained zero new mappings without implying failure.
 
-逐项重新校验前轮的 553 项匹配不确定：全部缺少对应季的 TMDB 来源。
-校验器要求季链接，但研究指令只要求作品链接，导致研究输出与验收条件不一致。
-这修正了前次记录把剩余项统一归为人工核对的判断：这 553 项应先由流程补齐
-来源证据，再按正常规则验收，而不是要求用户逐个重新识别。
-其余隔离包括旧识别请求结果未知和旧字幕标记；6 个旧识别会话现场观察均返回
-thread_unavailable，不能据此当作已完成，也不能移除隔离重放。
+Rechecking 553 uncertain matches found missing corresponding-season TMDB citations in every case. Validation required season links while research requested only title links. These needed pipeline evidence repair before ordinary acceptance, correcting an earlier blanket manual-review recommendation. Other fences included old identification/subtitle markers. Six historical session observations returned `thread_unavailable`, which neither established completion nor authorized clearing/replay.
 
-字幕还存在两处程序缺陷：正常返回需复核后没有清除进行中标记；成功提取的
-10 条 embedded_extracted 中文字幕没有被整理流程计入就绪状态。
+Subtitle defects: normal review returns left in-flight markers, and ten successful `embedded_extracted` Chinese sidecars were omitted from readiness.
 
-## 修复与自审
+## Fixes and review
 
-- 明确研究时获取对应季来源，维持原来源验证要求；分开报告作品编号与季来源
-  缺失，并保留原原因和置信度。
-- 按文件隔离未知识别，同一作品的其他文件继续处理。旧任务只有原账号、原
-  thread/turn、唯一 turn 和明确终态全部吻合时，才记录终态审计、清除活动标记。
-  旧会话缺失、运行中、身份不符和 unknown 历史仍被隔离。
-- 字幕调用返回后先保存已返回检查点，再判断是否需复核。真正结果未知的异常
-  直接交回恢复流程，保留标记；兼容已结束旧子项中明确保存的字幕已返回记录。
-- 统一媒体库汇总与文件就绪判断，复用实际存在的已提取中文字幕。
-- 页面区分已检查、全部完成和待复核；数据库精简进度响应仍提供正确成功数。
+Require season sources without relaxing validation; distinguish title-ID/season-source reasons with original confidence/rationale. Fence unknowns per file, allowing unrelated files in a work to continue. Release old markers only with same account/thread/unique turn/matching terminal audit; missing/running/mismatched/unknown history stays fenced.
 
-自审修正了精简进度响应导致成功数归零的问题、重复的字幕标记清理，以及旧请求
-观察被按每个文件重复调用的问题。没有新增依赖、数据库表、下载接管或删除能力。
-运行代码、自动测试、手工浏览器验收和本报告分别位于既有规定目录。
-未完成的 runtime/state.py FIFO 改动及其文档、测试未纳入发布范围。
+Persist returned subtitle checkpoints before review classification; genuine unknown exceptions retain markers. Support explicit historical returned records. Share library/file readiness for existing extracted sidecars. UI separates checked/complete/review; lightweight status retains true success counts.
 
-## 验证
+Review fixed zero success after trimmed responses, duplicate marker cleanup and repeated per-file observation of one old request. No new dependency/table/adoption/deletion capability. Required source/test/manual/history directories retained; unfinished FIFO/state/docs/tests excluded.
 
-- NAS 容器依赖下，独立发布源码的 133 项 Python 回归通过。测试使用临时 SQLite、
-  下载与媒体库目录，串行、nice -n 15，不以真实媒体运行自动验收。
-- 12 项 JS 测试通过。
-- 一次性预览浏览器：中英文、320/390/768/1440px，分别验证 145 已检查且成功 0、
-  成功 84 两种情况，核对待复核数、明确的季证据原因、无溢出及无脚本错误。
-- 现场 SQLite 已私有备份；记录 807 组路径、设备/inode、大小、mtime，并对前三个
-  源文件首尾各 1 MiB 留存摘要。该抽样不等于对所有视频逐字节校验。
+## Initial validation and evidence
 
-## 整轮复验发现的长文件名缺陷
+Independent release source on NAS dependencies: 133 Python and twelve JS passed, serial nice 15, disposable SQLite/download/library. Mocked browser bilingual 320/390/768/1440 verified 145 checked/zero success and 84-success cases, review totals/season reasons/no overflow/errors.
 
-《齐木楠雄的灾难》的部分文件在 FFmpeg 提取时失败。只读探测证明轨道可以
-正常解封装；相同视频与字幕轨道输出到短临时路径成功。原实现把完整中文
-文件名再追加 UUID，导致临时文件名超过 255 字节，尽管最终字幕名符合限制。
+Privately backed up SQLite and recorded 807 source/target paths/device/inode/size/mtime, plus first/last 1MiB digests for three source videos. Samples were not full-library byte hashes.
 
-提取、翻译和在线字幕写入均改用目标同目录中的短临时目录，复用标准库
-TemporaryDirectory 负责清理。提取保留硬链接发布、不覆盖现有字幕及发布前
-锁检查；翻译保留原子替换目录项，保护硬链接源字节。没有改名或修改视频。
-自审移除了重复清理代码；一条此前就失败的预览安全用例被修正为“未验证字幕
-需复核”，相关文件安全测试迁至 tests，保留所有原安全断言。
+## Long-filename defect
 
-补修通过 NAS 依赖下的 45 项串行、低优先级相关回归，包含真实 FFmpeg 的
-一次性小视频、长 UTF-8 文件名、部分输出清理、锁失效、目标碰撞和硬链接
-源字节保护。旧实现已先在同一夹具复现失败。此补修已在任务结束、队列
-空闲后通过 setup.sh local 更新两个 NAS Media 服务，并完成失败项恢复。
+Some The Disastrous Life of Saiki K. files failed FFmpeg extraction although read-only probing and short-path demux succeeded. Appending UUIDs to long UTF-8 filenames exceeded 255 bytes despite valid final sidecar names.
 
-同一轮还核实了“总数长时间不动”的展示原因：主任务在整部作品结束后统一
-保存结果，子项已有检查点却没有显示字幕阶段已检查数。状态接口现复用已有
-子项数据返回当前作品进度，不扫描媒体、不改变主任务计数和结果语义，也不
-新增数据库查询。相关状态接口 7 项回归通过；现有网页阶段进度组件可直接显示。
+Extraction/translation/online writing now use short same-directory `TemporaryDirectory` paths. Retain non-overwriting hardlink publication and pre-publish lock checks; translation atomically replaces directory entries without changing hardlinked source bytes. No video rename/write. Removed duplicate cleanup; corrected an already-failing preview case to require review for unverified subtitles; moved file-safety tests under tests with assertions retained.
 
-## 部署与现场结果
+NAS dependency regression: 45 passed serial low priority, including actual disposable FFmpeg, long UTF-8 names, partial-output cleanup, lost locks, collisions and source bytes. Old implementation reproduced failure on the same fixture. Deployed both NAS services at idle and recovered failures.
 
-等待原任务结束、队列空闲后，仅通过 `sh setup.sh local` 更新 NAS 的
-local-control 与 local-worker。发布时临时使用已验收的 runtime/state.py，之后
-恢复工作区未完成的 FIFO 文件，避免把独立工作混入镜像。
+Parent totals were committed per work while subtitle child checkpoints existed but were not displayed. Status now reads existing child progress without scans/new queries or changed parent semantics; seven status tests passed and existing UI could display it.
 
-NAS 已通过上述入口重建两个 Media 容器，均 healthy、重启次数为 0。安装模块
-哈希与验收源码一致；本地 HTTP 的 tasks.js、i18n.js 与源码哈希一致，healthz 为
-200。Codex、Quant、Crawler、Portal、FRP 的容器 ID、镜像、启动时间均保持。
-807 组原视频的路径、设备/inode、大小、mtime 及前三个源文件的首尾抽样摘要
-复验没有变化。
+## Deployment and staged recovery
 
-现场通过正常业务队列验证：
+Waited for task completion/idle and used `sh setup.sh local` for control/workers. Build used accepted committed `runtime/state.py`, then restored unfinished FIFO. Both healthy/zero restarts; installed/module/tasks.js/i18n hashes matched, health 200. Codex/Quant/Crawler/Portal/FRP IDs/images/start times stayed unchanged. All 807 stat pairs and sampled bytes remained identical.
 
-- f8160538515a4414a2bf5124548c8d39：《赛博朋克：边缘行者》10 集全部完成，
-  字幕就绪 10、待复核 0，复用已有提取字幕。
-- 1be04085b08f4996a84fd6538cdb591c：《照明商店》8 集全部完成、待复核 0；
-  新研究补齐季来源，通过身份保存、映射和字幕处理。
-- 原 662 项旧任务结束后仍是 553 项季来源不足、97 项旧识别隔离、12 项旧字幕
-  隔离。上述修复和 8 集恢复后，正常 pending 队列创建了剩余 654 项任务
-  d29713a7c71a4581a6b81906efdfea7a。它的文件集合严格等于原 662 项减去
-  《照明商店》8 项，没有新增其他文件。最终完成 565 项，73 项旧识别隔离、
-  16 项字幕需复核。73 项按原名、年份、官方 TMDB 作品与季集表及缓存时长逐项
-  核对，通过既有身份预览/应用接口保存，不重放旧未知 AI 请求、不直接写
-  媒体身份 SQL。随后正常队列 d881001e9e8c4f26aa11020c201f3085 处理剩余89项，
-  完成80项，9项需复核，根因见下节。
+Formal queues:
 
-云端本轮未重建，网站静态资源更新需要在既有云端项目目录执行：
+- `f8160538515a4414a2bf5124548c8d39`: Cyberpunk: Edgerunners, ten complete/ten ready/zero review, reusing extracted subtitles.
+- `1be04085b08f4996a84fd6538cdb591c`: Light Shop, eight complete/zero review, new season evidence/identity/mapping/subtitles.
+- Original 662 ended with 553 insufficient-season, 97 old identification fences and 12 old subtitle fences. Pending task `d29713a7c71a4581a6b81906efdfea7a` then covered exactly the original set minus eight Light Shop files: 654, no extras. It completed 565, leaving 73 identification and 16 subtitle review.
+- The 73 identities were individually checked against original names/year/official TMDB title/season tables/cached duration and saved through existing preview/apply, never replaying unknown calls or writing identity SQL directly.
+- Queue `d881001e9e8c4f26aa11020c201f3085` handled remaining 89: 80 complete/nine review.
 
-```sh
-git pull --ff-only
-sh setup.sh cloud
-```
+Cloud was not rebuilt; in its existing directory, `git pull --ff-only` then `sh setup.sh cloud` updates web/MCP without changing `.env`, ports/domains/topology. Push is not deployment.
 
-云端命令更新 cloud-web、cloud-mcp；保留原 .env、端口、域名和拓扑。
-提交或推送成功不代表云端镜像已更新。
+## Final nine and closure
 
-## 最后九项复核
+Eight had online subtitles already passing Chinese content/sync/timeline checks; shared readiness omitted `downloaded`. Added it and verified they left pending. One ASS contained drawing coordinates after override-tag removal, correctly rejected as non-dialogue by the model. Parser now filters drawing payload by ASS drawing state, preserving dialogue after mode-off/style reset and ignoring positioning/baseline tags. Reference: [Aegisub tags](https://aegisub.org/docs/latest/ass_tags/).
 
-上一轮 89 项完成 80 项；8 项已有通过中文内容、同步和时间轴校验的在线字幕，
-但 `downloaded` 未纳入共享就绪集合，现已修正，并验证不会再次进入待处理队列。
-最后 1 项的 ASS 字幕混有绘图坐标，旧解析器去掉覆盖标签却保留坐标，导致模型
-正确拒绝翻译无对白批次。现在按 ASS 绘图模式过滤载荷，保留模式关闭或样式重置
-后的对白；位置与基线标签不影响对白。规则依据 [Aegisub ASS 标签说明](https://aegisub.org/docs/latest/ass_tags/)。
-实际 S01E21 完整字幕轨含 965 个 Dialogue 行、18 行绘图，解析后保留 749 条去重对白、
-没有以绘图移动命令开头的事件。未修改原始视频或原始字幕。
+Actual S01E21 track: 965 Dialogue lines, 18 drawing lines, 749 deduplicated dialogue entries after parsing, no drawing move-command starts. Originals unchanged. NAS disposable regression: 56 passed including actual FFmpeg long paths; local subset 40 passed/one skipped without FFmpeg. Review merged duplicate readiness cases and checked per-event resets, inline restoration and numeric dialogue.
 
-本次新增与相关回归在 NAS 容器内使用独立临时夹具串行低优先级执行：56 项全部通过，
-包含真实 FFmpeg 长路径验收；本机同组子集 40 项通过、1 项因本机无 FFmpeg 跳过。
-自审合并重复的就绪状态测试，检查绘图模式按事件重置、行内恢复和数字对白保留。
+After fix commit `4b774b3`, idle setup rebuilt healthy control/workers, zero restarts/parity, other services unchanged. Eight ready downloads reused immediately; only m:728 remained pending. Task `2645c88556604c6bbb381e2ff1a487fc` completed 1/1/zero review.
 
-## 最终闭环验收
+Final read of all 816 library/inventory videos: original 662 all subtitle-ready, pending zero, whole-library pending zero. Normal auto returned total zero/completed, task `cea3f7fa1ecf400b88a80d3ac3962f37`. Historical failed results were preserved. All 807 original mapping stats and three sampled source digests matched. Six old unknown AI records retained identical state/data; recovery used independent reviewed identity without clearing fences.
 
-代码补修提交 `4b774b3` 后再次等待队列空闲，通过 `sh setup.sh local` 重建
-local-control 与 local-worker；两者 healthy、重启 0，安装代码哈希匹配，其他服务
-容器未变。8 项下载字幕立即被正常就绪判断复用，正常 pending 队列仅剩 m:728。
-任务 `2645c88556604c6bbb381e2ff1a487fc` 最终 1/1 完成、待复核 0。
-
-最终重新读取媒体库 816 项（包括库存条目）：原始 662 项全部字幕就绪、待处理 0，
-全库待处理 0。再次调用正常自动整理返回 total=0、state=completed，任务为
-`cea3f7fa1ecf400b88a80d3ac3962f37`。旧任务历史失败结果保留，不伪造成功记录。
-807 组既有 media_link 的源/目标路径、设备/inode、大小、mtime 及三个源文件首尾
-抽样摘要再次比较无变化。6 个旧未知 AI 记录仍保留，状态与 data 与修复前备份一致；
-恢复通过独立复核身份完成，没有清除未知请求保护。
-
-最终自审确认范围只含上述修复，未引入依赖、额外运行时修复脚本或数据库迁移；
-工作区原有四个已修改文件的摘要全部保持，其他未完成文档和测试未纳入提交。
-云端网站静态资源仍需按上节命令更新；NAS 后端的 662/662 恢复结果已经现场验证，
-不以推送成功替代云端部署证据。
+Final scope excluded dependencies/runtime repair scripts/migration/FIFO and kept four original dirty file digests. Cloud assets remained pending despite verified NAS 662/662 recovery.

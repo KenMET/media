@@ -1,75 +1,39 @@
-# Goal：发现、搜索、任务、删除与磁盘空间
+# Discovery, search, tasks, deletion and storage goal
 
-## 交付范围
+## Delivered behavior
 
-- 发现页保留今日/本周趋势，新增 TMDB 历史高分，电影与剧集使用官方 top_rated。
-- 搜索仅输入名称；通过官方 multi 搜索混排电影与剧集、排除人物，保持来源顺序。
-  网页不再要求类型或年份；旧 API 的显式类型/年份参数保持兼容。
-- 下载历史并入下载页，服务端先按活动/结束排序再分页；活动置顶，结束记录在下方。
-  两个任务标签统一位于标题下方。整理与字幕仍有独立列表。
-- 下载任务删除同步移除精确 hash、类别和任务标签匹配的 qBittorrent 任务，保留下载
-  文件。管理权限、CSRF、预览及确认均在服务端核验，不通过 retry 参数增加删除。
-- 整理任务删除取消后续执行，撤销精确处理任务租约；迟到结果不能写回，删除状态
-  不被错误恢复为重试任务。原未知 AI 标记、请求身份和审计不清除，不声称远端 turn
-  已停止。
-- 媒体删除按选中文件处理源文件、媒体库硬链接、字幕、归属明确的附属文件和目录，
-  清理对应映射、库存、身份/分类索引和未被其他版本引用的作品展示记录。库存中
-  没有映射的文件也支持按真实指纹删除。共享目录/字幕、未知视频和后来新增文件保留。
-- 删除采用同目录短隔离硬链接，不覆盖目标；先核验身份再移除原目录项，清理记录
-  后才释放隔离项。同一计划可恢复中断，不删除后来替换的文件；预览过期需重建。
-  文件删除要求媒体挂载可用，映射冲突、下载提交未知且未确认下载器归属、活动文件处理会按具体原因拒绝。
-- 管理员可查看实际下载/媒体库文件系统的剩余与总量，同一设备不重复累计。
+- Preserve day/week trends and add TMDB movie/TV all-time `top_rated`.
+- Name-only official multi search mixes movie/TV relevance, excludes people and retains provider order. Explicit legacy type/year parameters remain compatible.
+- Merge download history beneath active jobs, sorting active/terminal before pagination. Both task tabs follow headings; maintenance retains its own list.
+- Download deletion verifies permission/CSRF/preview/confirmation and exact infohash/category/job tags, removing only the owned qBittorrent job with files retained. Retry gains no deletion parameter.
+- Maintenance deletion cancels future work/revokes exact leases; stale callbacks cannot commit or revive deleted work. Retain unknown model IDs/evidence/audit without claiming remote turns stopped.
+- Selected media deletion covers source/library/subtitle/attributable companion files and safe directories, cleaning related mappings/inventory/identity/classification/unreferenced display records. Independent inventory uses verified fingerprints. Shared directories/subtitles, unknown videos and new files remain.
+- Non-overwriting same-directory quarantine hardlinks fence deletion; remove originals only after identity checks, clean records before releasing quarantine, resume the same interrupted plan, reject replacements/expired previews. Mount/conflict/unknown ownership/active processing fail explicitly.
+- Admin capacity reports actual download/library total/free without double-counting devices.
 
-## 上轮事项复核
+## Previous delivery verified
 
-公网实际 `/assets/library.js` 已含海报按编号补取、移除全库强制入口及单部普通操作
-使用 pending；公网 CSS 含 >=1200px 三列规则，证明用户已重建上轮版本。
-本轮保留这些功能，全库 all 请求仍由后端拒绝，缺海报不触发重新识别。
+Actual public `library.js` already contained ID-based artwork, removed global force, and pending single-work actions; CSS contained >=1200px three columns. This proved the user's previous rebuild, not deployment of these new features. Global all remained rejected and poster gaps caused no AI.
 
-## 自审与验证
+## Review and validation
 
-自审修正了活动任务进度变化导致删除预览立即失效的问题、不同对象 ID 类型排序、
-共享字幕误删风险、分类指纹在隔离后导致恢复失败、旧 worker 错误处理可能复活已删
-任务、电影分类根目录的清理边界，以及库存文件/关联下载任务的恢复范围。删除队列检查使用 SQLite 写事务与
-原有变更锁；只取消指定关联作业，实际处理中的文件不能被强删。
-没有新依赖、独立下载器、数据库表、迁移或重试删除参数。运行代码、测试、手工验收
-和文档均留在规定目录；未完成 FIFO 文件及原有部署文档/验收改动未纳入范围。
+Fixed deletion previews invalidated by live progress, mixed object-ID sorting, shared-subtitle ownership, post-quarantine classification recovery, deleted-job revival by old worker errors, category-root cleanup and inventory/download recovery scope. Queue cancellation uses a SQLite write transaction and existing mutation locks; cancel only exact associated work and never force active file writes.
 
-验证在用户要求减少验证之前已完成：NAS 隔离发布源码的 137 项相关回归通过；
-最后补齐运行中整理任务取消后的 27 项删除回归通过。测试串行、nice -n 15，SQLite
-与媒体均为一次性夹具。首轮 NAS Jackett 测试继承 execution-only 部署角色而被拒绝，
-改为仅测试进程的模拟 Provider 环境后通过，没有修改部署角色或削弱生产限制。
-qBittorrent HTTP 夹具验证只发送精确 hash、deleteFiles=false，保留无关任务及 payload。
-12 项前端测试通过；一次性浏览器验证历史高分、名称搜索、任务标题/标签顺序、合并
-历史、删除预览/取消/确认、磁盘空间、3/2/1/1 列布局及中英文标题。实际移除的只有
-带 .acceptance 标记的一次性媒体文件，其他夹具媒体保持；没有删除真实媒体或生产
-qBittorrent 任务。用户随后要求收紧验证，后续只做最终差异审查与必要部署检查。
+No new dependency/downloader/table/migration/retry deletion capabilities. Required directories retained. Unfinished FIFO and existing documentation/manual edits remained excluded.
 
-## 部署
+Before the user requested reduced verification, NAS disposable release passed 137 related tests and final 27 deletion tests, serial nice 15. Jackett tests initially inherited execution-only and were rerun with test-process fake provider settings without weakening deployment. HTTP fixtures verified exact hash and `deleteFiles=false`, retaining unrelated jobs/payload. Twelve frontend tests and disposable browser covered top rated, mixed search, heading/tab order, merged history, deletion preview/cancel/confirm, capacity, 3/2/1/1 columns and bilingual titles. Only marked disposable files were removed, never production media/qBittorrent. Later work was restricted to final review/deployment checks.
 
-NAS 仅通过 `sh setup.sh local` 在队列安全检查点更新 local-control/local-worker。
-本轮云端新功能需在原云端项目目录更新：
+Official references: [TMDB top rated](https://developer.themoviedb.org/reference/movie-top-rated-list), [multi search](https://developer.themoviedb.org/reference/search-multi), [qBittorrent delete](https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)#delete-torrents).
+
+## Deployment
+
+Commit `126f2a1` pushed and verified. At idle checkpoint, `sh setup.sh local` rebuilt healthy control/workers, zero restarts, installed hash parity, read-only downloader/version and initialization checks, actual capacity reads. Other container IDs/images/start times and preexisting dirty file digests stayed unchanged. Used committed `runtime/state.py`, then restored unfinished FIFO.
+
+Cloud remained pending:
 
 ```sh
 git pull --ff-only
 sh setup.sh cloud
 ```
 
-这次的新历史高分、混合搜索和删除入口不等于此前已重建的上轮前端。
-
-## 官方接口依据
-
-- [TMDB 历史评分榜](https://developer.themoviedb.org/reference/movie-top-rated-list)
-- [TMDB 混合搜索](https://developer.themoviedb.org/reference/search-multi)
-- [qBittorrent 删除接口](https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)#delete-torrents)
-
-## NAS 部署结果
-
-提交 `126f2a1` 已推送并核对远端。队列空闲后通过唯一入口 `sh setup.sh local`
-重建 local-control、local-worker，两者 healthy、重启 0，安装文件哈希与提交源码一致。
-下载器 API 只读版本检查及 worker 初始化检查通过；下载/媒体库两处实际容量读取成功。
-其他既有服务容器的 ID、镜像与启动时间未变，未完成 FIFO 工作及原有文档/验收文件
-摘要保持。发布时使用已提交 runtime/state.py，之后恢复工作区原文件。
-
-本轮没有重建云端；云端新界面仍需执行上节两条命令。NAS 后端已经更新，无需用户
-再次重建本地。没有在真实媒体或生产 qBittorrent 上执行删除验收。
+NAS needed no repeated rebuild. Production deletion acceptance was not run.

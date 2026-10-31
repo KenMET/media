@@ -1,55 +1,37 @@
-# 本地功能验收 goal（2026-10-26）
+# Local functional acceptance goal: 2026-10-26
 
-目标：对安全整改后的实际安装版本进行功能验收，发现问题修复后再复测。不把单元测试、历史截图或模拟 Provider 当成当前真实链路的证明。
+Objective: test the installed security-repaired runtime, fix findings and retest without treating old screenshots/unit fixtures as live evidence.
 
-## 范围与边界
+Entrypoint `http://192.168.8.1:18414/`; isolated marked state/data, public Jackett and dedicated qBittorrent. Production media/services/Singapore were excluded. Authorized public sample only; no unrelated adoption/deletion or real-account password attack. Serial low-priority checks did not extrapolate one site's success to all networks/challenges/TLS.
 
-当前主要入口 `http://192.168.8.1:18414/`，使用带 `.acceptance` 标记的独立 state/data、Jackett public 站点和独立 qBittorrent。正式媒体、既有外部服务和新加坡服务器不参与。真实下载仅使用公开授权样本，不接管、删除无关下载。测试串行低优先级运行，避免真实账号错误密码攻击。验证码、站点/运营商可达性和正式公网 TLS 单独记录，不用单一站点成功推断所有站点可用。
+## Passed matrix
 
-## 验收矩阵
+- Browser login/logout, password invalidation (401), role boundaries/no self-elevation; ordinary capability combinations/isolation/revocation.
+- Eight live TMDB/SIMKL lists, SIMKL younger than two days and disabled Douban.
+- Original/localized search both `tv:209867`; Nyaa eight S01E01 candidates, no TV submission.
+- Duplicate sample confirmation retained one download; real release plan was cancelled; double-search locked controls; English mobile showed 100% and three completed stages.
+- Fresh official Sintel transfer: 129302391 bytes, every piece verified, same hardlink inode/bytes and 170 Chinese subtitle characters.
+- Media manager without download capability completed idempotent subtitles without viewing original acquisition, creating a torrent or changing source bytes.
+- Real account/socket-source quota isolation returned 429 only for the relevant source/account; forged provenance failed; temporary tokens revoked.
+- Local control/workers offline left gateway health 200 and queries 503; restart restored same job/single torrent/readiness and page monitoring.
+- Installed bilingual desktop/mobile loading/errors/disabled state and 360/390px layout passed; final viewport restored to 1280px.
 
-| 项目 | 当前状态 | 所需证据 |
-| --- | --- | --- |
-| 登录/退出、会话与角色 | 通过 | 当前浏览器普通用户与管理员登录/退出；测试账号改密后旧会话 401、退出后 401、普通账号不能自提权 |
-| 普通账号能力与私有任务隔离 | 通过 | 当前 18414 独立能力组合、越权拒绝、撤销生效 |
-| TMDB/SIMKL 榜单、豆瓣禁用 | 通过 | 八组真实榜单 ready，SIMKL 时效小于两天；当前页面豆瓣禁用 |
-| 中英文作品与 public 资源搜索 | 通过 | 中英文均 tv:209867；Nyaa public 8 候选，计划 S01E01，未下载这些影视资源 |
-| 确认提交、防重复、进度/历史 | 通过 | 新样本重复确认只有一个下载任务；真实网页资源计划确认后取消；双击搜索期间按钮禁用；当前英文手机详情显示 100% 和三阶段完成 |
-| 真实下载、入库、字幕 | 通过 | 全新 qBittorrent 下载 129302391 bytes 官方 Sintel；全部 piece 哈希一致、硬链接同 inode/字节，中文字幕 170 个汉字 |
-| 媒体管理 | 通过 | 无下载能力的媒体管理员提交字幕维护，完成且幂等；看不到原下载任务，未新增 torrent，源字节不变 |
-| 服务端配额/来源隔离 | 通过 | 全新专用账号/实际不同回环源 socket：429 只限制对应来源/账号，伪造来源无效；临时密钥撤销 |
-| 断线与重启恢复 | 通过 | 控制网页/worker 停止，网关健康 200、任务接口 503；恢复相同任务、torrent 仍 1、worker ready；页面自动恢复 |
-| 桌面/手机中英文 | 通过 | 当前安装资产、加载/错误/禁用、360/390px 排版；恢复默认 1280px 视口 |
+## Isolation and fixes
 
-以上状态仅代表本轮列出的范围，不是所有站点、所有作品或所有网络条件的保证。
+Original 18414 retained one acquisition. Fresh `state/local-functional-acceptance-20261026` used loopback 18510–18514, dedicated state/media/downloader, existing isolated Jackett and real model. Download job `1fcba721c9594e88a376cde24aa2f855` and maintenance `a9209d84d6904e0e92fa7c4b4af5c32e` completed. Two acquisitions represented download and maintenance but only one torrent; they were distinct from 18414 history.
 
-## 真实链路与测试隔离
+Sintel was explicitly sourced from official WebTorrent catalog, Blender CC BY 3.0, not falsely attributed to Jackett. Downloader/TMDB/workers/translation/web/MCP were actual calls; public Jackett search had separate evidence. Dedicated `media-functional-*-check` containers stopped afterward, retaining disposable evidence and external services. Tools: fixed fresh-20261026 profile of `acceptance_download_live.py`, `acceptance_media_management_live.py`, `acceptance_security_live.py`, `acceptance_accounts_live.py`, with markers/fixed ports rather than arbitrary targets.
 
-已有 18414 仍作为用户入口，原有任务保持一条。另建 `state/local-functional-acceptance-20261026` 全新 state/data/qBittorrent，端口 18510–18514 仅回环绑定，复用独立 Jackett public 定义与真实模型服务。新下载任务 `1fcba721c9594e88a376cde24aa2f855` 完成；媒体维护任务 `a9209d84d6904e0e92fa7c4b4af5c32e` 完成。该副本有两条 acquisition（下载和字幕维护），但只有一个 torrent；不能混同于 18414 的一条原有任务。
+Found default TV season selected metadata's first item, often season zero. Changed UI to first regular season while retaining selectable specials and backend identity/scope. Eight frontend tests/syntax passed; image `media-mcp-functional-test:0.3.0` (`a6c895f6c618`) updated local web/gateway. Browser Frieren defaulted season one/38 episodes; 390px screenshot retained.
 
-Sintel 使用 WebTorrent 官方免费样本（Blender Foundation，CC BY 3.0）。资源条目在验收脚本中明确由官方样本目录提供，不冒充 Jackett 搜得；下载器、TMDB、worker、模型翻译和网页/MCP 接口均实际调用。Jackett public 真搜索由另一条独立验收证明。
+## Final checks
 
-完成下载和维护后已停止全部 `media-functional-*-check` 专用容器，保留可丢弃文件和清单供复查；未停止外部 Jackett 或正式服务。真实链路脚本：`acceptance_download_live.py` 的固定 fresh-20261026 profile、`acceptance_media_management_live.py`、`acceptance_security_live.py`、`acceptance_accounts_live.py`。脚本校验标记与固定隔离端口，不允许任意下载器目标。
+Ordinary 18414 user completed bilingual public search/eight candidates/S01E01 plan with `acceptance_search_live.py --ordinary`, without acquisition. Its history was empty; administrator's original completed task remained visible. English mobile account had five ordinary navigation items/capability explanation/password form, no admin/grants/token controls. Document widths 345 at viewport 360 and 375 at viewport 390 stayed within viewport.
 
-## 发现与修复
+Mobile task showed completed/100%/ingestion/subtitles. Restored Chinese administrator library/1280px with the 18414 tab retained. MCP without token returned 401, temporary valid token worked, revocation returned 401 on next call. Tokens revoked/helper accounts disabled.
 
-剧集详情默认选中 TMDB 返回的首项，而首项常为 season 0“特别篇”，导致用户容易查错资源。已改为默认首个正片季，特别篇仍可选；仅改变网页默认选择，不改变后端季集范围、下载身份或资源过滤。8 项前端回归及 JS 语法检查通过，新安装镜像 `media-mcp-functional-test:0.3.0`（`a6c895f6c618`）已更新本地控制网页与网关。浏览器重新搜索 Frieren 打开详情，确认初始选中“第 1 季 · 38 集”，特别篇仍在选项中；390px 截图已保存。
+Screenshots: `functional-offline-feedback-20261026.png`, `functional-real-plan-20261026.png`, `functional-default-season-mobile-20261026.png`, `functional-user-mobile-en-20261026.png`, `functional-completed-mobile-en-20261026.png`. The unsubmitted Nyaa plan was not download proof, and original-18414 screenshots were distinct from fresh-chain manifests.
 
-断线反馈截图 `functional-offline-feedback-20261026.png`、真实资源计划截图 `functional-real-plan-20261026.png` 位于本次任务可视化附件目录。没有把未确认提交的 Nyaa 计划当作实际下载。
+Final ports 18413/18414/18410 returned 200, original acquisition count stayed one, five helpers exited, files/manifests retained without deletion.
 
-## 最终浏览器与接口复核
-
-- 普通下载账号在 18414 真实完成中英文搜索、Nyaa public 资源查询及 S01E01 下载计划（`acceptance_search_live.py --ordinary`），候选仍为 8 个。没有提交这些影视资源。普通浏览器历史为空，管理员切回后能看到自己的原有已完成任务。
-- 英文手机账号页只有五项普通导航、下载开启/媒体只读提示和密码表单，没有管理、对象分配或连接密钥。360px 文档宽度 345px，390px 剧集页面宽度 375px（滚动条占用），都未超过视口。
-- 英文手机任务详情显示 Completed、100%、入库和字幕阶段完成。中文/英文切换正常；最终恢复中文管理员媒体库、默认桌面视口（1280px）并保留 18414 标签。
-- 真实 MCP 无令牌请求 401；有效临时令牌能查询，撤销后下一请求 401。临时 token 已撤销，辅助测试账号已禁用。
-- 图片增加 `functional-default-season-mobile-20261026.png`、`functional-user-mobile-en-20261026.png`、`functional-completed-mobile-en-20261026.png`。截图中 18414 的原任务与全新下载副本不同，具体新链路结果以各脚本的 fresh profile 清单为准。
-- 最终就绪检查：18413/18414/18410 均 200，18414 原有 acquisition 数量仍 1；五个新建辅助容器全部 exited，测试文件/清单保留，未删除视频或状态。
-
-## 本轮结论和未覆盖条件
-
-本轮矩阵全部通过，发现并修复一项默认季选择问题。没有尚未解决的本地功能失败项。新下载、翻译和维护均是真实操作；来源隔离和配额也用实际 TCP 请求验证，没有只引用上一轮单元测试。
-
-没有进行新加坡/公网 TLS、私有站账号、每家 public 站点、Bark 手机到达回执、所有格式/字幕来源，以及下载中运营商断流等穷举测试。断线恢复证据限于测试控制端和 worker 停止/恢复；不把它扩展为任意路由器/磁盘故障都可自动恢复。字幕内容校验和本样本翻译成功不保证所有作品都有可用字幕或翻译质量一致。
-
-继续使用 `http://192.168.8.1:18414/`；账号仍在忽略的 `state/live-login.txt`。本地功能验收 goal 已完成。
+The scoped matrix completed with one fixed default-season issue and no remaining local functional failure. Uncovered: Singapore/public TLS/private accounts/every public site/Bark phone delivery/all subtitle formats/providers/carrier interruption. Controlled service-stop recovery is not arbitrary router/disk recovery. One successful translation does not guarantee all content quality. Retained entry/account file: 18414 and ignored `state/live-login.txt`.

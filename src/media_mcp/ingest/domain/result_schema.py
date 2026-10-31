@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 result_schema.py
-Codex 媒体分类结果规范化与基础校验。
+Normalize and validate Codex media classification results.
 """
 
 from __future__ import annotations

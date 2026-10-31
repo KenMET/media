@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 run.py
-媒体入库入口 - 处理指定路径、全量扫描、重建与清理。
+Media ingestion entrypoint for selected paths, full scans, rebuilds and cleanup.
 
-持续监听 qBittorrent 下载完成事件请使用 apps/media/monitor/run.py。
+Use media_mcp.monitor.qbittorrent to monitor qBittorrent download completion events.
 """
 
 import os
@@ -226,10 +226,10 @@ def _format_subtitle_notify_summary(subtitle_summary: dict | None) -> str | None
     parts = subtitle_notify_parts(action_counts, ignored_noop_actions={'exists'})
 
     if False and not parts and int(subtitle_summary.get('media_count') or 0) <= 0:
-        return '字幕：无匹配媒体'
+        return 'Subtitles: no matching media'
     if not parts:
         return None
-    return '字幕：' + '，'.join(parts)
+    return 'Subtitles: ' + ', '.join(parts)
 
 
 def _run_subtitle_for_batch(folder_path: str, test_mode: bool = False, dry_run: bool = False) -> dict | None:
@@ -295,49 +295,49 @@ def send_batch_notify(
     content = None
     if created <= 0 and relinked <= 0 and failed <= 0:
         if media_kind == 'movie':
-            content = f'电影 {display_name}\n{subtitle_text}'
+            content = f'Movie {display_name}\n{subtitle_text}'
         elif media_kind == 'tv':
-            content = f'剧集 {display_name}\n{subtitle_text}'
+            content = f'Series {display_name}\n{subtitle_text}'
         else:
             content = f'{display_name}\n{subtitle_text}'
-        flag_notify = mcp_direct_call_ns('notify.send_notification', title='Media入库通知', content=content)
+        flag_notify = mcp_direct_call_ns('notify.send_notification', title='Media ingestion notification', content=content)
         if not flag_notify:
             raise RuntimeError(f'MCP notification failed for: {folder_path}, {content}')
         return
 
     if os.path.isfile(folder_path):
         if created > 0:
-            content = f'入库成功: {display_name}'
+            content = f'Ingestion completed: {display_name}'
         elif relinked > 0:
-            content = f'恢复成功: {display_name}'
+            content = f'Recovery completed: {display_name}'
         else:
-            content = f'入库失败(1，需人工复核): {display_name}'
+            content = f'Ingestion failed (1 item; review required): {display_name}'
     elif media_kind == 'movie' and display_name:
         if success_count > 0:
-            content = f'电影 {display_name} 入库成功'
+            content = f'Movie {display_name}: ingestion completed'
             if failed > 0:
-                content += f'，另有失败{failed}个'
+                content += f'; {failed} additional items failed'
         else:
-            content = f'电影 {display_name} 入库失败({failed}，需人工复核)'
+            content = f'Movie {display_name}: ingestion failed ({failed} items; review required)'
     elif media_kind == 'tv' and display_name:
         if success_count > 0:
-            content = f'剧集 {display_name} ({success_count}集) 入库成功'
+            content = f'Series {display_name}: ingestion completed ({success_count} episodes)'
             if failed > 0:
-                content += f'，另有失败{failed}集'
+                content += f'; {failed} additional episodes failed'
         else:
-            content = f'剧集 {display_name} 入库失败({failed}集，需人工复核)'
+            content = f'Series {display_name}: ingestion failed ({failed} episodes; review required)'
     else:
         parts = []
         if created > 0:
-            parts.append(f'新建{created}')
+            parts.append(f'created {created}')
         if relinked > 0:
-            parts.append(f'恢复{relinked}')
+            parts.append(f'relinked {relinked}')
         if failed > 0:
-            parts.append(f'失败{failed}(需人工复核)')
-        content = f'批量入库[{display_name}]：' + '，'.join(parts)
+            parts.append(f'failed {failed} (review required)')
+        content = f'Batch ingestion [{display_name}]: ' + ', '.join(parts)
     if subtitle_text:
         content = f'{content}\n{subtitle_text}'
-    flag_notify = mcp_direct_call_ns('notify.send_notification', title='Media入库通知', content=content)
+    flag_notify = mcp_direct_call_ns('notify.send_notification', title='Media ingestion notification', content=content)
     if not flag_notify:
         raise RuntimeError(f'MCP notification failed for: {folder_path}, {content}')
 
@@ -774,7 +774,7 @@ def main(args):
 
     if args.notify:
         content = args.notify if isinstance(args.notify, str) else 'Media monitor test notification'
-        flag_notify = mcp_direct_call_ns('notify.send_notification', title='Media通知测试', content=content)
+        flag_notify = mcp_direct_call_ns('notify.send_notification', title='Media notification test', content=content)
         if not flag_notify:
             raise RuntimeError(f'MCP notification test failed: {content}')
         logger().info('Notify test sent: %s', content)

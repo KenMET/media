@@ -1,32 +1,21 @@
-# 紧凑媒体库、附加内容与批量识别验收 · 2026-10-28
+# Compact library, extras and batch identity: 2026-10-28
 
-## 结果与边界
+Compact rows use left posters/right summaries, mobile 64px posters and about 10% smaller navigation/spacing without page scaling. Feature-only progress excludes separately counted extras.
 
-媒体库改为左小海报、右简要信息的列表。手机海报宽 64px，顶部与底部导航、控件和间距约缩小 10%；不使用页面缩放。首页进度只统计正片，附加文件另列。
+The historical batch flow handled at most ten loaded works with persistent previews and explicit metadata confirmation. Unknown titles required a unique TMDB title/alias/year match; ambiguity/invalid episodes stayed manual. It neither used AI guesses nor automatically linked files. Mapping/subtitle maintenance stayed separate in details. Later automatic research superseded this historical interaction.
 
-首页有逐行“识别”和“批量重新识别”。每批处理当前已加载列表中最多 10 个作品，先展示持久化预览与季集对应，用户勾选确认后才保存元数据。未知作品要求 TMDB 标题/别名及年份唯一匹配；歧义与无效季集留待单独识别。此流程不调用 AI 猜测，也不自动建硬链接；映射与字幕在详情分别预览、执行。
+Explicit extra folders/markers classify without using unfamiliar names, duration or size as exclusion. Unique parents retain their extras; otherwise folder groups remain. Extras-only groups are recoverable by filter. Manual feature/extra classification binds fingerprints and never moves/deletes videos.
 
-明确的特典/花絮目录与文件标记参与分类；陌生标题、时长和体积不作为排除依据。唯一父作品明确时归回父作品，否则按附加文件夹聚合。纯附加合集默认收起，“附加内容”筛选可找回。详情支持勾选后标为正片/附加内容，分类绑定指纹并可恢复，不删除、移动或修改视频。
+## Validation
 
-## 隔离验证
+Python 170 and frontend nine passed. Disposable browser: seven feature collections, two containing extras, five unique batch matches, unchanged identity before confirmation, persistence after save, reversible classification and row actions. At 390px, three full rows plus the next row beginning were visible; 320/375/390/430/768/1440px had no overflow/JS errors, with English verified. Original collection regression covered season identity/grouping/source inode/subtitle retention/navigation.
 
-- Python 全套 170 项通过，前端测试 9 项通过。
-- 新浏览器验收：7 个正片合集、2 个包含附加内容的合集；批量预览 5 个明确匹配、其余待手动识别；预览前后身份未变，确认后保存；分类刷新持久化且可恢复；逐行入口正常。
-- 手机列表在 390px 首屏可见 3 个完整条目及下一条开头；320/375/390/430/768/1440px 无横向溢出，英文正常，无页面 JS 错误。
-- 原合集浏览器回归通过：按季识别、部分识别不拆分、补链保持源 inode、字幕任务保留已有字幕、刷新和浏览器返回/前进。
-- Provider、字幕引擎与海报为虚构验收材料；使用真实 HTTP、SQLite、任务队列和一次性硬链接，不连接真实下载器/字幕服务。
-- 本机证据：`/tmp/media-compact-acceptance/result.json`、`library-390.png`、`batch-preview.png`；原合集回归在同目录的 `regression/`。
+Fictional providers/posters/subtitles exercised real HTTP/SQLite/queues/disposable hardlinks, without real downloader/providers. Artifacts: `/tmp/media-compact-acceptance/result.json`, `library-390.png`, `batch-preview.png`, `regression/`.
 
-## NAS 部署与真实数据
+## Deployment
 
-通过 `sh setup.sh local` 更新，local-control / local-worker 健康。更新前保留私有 SQLite 备份及计数基线；容器安装模块 SHA256 与源码一致。
+NAS `sh setup.sh local` produced healthy control/workers after backup and baseline counts, with installed/source SHA256 parity. Read-only state: 73 default feature works, 75 total groups, five with extras; all 816 videos retained, 12 classified extras; 807 mappings, 2879 inventory and the existing one identity retained. Manual classifications/maintenance tasks remained zero; no live bulk maintenance. Default query took about 0.43 seconds.
 
-只读检查结果：默认 73 个正片作品，所有分组共 75 个，5 个分组包含附加内容；816 个视频全部保留，其中 12 个归为附加内容。807 条映射、2879 条文件索引、更新前已有的 1 条身份确认完整保留。手动分类为 0、维护任务为 0，未执行真实媒体的批量识别、映射或字幕任务。默认列表查询约 0.43 秒。
+`Chandler Charters` and `Children’s Funeral` under Featurettes/Deleted Scenes grouped under Manchester by the Sea: one feature/four extras, without guessed deletion.
 
-截图中的 `Chandler Charters` 与 `Children’s Funeral` 位于 `Featurettes/Deleted Scenes`，已归回《海边的曼彻斯特》；该作品共 1 个正片、4 个附加文件。未按不明名称猜测或删去文件。
-
-## Cloud 状态
-
-没有可用 cloud SSH 入口，未部署公网网页。云端拉取本次提交后，在云端项目目录执行 `sh setup.sh cloud`，浏览器刷新后才能看到新布局和入口。NAS 更新不代表公网新页面已上线。
-
-本次不修改 `setup.sh`，不提交 `.env`、SQLite、状态目录或私有备份。
+Cloud SSH was unavailable; `sh setup.sh cloud` after pulling remained necessary. NAS deployment did not establish public UI delivery. This change did not modify setup or commit private state/backups; two unrelated line-ending edits remained separate.

@@ -37,7 +37,7 @@ fs.mkdirSync(artifacts,{recursive:true});
      await page.locator('#task-status progress').waitFor();
      let text=await page.locator('#task-status').innerText();
      if(!text.includes('2 / 3')||!text.includes('121 / 746'))throw Error('Missing durable recovery progress');
-     if(language==='zh-CN'&&(!text.includes('旧会话')||text.includes('模型额度不足')))throw Error('Session failure confused with quota');
+     if(language==='zh-CN'&&(!text.includes('\u65e7\u4f1a\u8bdd')||text.includes('\u6a21\u578b\u989d\u5ea6\u4e0d\u8db3')))throw Error('Session failure confused with quota');
      if(language==='en'&&(!text.includes('session')||/[\u3400-\u9fff]/.test(text)))throw Error('Recovery translation incomplete');
      const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1);
      if(overflow)throw Error('Horizontal overflow at '+width);
@@ -48,7 +48,7 @@ fs.mkdirSync(artifacts,{recursive:true});
      if(text.includes('2 / 3'))throw Error('Quota and session counters mixed');
      mode='probe';await page.reload();await page.locator('#task-status progress').waitFor();
      text=await page.locator('#task-status').innerText();
-     if(language==='zh-CN'&&(!text.includes('连接失败')||text.includes('模型额度不足')))throw Error('Probe connection failure confused with quota');
+     if(language==='zh-CN'&&(!text.includes('\u8fde\u63a5\u5931\u8d25')||text.includes('\u6a21\u578b\u989d\u5ea6\u4e0d\u8db3')))throw Error('Probe connection failure confused with quota');
      if(language==='en'&&!text.includes('could not connect'))throw Error('Missing probe failure explanation');
    }
  }

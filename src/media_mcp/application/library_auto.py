@@ -89,7 +89,7 @@ class LibraryAuto:
                 from media_mcp.platform.limits import Budget
                 Budget(self.db,lib.service.accounts.clock).admit_job(lib.actor.id)
             ident=uuid.uuid4().hex
-            data={'owner':lib.actor.id,'action':'auto','automatic':True,'collection_id':collection_id,'label':lib._title(next(iter(groups.values())))['title'] if collection_id else '自动整理媒体库',
+            data={'owner':lib.actor.id,'action':'auto','automatic':True,'collection_id':collection_id,'label':lib._title(next(iter(groups.values())))['title'] if collection_id else 'Organize library automatically',
                 'intent':intent,'files':files,'work':work,'next_work':0,'results':results,'operations':[],
                 'total':len(files)+len(results),'processing_key':digest('library:'+ident),'blocked':[],
                 'summary':{'identified':0,'linked':0,'extras':0,'subtitles':0},'analysis_progress':{'phase':'automatic','done':len(results),'total':len(files)+len(results)}}

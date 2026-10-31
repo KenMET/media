@@ -1,30 +1,25 @@
-# 媒体库全自动整理验收 · 2026-10-29
+# Automatic library organization acceptance: 2026-10-29
 
-## 交付范围
+Whole-library pending organization covers identity/mapping/subtitle issues beyond current filtering/pagination. Row/details handle one work; one parent groups works without per-item submissions/normal confirmation. The historical more-menu global reprocess action was later removed; manual matching/preview/classification remain advanced.
 
-日常入口改为“全库自动整理”，默认处理全库待识别、映射异常或字幕未就绪的资源。列表搜索、筛选和分页不限制后台范围；详情与单行按钮处理单部作品。一个父任务内部按作品拆组，不再逐项勾选、逐部提交或确认正常识别结果。更多菜单保留全部重处理；手动匹配、预览、分类与独立维护收进高级选项。
+Local-worker performs rules/duration/research, automatic identity/classification at confidence >=0.9, safe missing-link repair and subtitles without NAS cloud callbacks. Automatic approval is explicitly recorded. Extras remain indexed/grouped; unknown/low-confidence/changed/conflicting/subtitle issues remain per-file exceptions.
 
-local-worker 自动推进规则/时长检查、必要的 AI 检索、身份和分类保存、安全补链及缺失字幕处理。不依赖 NAS 回调 cloud。AI 可用且置信度至少 0.9 的结果直接保存，记录自动保存来源，不伪装为用户确认。附加内容保留索引并归组；未知、低置信度、变更、冲突和字幕未就绪单独列为例外，不阻塞其他作品。
+Existing permissions/fingerprints/leases/journals/locks remain. Preserve target/source bytes and valid subtitles, never invent sources or replay unknown model/subtitle calls. Quota/auth failures stop repeated AI while rule work continues. Limits: 20,000 total files, 500 videos/internal group. At this historical release summaries counted all files while exceptions displayed a labeled first 50; later task pagination superseded that limit.
 
-复用既有租约、权限、文件指纹、变更日志和操作锁。不覆盖目标、不改写源视频、不虚构下载来源；保留有效字幕。已提交映射可恢复，模型及字幕提交结果未知不盲目重发。AI 配额或认证不可用后不反复调用，规则可完成的工作仍继续。全库上限 20000 个文件，每内部组最多 500 个视频；结果摘要统计全部文件，异常列表最多展示前 50 项并明确说明。
+## Disposable validation
 
-## 隔离验证
+Python 205/frontend nine and static syntax passed. Covered cross-page scope, unknown continuation, extras, confidence/conflict/idempotency/source changes, committed-link recovery, unknown subtitles and lost locks.
 
-- Python 全套 205 项通过；新增自动流程覆盖跨分页批量、未知继续、附加归组、低置信度不保存、目标冲突不覆盖、幂等、源变化、已提交链接恢复与字幕未知提交不重复、操作锁丢失立即停止。
-- 前端 9 项通过，静态模块语法检查通过。
-- 全自动浏览器验收通过：37 部主作品/合集，单部 3 集直接自动保存；随后全库待处理 42 文件，自动识别保存 41、其中附加 6，新建硬链接 30、字幕就绪 35，只有一个未知文件保留例外。第 129 号样本在首屏之外，实际完成身份、映射与字幕记录，未受当前搜索过滤。刷新持久化、旧详情 URL 解析新合集、高级工具仍可用，正常路径无复选框/弹窗/手动保存请求，原视频字节、inode 和已验证字幕不变。
-- 原合集维护、紧凑附加分类、高级 AI 预览三组浏览器回归通过。中英文及 320–1440px 无横向溢出、无页面 JavaScript 错误。
+Browser: 37 main collections; one three-episode work saved automatically. Whole-library 42 pending files yielded 41 identities including six extras, 30 new hardlinks, 35 ready subtitles and one unknown. Offscreen sample 129 completed identity/mapping/subtitles despite active search filtering. Refresh/old routes/advanced controls worked; normal flow used no checkbox/modal/manual-save request. Original bytes/inodes/verified subtitles remained. Collection/compact/advanced-AI browser regressions passed, bilingual 320–1440px without overflow/errors.
 
-浏览器使用一次性媒体、SQLite、虚构 Provider/AI/字幕服务，实际执行网页 HTTP、持久队列、保存和硬链接。其字幕就绪仅代表隔离模拟服务生成了测试字幕与验证记录，不代表生产字幕质量验收。证据在 `/tmp/media-auto-library-acceptance/`，包含 `result.json`、各宽度截图和三个回归子目录；复验命令见 [智能识别](../library-ai-identification.md)。
+Fictional AI/providers/subtitles used real HTTP/SQLite/queue/save/hardlink paths. Fixture subtitle readiness is not production quality. Artifacts: `/tmp/media-auto-library-acceptance/`, result/screenshots/three regression subdirectories. Commands: [identification](../library-ai-identification.md).
 
-## 真实模型与部署
+## Live model and NAS
 
-NAS 已安装的客户端使用真实 AI 连接，在独立临时媒体目录及 SQLite 中识别虚构路径 `Manchester by the Sea (2016)/film.mkv`，返回《海边的曼彻斯特》、`movie:334541`、置信度 0.99。自动任务无需确认即保存 `approval_mode=automatic` 并建立实际硬链接，源字节与 inode 保留。时长 8220 秒为测试声明值，本次不冒充真实影片探测；此前真实 ffprobe 的两秒临时视频验证仍有效。此次字幕服务刻意使用“缺失”的模拟返回，因此任务准确显示带字幕例外完成，没有假报字幕就绪。没有调用真实字幕服务或处理生产影片。证据在 `/tmp/media-auto-real-proof.log`。
+Installed client researched fictional `Manchester by the Sea (2016)/film.mkv` in disposable media/SQLite, returned localized title, `movie:334541`, confidence 0.99. Automatic approval and a real hardlink preserved source bytes/inode. Duration 8220 was declared fixture metadata, not a live film probe; prior two-second ffprobe evidence remained separate. Fake missing-subtitle output correctly yielded warnings, not ready. No live subtitle provider or production film was used. Evidence `/tmp/media-auto-real-proof.log`.
 
-最终通过 `sh setup.sh local` 重建 local-control / local-worker，均 healthy，library 心跳正常，自动整理命令已安装。安装模块 SHA256 与最终源码一致；自动流程模块为 `494591bd7a36a3c9ca0f7c9377f7fc6e61a7102ebf61b0681913dee91ab18627`。
+`sh setup.sh local` rebuilt healthy control/workers with library heartbeat/parity. Auto module SHA256: `494591bd7a36a3c9ca0f7c9377f7fc6e61a7102ebf61b0681913dee91ab18627`.
 
-部署前保存私有 SQLite 备份；部署后以只读连接逐行、逐列比较 `media_link`、`media_inventory`、`media_library_identity`、`media_library_classification` 和全部 `library_%` 记录，与备份完全一致。807 条映射、2879 条索引、已有 2 条身份、1 条分类、1 个历史维护任务保留；816 个可见文件、73 个正片作品/合集、12 个附加文件。没有对生产库发起自动整理任务。证据在 `/tmp/media-auto-installed-verification.log`、`/tmp/media-auto-data-integrity.log`。
+Private backup comparisons retained all rows/columns of media mappings/inventory/identity/classification and `library_%`: 807 mappings, 2879 inventory, two identities, one classification, one historical task; 816 files, 73 feature works, 12 extras. No production auto task. Evidence `/tmp/media-auto-installed-verification.log`, `/tmp/media-auto-data-integrity.log`.
 
-cloud 无可用部署入口，本次不声称公网界面已更新。云端项目执行 `git pull --ff-only` 后使用 `sh setup.sh cloud` 更新网页。local 只负责 NAS 后台处理，网页资源仍由 cloud 提供。
-
-`.env`、数据库、状态、备份和凭据不提交。`setup.sh` 内容与 100755 执行权限未改。原有 `docs/standalone.md` 和 `tests/manual/acceptance_sqlite.py` 的换行改动不纳入本次提交。
+Cloud access was unavailable; pull and `sh setup.sh cloud` remained required. No private state/credentials or original standalone/manual-acceptance line-ending changes were committed; setup/mode 100755 remained unchanged.

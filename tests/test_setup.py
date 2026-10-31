@@ -54,7 +54,7 @@ class SetupScriptTests(unittest.TestCase):
                 self.assertEqual(int((root/'count').read_text()),ready_after or 60)
                 self.assertIn('sleep 5',(root/'calls').read_text())
                 self.assertIn('media_mcp.monitor.dependencies',(root/'calls').read_text())
-                self.assertEqual('检查全部通过' in result.stdout,bool(ready_after))
+                self.assertEqual('checks all passed' in result.stdout,bool(ready_after))
 
     def test_restarting_control_api_polls_every_five_seconds_then_fails(self):
         source=Path(__file__).resolve().parents[1]
@@ -106,8 +106,8 @@ class SetupScriptTests(unittest.TestCase):
             self.assertIn('control_port=29213',recorded)
             self.assertIn('19514/healthz',recorded)
             self.assertNotIn('synthetic-private',result.stdout+result.stderr)
-            self.assertIn('初始化令牌在 NAS',result.stdout)
-            self.assertIn('不在云端 state-cloud',result.stdout)
+            self.assertIn('bootstrap token is in web-bootstrap-token under the NAS',result.stdout)
+            self.assertIn('not cloud state-cloud',result.stdout)
             self.assertEqual((root/'state/control-token').stat().st_mode&0o777,0o600)
             self.assertNotIn('MEDIA_WEB_PUBLIC_URL',(root/'.env').read_text())
             (root/'calls').write_text('')
@@ -177,7 +177,7 @@ class SetupScriptTests(unittest.TestCase):
                 env={**os.environ,'PATH':str(binary)+':'+os.environ['PATH']}
                 result=subprocess.run(['sh',str(root/'setup.sh')],env=env,capture_output=True,text=True)
                 self.assertEqual(result.returncode,0 if healthy else 1,result.stderr)
-                self.assertEqual('MCP 已启动' in result.stdout,healthy)
+                self.assertEqual('MCP started' in result.stdout,healthy)
                 values=(root/'.env').read_text()
                 self.assertIn('# preserved private configuration',values)
                 self.assertNotIn('GENERATE',values)

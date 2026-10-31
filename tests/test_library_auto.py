@@ -23,7 +23,7 @@ class AutoAI:
             number=int(re.search(r'(\d+)(?!.*\d)',hint['title'])[1]) if season is None and re.search(r'\d+',hint['title']) else 42
             ident='tv:123' if season is not None else 'movie:'+str(1000+number)
             identity=fixtures.Provider().detail(ident)
-            identity['title']='剧集' if season is not None else '影片 '+str(number)
+            identity['title']='\u5267\u96c6' if season is not None else '\u5f71\u7247 '+str(number)
             url='https://www.themoviedb.org/'+ident.replace(':','/')+(f'/season/{season}' if season is not None else '')
             opened.append(url)
             decisions.append({'key':file['key'],'category':'main','identity':identity,'season':season,'episode':episode,
@@ -36,7 +36,7 @@ class AutoSubtitles:
     def _run_path_summary_locked(self,path,send_notify=False):
         self.calls+=1
         db=_client(None);row=db.execute('SELECT * FROM media_link WHERE source_path=:path OR target_path=:path',{'path':path}).mappings().one()
-        sub=Path(row['target_path']).with_suffix('.zh.srt');sub.write_text('1\n00:00:00,000 --> 00:00:01,000\n测试字幕\n')
+        sub=Path(row['target_path']).with_suffix('.zh.srt');sub.write_text('1\n00:00:00,000 --> 00:00:01,000\n\u6d4b\u8bd5\u5b57\u5e55\n')
         upsert_media_subtitle(None,str(sub),str(sub),matched_video_source_path=row['source_path'],matched_video_target_path=row['target_path'],language='zh',format='srt',status='verified')
         return {'media_count':1,'handled':1,'failed':0,'missing':0,'review':0}
 
@@ -228,7 +228,7 @@ class AutoTests(unittest.TestCase):
         self.fixture(1);sources=self.add_movies(1)
         job=self.service.library_auto('target-conflict-001')
         from media_mcp.ingest.domain.path_builder import build_hardlink_path
-        target=Path(build_hardlink_path({'kind':'movie','title':{'zh':'影片 1','original':'Test Collection'},'year':2024},'.mkv',os.environ['MEDIA_LIBRARY_ROOT']))
+        target=Path(build_hardlink_path({'kind':'movie','title':{'zh':'\u5f71\u7247 1','original':'Test Collection'},'year':2024},'.mkv',os.environ['MEDIA_LIBRARY_ROOT']))
         target.parent.mkdir(exist_ok=True);target.write_bytes(b'independent-target')
         inode=target.stat().st_ino
         result=self.run_auto(job)

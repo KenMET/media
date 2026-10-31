@@ -64,11 +64,11 @@ class AnalysisTests(unittest.TestCase):
     def test_reidentification_refreshes_card_metadata_without_erasing_overview(self):
         ident=self.identify(self.fixture(1))
         self.paths[0][0].write_bytes(b'changed-edition')
-        identity={**Provider().detail('tv:123'),'title':'新的作品名称'}
+        identity={**Provider().detail('tv:123'),'title':'\u65b0\u7684\u4f5c\u54c1\u540d\u79f0'}
         _,plan=self.process(self.service.collection_analyze(ident,'refresh-title-001'),FakeAI(identity=identity))
         self.service.collection_analysis_apply(plan['plan_id'],[plan['decisions'][0]['key']])
         detail=self.service.collection(ident)
-        self.assertEqual(detail['title'],'新的作品名称')
+        self.assertEqual(detail['title'],'\u65b0\u7684\u4f5c\u54c1\u540d\u79f0')
         self.assertEqual(detail['overview'],'A test collection')
 
     def test_large_duration_difference_goes_to_ai_and_can_be_extra(self):

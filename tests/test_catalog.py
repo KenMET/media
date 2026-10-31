@@ -98,7 +98,7 @@ class CatalogTests(unittest.TestCase):
             'cover':'https://img1.doubanio.com/view/photo/a.jpg'}]}).encode()]
         result = self.catalog.discover('douban')
         item = result['items'][0]
-        self.assertEqual(item['rating_source'], '豆瓣')
+        self.assertEqual(item['rating_source'], 'Douban')
         self.assertIsNone(item['title_id'])
         self.assertTrue(item['requires_identity_match'])
 

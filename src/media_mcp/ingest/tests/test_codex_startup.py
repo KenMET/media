@@ -12,7 +12,7 @@ class StartupTest(unittest.TestCase):
         with patch('media_mcp.monitor.qbittorrent.CodexMediaClient') as client, patch('media_mcp.monitor.qbittorrent.mcp_direct_call_ns', return_value=True) as notify, patch('media_mcp.monitor.qbittorrent.time.sleep', side_effect=lambda _: setattr(m, 'stop', True)), patch.object(m, '_get_client', return_value=Mock()) as qb:
             client.return_value.check_connection.side_effect = TimeoutError()
             m.run()
-            self.assertIn('失败', notify.call_args.kwargs['title'])
+            self.assertIn('failed', notify.call_args.kwargs['title'])
             qb.return_value.torrents_info.assert_not_called()
             m.queue.put.assert_not_called()
 
@@ -27,4 +27,4 @@ class StartupTest(unittest.TestCase):
             client.return_value.check_connection.side_effect = lambda: events.append('checked')
             m.run()
         self.assertEqual('checked', events[0])
-        self.assertIn('自检通过', events[1])
+        self.assertIn('startup check passed', events[1])

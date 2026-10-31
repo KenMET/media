@@ -102,7 +102,7 @@ def main():
         assert api('/api/discover')['items'][0]['rating_source'] == 'TMDB'
         def command(operation, **arguments):
             return api('/api/command',{'operation':operation,'arguments':arguments})
-        titles = command('search_titles',query='远山来信',kind='movie')['titles']
+        titles = command('search_titles',query='\u8fdc\u5c71\u6765\u4fe1',kind='movie')['titles']
         releases = command('search_releases',title_id=titles[0]['title_id'])['releases']
         assert releases and 'download_url' not in releases[0]
         plan = command('plan',release_id=releases[0]['release_id'])

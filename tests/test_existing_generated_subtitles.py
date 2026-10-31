@@ -12,7 +12,7 @@ from media_mcp.subtitle.services.subtitle_agent import SubtitleAgent
 def ass(chinese=True):
     text='[Script Info]\nTitle: AI translated bilingual subtitle\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
     for index in range(10):
-        words='这是中文对白内容。\\NEnglish dialogue.' if chinese else 'Only English dialogue.'
+        words='\u8fd9\u662f\u4e2d\u6587\u5bf9\u767d\u5185\u5bb9。\\NEnglish dialogue.' if chinese else 'Only English dialogue.'
         text+=f'Dialogue: 0,0:00:{index:02d}.00,0:00:{index:02d}.90,Default,,0,0,0,,{words}\n'
     return text
 

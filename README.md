@@ -1,73 +1,74 @@
 # Media
 
-通过网页或 MCP 搜索媒体、选择资源并提交下载；后台完成文件校验、规范命名、硬链接入库和字幕处理。项目独立运行，不依赖父仓的 `apps` 包。
+Search for media, compare releases and submit downloads through the website or MCP. Background workers verify files, normalize names, create library hardlinks and process subtitles. The project runs independently of the parent repository's `apps` package.
 
-## 服务分工
+## Service responsibilities
 
-| 云端 | NAS / 本地 |
+| Cloud | NAS / local |
 | --- | --- |
-| 网页、MCP、TMDB/SIMKL 榜单与搜索、Jackett、种子获取 | 控制 API、下载器、worker、AI 处理、媒体和任务数据库 |
+| Website, MCP, TMDB/SIMKL discovery and search, Jackett, torrent retrieval | Control API, downloader, workers, AI processing, media and task database |
 
-云端通过已有 FRP 的本机映射端口连接 NAS；NAS 不需要云端地址。反向代理、证书和 FRP 继续由现有服务管理。
+Cloud connects to the NAS through an existing FRP mapping on the cloud host. The NAS needs no cloud address. Existing services continue to manage reverse proxies, certificates and FRP.
 
-## 两端部署
+## Split deployment
 
-需要 Linux、Docker 与 Compose、本地磁盘，以及可用的模型服务和匹配的凭据文件。
+Requirements: Linux, Docker and Compose, local storage, and a compatible model service with matching credential files.
 
-1. **NAS**：复制统一的 [.env.example](.env.example) 为 `.env`，填写 local / NAS 分组，核对控制端口、下载器、媒体目录、模型地址与凭据文件，然后执行 `sh setup.sh local`。
-2. **FRP**：例如将 NAS `192.168.8.1:18213` 转发到云端仅本机可达的 `127.0.0.1:28213`；FRPC 的 `localIP` 与 `MEDIA_LOCAL_CONTROL_BIND` 保持一致，使用 NAS 本机 host 网络。
-3. **云端**：同样复制 [.env.example](.env.example) 为该主机的 `.env`，填写 cloud 分组，核对网站/MCP/映射端口、TMDB key 与已有 Jackett 地址，然后执行 `sh setup.sh cloud`。
-4. **反代**：网站指向本机 `18214`，可选 `/mcp` 指向本机 `18210`。创建网站管理员后使用；云端 MCP 使用可撤销的用户令牌。
+1. **NAS:** copy [.env.example](.env.example) to `.env`, fill the local/NAS groups, check the control port, downloader, media directory, model endpoint and credential file, then run `sh setup.sh local`.
+2. **FRP:** for example, forward NAS `192.168.8.1:18213` to cloud loopback `127.0.0.1:28213`. Match FRPC `localIP` to `MEDIA_LOCAL_CONTROL_BIND`; use host networking on the NAS.
+3. **Cloud:** copy [.env.example](.env.example) to that host's `.env`, fill the cloud groups, check web/MCP/mapping ports, TMDB key and existing Jackett address, then run `sh setup.sh cloud`.
+4. **Reverse proxy:** route the website to local port `18214` and optionally `/mcp` to `18210`. Create a web administrator account. Cloud MCP requires a revocable user token.
 
-已有 `.env` 不要覆盖。内部凭据首次自动配对，不需要手工填写 token 或重复配置域名。默认值和 Docker 反代条件项见[两端部署说明](docs/split-deployment.md)。同机先测试见[本地测试](docs/platform-testing.md)。
+Preserve existing `.env` files. Initial internal credentials pair automatically; manual tokens and duplicate domain configuration are unnecessary. Defaults and Docker proxy conditions are in the [split deployment guide](docs/split-deployment.md). For testing both roles on one host, see [local testing](docs/platform-testing.md).
 
-已有 qBittorrent / Jackett 地址非空就复用；留空才在其所属部署端启动内置服务。云端 Jackett 固定持久化到 `/root/container_cache/jackett/config` 和 `downloads`。
+A nonempty qBittorrent/Jackett URL reuses that service; an empty URL starts its bundled container on the owning host. Cloud Jackett persists configuration and downloads at `/root/container_cache/jackett/config` and `downloads`.
 
-`TMDB_API_KEY` 在 cloud 配置；OpenSubtitles、SubDL、ASSRT 的可选字幕 key 在 NAS 模板中配置，留空跳过对应来源。网页目前不编辑这些部署凭据。
+Configure `TMDB_API_KEY` on cloud. Optional OpenSubtitles, SubDL and ASSRT keys belong on the NAS; empty keys skip those providers. The website does not edit deployment credentials.
 
-## 数据与安全
+## Data and safety
 
-- `MEDIA_LOCAL_DATA_DIR` 下的 `downloads`、`media_hub` 分别保存源文件和媒体硬链接；硬链接目录须与下载目录位于同一文件系统，且下载器与 worker 的容器内路径一致。
-- NAS 的用户、任务和恢复记录默认在 `./state`，云端缓存与搜索快照默认在 `./state-cloud`。容器重建保留绑定目录；换部署目录时不要丢弃原状态。
-- 不自动接管下载器的其他任务。`submission_unknown` 必须按原任务核对，不换 key 重复下单；重试不提供删除能力。
-- 已有视频、硬链接与外挂字幕可在管理员网页通过“媒体库 → 扫描与导入”预览并保存索引，见[已有媒体接管](docs/existing-media.md)。未整理资源和缺失状态也可保存；不会自动修改原文件。
-- 旧 MySQL 历史数据迁移及新旧服务切换须按[正式接管方案](docs/production-cutover-plan.md)迁移，启动命令不会自动导入。不要将隔离测试状态当作生产数据库。
-- 私有 `.env`、凭据和运行目录不提交 Git。个人 LAN 免认证的[传统单机模式](docs/standalone.md)仍支持，不应转发到公网。
+- `downloads` and `media_hub` under `MEDIA_LOCAL_DATA_DIR` contain source files and library hardlinks. Downloads and hardlinks must share a filesystem and identical container paths in the downloader and worker.
+- NAS accounts, tasks and recovery records default to `./state`; cloud cache and search snapshots default to `./state-cloud`. Rebuilds preserve bind mounts. Retain the original state when moving the deployment directory.
+- Never adopt unrelated downloader tasks. Reconcile `submission_unknown` against the original job and key; never resubmit under a new key. Retry parameters do not grant deletion capabilities.
+- Administrators can preview and index existing videos, hardlinks and sidecar subtitles through Library → Scan and import. Unorganized media and missing state can be indexed without changing source files. See [existing media](docs/existing-media.md).
+- Legacy MySQL migration and service cutover follow the [production cutover plan](docs/production-cutover-plan.md); startup does not import them automatically. Disposable acceptance state is not production state.
+- Keep private `.env`, credentials and runtime directories out of Git. [Standalone mode](docs/standalone.md) remains available for trusted personal LAN use; do not expose its unauthenticated endpoint publicly.
 
-服务与配置命名见[两端服务命名](docs/service-names.md)：NAS 使用 `local-control` / `local-worker`，网站使用 `cloud-web`。
+See [service naming](docs/service-names.md): NAS uses `local-control` / `local-worker`; the website uses `cloud-web`.
 
-媒体库按作品显示海报合集，详情中查看季集与版本，一键全库自动识别、保存、补链与检查字幕，高级选项保留手动维护，见[作品媒体库](docs/collection-library.md)。已有媒体的规则判断、时长探测与 AI 兜底检索由 NAS `local-worker` 执行，见[智能识别](docs/library-ai-identification.md)。
+The [collection library](docs/collection-library.md) groups posters by work, with seasons, episodes and versions in each detail page. Automatic organization identifies, saves, repairs links and checks subtitles; advanced controls retain manual maintenance. Rule checks, duration probes and AI fallback run on NAS `local-worker`; see [identification](docs/library-ai-identification.md).
 
-热门、搜索、下载、整理与自动字幕的默认流程、任务进度及断线恢复见[任务与使用体验](docs/task-experience.md)。模型会话与额度等待、自动归档规则见[恢复说明](docs/session-recovery.md)。
+Discovery, search, acquisition, automatic subtitles, progress and reconnect behavior are described in [task experience](docs/task-experience.md). Model session recovery, quota waiting and archival are covered by [session recovery](docs/session-recovery.md).
 
-## 日常命令
+## Routine commands
 
 ```sh
 sh setup.sh local status
 sh setup.sh local logs
 sh setup.sh local stop
-
 sh setup.sh cloud status
 sh setup.sh cloud logs
 sh setup.sh cloud stop
 ```
 
-更新代码后再次执行对应的 `sh setup.sh local` 或 `sh setup.sh cloud`；仅重启容器不会加载新代码。部署入口只有 `setup.sh`。
+After code updates, rerun the appropriate `sh setup.sh local` or `sh setup.sh cloud`. Restarting an old container does not load new code. `setup.sh` is the sole supported deployment entrypoint.
 
-两端构建文件统一命名：本地使用 `compose.local.yml`、`Dockerfile.local`，云端使用 `compose.cloud.yml`、`Dockerfile.cloud`。不带分组的传统单机入口仍使用 local 文件。
+Local build files are `compose.local.yml` and `Dockerfile.local`; cloud uses `compose.cloud.yml` and `Dockerfile.cloud`. The unqualified legacy standalone entrypoint uses the local files.
 
-## 目录与文档
+## Layout and documentation
 
 ```text
-src/media_mcp/     运行源码和网页资源
-tests/            自动化回归
-tests/manual/     隔离环境的手工验收工具
-docs/             当前部署、使用、迁移与安全说明
-docs/history/     历史报告和提取记录
-skills/           MCP 使用流程
+src/media_mcp/     Runtime source and web assets
+tests/            Automated regression tests
+tests/manual/     Disposable manual acceptance tools
+docs/             Current deployment, usage, migration and safety guidance
+docs/history/     Historical reports and extracted records
+skills/           MCP workflows
 ```
 
-- [部署与运维](docs/deployment.md) · [Jackett 站点配置](docs/jackett.md)
-- [测试说明](tests/README.md) · [历史验收索引](docs/acceptance.md)
-- [安全边界](docs/security-review.md) · [迁移边界](docs/migration.md)
-- [AI 使用流程](skills/media-acquire/SKILL.md)
+Project-authored documentation, code comments and non-web messages use English. The website supports English and Chinese. Media titles, subtitle content and multilingual parsing data retain their original language; see the [language policy](docs/language-policy.md).
+
+- [Deployment and operations](docs/deployment.md) · [Jackett configuration](docs/jackett.md)
+- [Tests](tests/README.md) · [Historical acceptance index](docs/acceptance.md)
+- [Safety boundaries](docs/security-review.md) · [Migration boundaries](docs/migration.md)
+- [AI workflow](skills/media-acquire/SKILL.md)

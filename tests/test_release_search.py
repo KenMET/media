@@ -8,7 +8,7 @@ from media_mcp.adapters.jackett import Jackett
 from media_mcp.application.acquire import MediaService, rejection_reason
 from test_acquire import MemoryRecords
 
-IDENTITY = {'title_id': 'movie:157336', 'kind': 'movie', 'title': '星际穿越',
+IDENTITY = {'title_id': 'movie:157336', 'kind': 'movie', 'title': '\u661f\u9645\u7a7f\u8d8a',
             'original_title': 'Interstellar', 'date': '2014-11-04'}
 
 
@@ -19,7 +19,7 @@ def release(name, **extra):
 
 class ReleaseSearchTests(unittest.TestCase):
     def test_public_episode_search_falls_back_to_title_without_changing_scope(self):
-        identity = {'title_id':'tv:1','tmdb_id':1,'kind':'tv','title':'测试剧集',
+        identity = {'title_id':'tv:1','tmdb_id':1,'kind':'tv','title':'\u6d4b\u8bd5\u5267\u96c6',
                     'original_title':'テスト','english_title':'Example Show'}
         tmdb = Mock(); tmdb.detail.return_value = identity
         tmdb.get.return_value = {'episodes':[{'episode_number':1,'name':'Pilot'}]}
@@ -33,7 +33,7 @@ class ReleaseSearchTests(unittest.TestCase):
         self.assertEqual(result['scope']['season'],1)
         self.assertEqual(len(result['releases']),1)
         self.assertEqual([call.args[0] for call in indexer.search.call_args_list],
-                         ['テスト S01E01','测试剧集 S01E01','Example Show S01E01','テスト','测试剧集','Example Show'])
+                         ['テスト S01E01','\u6d4b\u8bd5\u5267\u96c6 S01E01','Example Show S01E01','テスト','\u6d4b\u8bd5\u5267\u96c6','Example Show'])
 
     def test_search_budget_stops_additional_site_requests(self):
         tmdb = Mock(); tmdb.detail.return_value = IDENTITY
@@ -47,17 +47,17 @@ class ReleaseSearchTests(unittest.TestCase):
     def test_tmdb_english_alias_uses_same_identity_and_translation_failure_is_optional(self):
         from media_mcp.adapters.tmdb import TMDB
         adapter = TMDB(remote=False)
-        base = {'id':1,'name':'测试剧集','original_name':'テスト','original_language':'ja'}
+        base = {'id':1,'name':'\u6d4b\u8bd5\u5267\u96c6','original_name':'テスト','original_language':'ja'}
         adapter.get = Mock(side_effect=[base,{'id':1,'name':'Example Show'}])
         self.assertEqual(adapter.detail('tv:1')['english_title'],'Example Show')
         self.assertEqual(adapter.get.call_args.kwargs,{'language':'en-US'})
         adapter.get = Mock(side_effect=[base,RuntimeError('tmdb_unavailable')])
         result = adapter.detail('tv:1')
-        self.assertEqual(result['title'],'测试剧集')
+        self.assertEqual(result['title'],'\u6d4b\u8bd5\u5267\u96c6')
         self.assertNotIn('english_title',result)
 
     def test_claim_filter(self):
-        for name in ('Interstellar.2014.1080p', '星际穿越（2014）1080p', 'INTERSTELLAR_2014_1080p'):
+        for name in ('Interstellar.2014.1080p', '\u661f\u9645\u7a7f\u8d8a（2014）1080p', 'INTERSTELLAR_2014_1080p'):
             self.assertIsNone(rejection_reason(release(name), IDENTITY))
         for candidate, reason in (
             (release('Frankenstein.2025.1080p'), 'title_mismatch'),
@@ -85,7 +85,7 @@ class ReleaseSearchTests(unittest.TestCase):
                            {'site':'slow', 'status':'jackett_timeout', 'raw_count':0}]}
         records=MemoryRecords()
         result=MediaService(records,tmdb,indexer).search_releases('movie:157336')
-        self.assertEqual([c.args[0] for c in indexer.search.call_args_list], ['Interstellar', '星际穿越'])
+        self.assertEqual([c.args[0] for c in indexer.search.call_args_list], ['Interstellar', '\u661f\u9645\u7a7f\u8d8a'])
         self.assertEqual(len(result['releases']),1)
         self.assertEqual(len(records.rows),1)
         self.assertEqual(result['search_status'],'partial')

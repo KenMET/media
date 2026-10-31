@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 tv_batch_processor.py
-电视剧批量识别与季级缓存。
+Batch TV identification and season cache.
 """
 
 from __future__ import annotations

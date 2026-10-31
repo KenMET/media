@@ -24,13 +24,13 @@ class SubtitleNotifySummaryTest(unittest.TestCase):
 
         self.assertEqual(
             [
-                '内嵌选择1',
-                '在线下载校准2',
-                '内嵌 EN 翻译1',
-                '内嵌 JP 翻译1',
-                '外挂 EN 翻译1',
-                '下载 JP 翻译1',
-                '翻译错误1',
+                'Embedded selected: 1',
+                'Online downloaded and synced: 2',
+                'Embedded EN translation: 1',
+                'Embedded JP translation: 1',
+                'Sidecar EN translation: 1',
+                'Downloaded JP translation: 1',
+                'Translation error: 1',
             ],
             subtitle_notify_parts(counts),
         )

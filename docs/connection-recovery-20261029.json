@@ -108,7 +108,7 @@
     "existing_caption_files_unchanged": 11,
     "e01_video_sha256": "6c65c5e3da308613322dac97ddeed1a45e21c45d8f7366e77f41774edd03baa1",
     "new_e10_caption_paths": [
-      "/data/media_hub/series/不要欺负我，长瀞同学(イジらないで、長瀞さん)/第02季/不要欺负我，长瀞同学(イジらないで、長瀞さん) - S02E10 - 承蒙八王子学长多多关照 - 2021.ass"
+      "/data/media_hub/series/\u4e0d\u8981\u6b3a\u8d1f\u6211\uff0c\u957f\u701e\u540c\u5b66(\u30a4\u30b8\u3089\u306a\u3044\u3067\u3001\u9577\u701e\u3055\u3093)/\u7b2c02\u5b63/\u4e0d\u8981\u6b3a\u8d1f\u6211\uff0c\u957f\u701e\u540c\u5b66(\u30a4\u30b8\u3089\u306a\u3044\u3067\u3001\u9577\u701e\u3055\u3093) - S02E10 - \u627f\u8499\u516b\u738b\u5b50\u5b66\u957f\u591a\u591a\u5173\u7167 - 2021.ass"
     ]
   },
   "recovery_tasks": [
@@ -127,7 +127,7 @@
     },
     "progress": {
       "phase": "waiting_quota",
-      "label": "小丑回魂：欢迎来到德里镇(IT： Welcome to Derry)",
+      "label": "\u5c0f\u4e11\u56de\u9b42\uff1a\u6b22\u8fce\u6765\u5230\u5fb7\u91cc\u9547(IT\uff1a Welcome to Derry)",
       "done": 121,
       "total": 746
     }
@@ -166,7 +166,7 @@
     "updated_at": "2026-10-29 14:17:01",
     "progress": {
       "phase": "paused",
-      "label": "小丑回魂：欢迎来到德里镇(IT： Welcome to Derry)",
+      "label": "\u5c0f\u4e11\u56de\u9b42\uff1a\u6b22\u8fce\u6765\u5230\u5fb7\u91cc\u9547(IT\uff1a Welcome to Derry)",
       "done": 121,
       "total": 746
     },

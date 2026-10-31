@@ -1,106 +1,85 @@
-# 作品媒体库与维护
+# Collection library and maintenance
 
-媒体库首页按作品显示海报卡片。剧集进入作品详情后按季、集与版本展开；电影展示已有版本。下载源和整理路径、字幕记录在文件详情中查看。媒体库使用左侧小海报、右侧简要信息的列表；手机海报宽 64px，控件与间距约缩小 10%，作品详情支持刷新、浏览器返回/前进和链接恢复。
+The library groups poster cards by work; TV details expand seasons, episodes and versions, while movies show versions. File details expose source/target paths and subtitle records. Compact rows place a small poster left and summary right; mobile posters are 64px with roughly 10% smaller spacing/controls. Detail routes support refresh, browser navigation and link restoration.
 
-## 分组与状态
+## Grouping and status
 
-已确认身份的文件按 `movie:ID` / `tv:ID` 聚合；尚未识别的规范剧集库按 `series/<作品目录>` 形成待确认合集。源目录中的季集文件仅使用保守的目录与名称线索，避免把根目录里的不同作品合并。年份优先使用规范文件名末尾的年份，不把标题中的年份数字截成上映年份。
+Confirmed files group by `movie:ID` / `tv:ID`; unidentified canonical TV paths group under their `series/<work>` directory. Download folders use conservative directory/name clues to avoid merging unrelated root files. Prefer the trailing canonical filename year rather than numeric title text.
 
-作品聚合与权限过滤在后端完成，再进行分页，因此超过一页的剧集不会按文件页拆散。普通用户只看到自己有权访问的文件数量和状态；不会从合集总数、季集或路径中获知其他用户的媒体。管理员或具有媒体管理功能的用户可维护全库。
+The backend groups and filters permissions before pagination, keeping multi-page TV works together. Ordinary users see only authorized files/counts/state; aggregates never leak another user's media/paths. Administrators/media managers can maintain the whole library.
 
-同一作品的多个清晰度或版本保留为不同文件，在同一集下展示。部分季集确认身份时，目录内其他待确认文件仍保留在同一合集；只有一个已确认身份时才进行这种归并，冲突身份不自动合并。
+Versions/resolutions remain separate files beneath an episode. Partially confirmed files can share a collection when a unique work identity exists; conflicting identities never merge automatically.
 
-首页显示作品名、年份、映射数量和字幕汇总；未知身份使用占位海报，确认后显示已有作品资料中的海报。列表主体读取本地库；缺海报的已确认作品按已有 TMDB 编号异步补取缓存详情，不做 AI 重识别或名称搜索。文件名里的 SxxExx 是线索，不等于真实季集。
+Summary cards show title/year/mapping/subtitle totals. Unknown identities use placeholders. Confirmed titles missing posters asynchronously fetch cached details by existing TMDB ID without AI or name search. SxxExx filenames remain clues, not verified episode identity.
 
-字幕状态分为有处理记录、已发现但未校验、缺失或需复核。发现外挂文件不代表内容、语言或同步已经合格。首页的映射数量来自已保存记录；详情和映射预览会检查当前文件身份。
+Subtitle states distinguish processing records, discovered/unverified, missing and review. Discovery alone proves neither language/content nor synchronization. Summary mapping totals come from saved records; detail/mapping previews recheck current file identity.
 
-## 附加内容与过滤
+## Extras and filtering
 
-扫描导入为所有视频保留索引，不通过 AI 判定文件应被丢弃。现在对明确的 `Extras`、`Featurettes`、`Deleted Scenes`、`Bonus Features`、特典、花絮等目录，以及 NCOP/NCED、预告、S00 等文件标记归类；不因标题陌生、文件短或体积小就隐藏它。已有明确作品身份的电影不会仅因标题叫 Trailer/Sample 被过滤。
+All videos remain indexed. Explicit Extras/Featurettes/Deleted Scenes/Bonus Features directories and equivalent multilingual labels, NCOP/NCED, trailers and S00 markers classify extras. Unfamiliar titles, short duration or small size alone do not hide files. Confirmed feature movies named Trailer/Sample are not excluded solely by title.
 
-附加目录在存在唯一父作品时归入该作品；无法确定父作品时按附加目录所属文件夹聚合。默认列表只显示包含正片的作品，纯附加合集在“附加内容”筛选中查看；该筛选也能找到带附加文件的作品。首页映射、字幕进度统计正片，附加数量另列，不把未补链的花絮显示成正片映射缺失。
+Extras attach to a unique parent work; otherwise retain folder-based groups. Default lists include feature-containing works; the extras filter includes both extras-only and mixed collections. Feature mapping/subtitle metrics exclude extras and show extra counts separately.
 
-管理者可展开详情“高级选项”后勾选文件，选择“标为附加内容”或“标为正片”，确认后仅修改 SQLite 分类索引；可刷新后恢复分类。手动分类绑定文件指纹，同一路径被替换为新文件时不会沿用旧分类隐藏新文件。分类变更遵守操作锁与重叠任务限制，并使旧识别/映射快照失效，不移动或删除任何文件。附加内容跳过常规补链/字幕维护；智能识别会重新判断附加文件，确认为正片的文件可以恢复分类后再按正常流程处理。
+Managers can classify selected files through advanced options, modifying only SQLite indexes after confirmation. Classification binds to fingerprints, so replacement files cannot inherit stale hiding. Changes respect locks/overlapping work and invalidate old identity/mapping snapshots without moving/deleting files. Extras skip ordinary linking/subtitle maintenance; researched features can be restored to normal classification.
 
-## 规则优先与 AI 兜底识别
+## Automatic organization
 
-首页“全库自动整理”覆盖全部待处理资源；作品行“整理”和详情主按钮自动处理单部作品。正常路径无需勾选、预览确认或分别提交映射与字幕任务。NAS local-worker 按规则与时长检查，必要时将完整路径和目录上下文交给 AI 检索，然后自动保存可靠结果、安全补链并检查字幕；不确定或冲突项单独留在未处理结果中，不阻塞其他作品。手动工具收进“高级选项”。具体范围、阈值与证据边界见[智能识别](library-ai-identification.md)。
+Whole-library automatic organization covers all pending media; row/detail actions handle one work. Normal processing needs no file selection, preview confirmation or separate mapping/subtitle request. NAS checks rules/duration, researches full paths/context as needed, saves reliable identity, repairs safe missing links and checks subtitles. Uncertain/conflicting items remain unresolved without blocking other works. Advanced tools handle exceptions. See [identification](library-ai-identification.md) for thresholds and evidence.
 
-## 手动选择作品
+## Manual identification
 
-以下为高级选项中的独立手动流程，日常自动整理无需这些步骤。
+1. Select a work, season or files; no selection explicitly means the entire work.
+2. Search/select a title. Manual metadata/seasons come from cloud; NAS does not call TMDB. Intelligent research uses the local worker's existing AI connection.
+3. Check season/episode assignments and optional common season. Missing episodes cannot be confirmed from filenames alone.
+4. Preview and explicitly confirm. This updates identity/metadata/fingerprint baselines, not videos, existing links or subtitles.
 
-1. 在作品详情选择整部、某季或具体文件；无勾选时范围明确为整部。
-2. 搜索并选择作品。此手动流程的搜索、作品资料和季集资料在 cloud 获取，NAS 不请求 TMDB API。智能识别则由 local-worker 通过现有 AI 连接检索公开资料。
-3. 检查每个文件的季与集，必要时设置统一季号。未出现在所选作品中的季集不能确认。
-4. 生成预览，再明确确认。这里只更新作品元数据、季集与文件身份基线，不移动视频、改变现有硬链接或处理字幕。
+Previews bind files/paths/records/identity for 15 minutes. Changed files/permissions or overlapping maintenance require a new preview. Repeating the same identity is safe; different candidates cannot silently replace confirmation.
 
-预览绑定当时的文件指纹、路径、记录及身份信息，有效期 15 分钟。文件变化、权限变化或重叠维护任务存在时要求重新预览。再次识别相同作品可重复执行；不同候选不会悄悄覆盖已有确认。
+`media_library_identity` holds confirmed file identity; `library_title` stores poster/overview/season evidence. Real mappings remain in `media_link`; no download jobs are invented. Unmapped files can be identified before linking.
 
-`media_library_identity` 保存文件的已确认身份，`library_title` 记录保存作品海报、简介和季集证据。实际文件映射仍使用 `media_link`，不伪造下载任务。尚无映射的文件也可先确认身份，后续补链时使用相同元数据。
+## Mapping repair
 
-## 映射检查与安全补链
+Advanced mapping checks create a separate queued preview; automatic organization executes equivalent verified actions directly.
 
-高级“检查映射”生成独立预览，确认后入队；自动整理会直接执行满足相同检查的操作：
+- Correct only mapping state when actual hardlinks remain identical; never restore a demoted preferred version automatically.
+- Retain valid mappings without forced rename or preferred-version replacement.
+- Recreate a missing saved target only after source/record identity and free destination checks.
+- Build canonical targets for identified unorganized files; refuse occupied targets.
+- Reidentify changed sources before linking new bytes.
+- Keep library-only resources indexed without inventing source paths.
 
-- 文件仍是同一硬链接、仅数据库状态失败时，可只修正映射记录；已取消首选的版本不自动恢复。
-- 原有有效映射保留；本轮不强制重命名现有整理文件或替换首选版本。
-- 对已有记录中缺失的整理链接，确认源文件、记录身份和目标未被占用后，按原目标补建。
-- 对已确认身份的未整理源文件，根据现行规范生成目标；目标冲突时拒绝覆盖。
-- 源文件变化后需要重新识别，不能沿用旧身份去链接新字节。
-- 没有下载源关系、仅剩整理文件的独立资源保留索引与身份，不虚构来源或自动重建源路径。
+Use existing mutation locks/version recovery logs and create missing links only. Preserve source bytes, existing targets and subtitles. Recover committed links/results after crashes; journal uncommitted changes. Retry never grants deletion.
 
-补链复用现有媒体操作锁与版本变更恢复日志，只创建缺失链接。源文件、既有目标和字幕不会因补链被改写或删除。任务崩溃后可恢复已经提交的链接及结果，未提交的变更由日志恢复；不会用重试参数增加删除能力。
+## Subtitles and task ownership
 
-## 字幕处理
+Support missing/failed/unverified processing or revalidation of selected files. Only confirmed, trusted mappings enter the queue; unknown/conflicting/insufficient relations are skipped with reasons. A trustworthy target may support processing despite a missing source.
 
-支持仅处理缺失/失败/未校验项，或重新核验所选文件。已经确认身份并有可信映射的文件才入队；未识别、冲突或来源关系不足的文件会跳过并提示。源路径缺失但既有映射目标仍可信时，可通过原映射处理整理文件。
+Reuse extraction/matching/verification/provider processing, preserving valid results. Default skip requires the recorded file still to exist. Stale records do not prevent checks. Zero matched media never reports success. Content/verification evidence, not language labels alone, establishes readiness.
 
-复用现有字幕处理器的提取、匹配、校验与补充流程，保留已有有效结果。已有处理记录对应的字幕文件确实仍存在时，默认模式才跳过它；过时的“已处理”记录不会阻止重新检查。处理器必须实际匹配到一个目标媒体并返回处理结果；零匹配不报告成功。内容处理结果以记录和校验结果为准，不能只凭语言标签宣布字幕合格。
+Maintenance lives in `library_task`, separate from acquisition history and qBittorrent ownership. The `library` worker supervised by `local-worker` uses SQLite leases, 20-second renewal and mutation locks. Recheck current permission/lease before writes; external subtitle calls release/reacquire locks with identity checks.
 
-## 任务与权限
+Same-key retries return the original task; overlapping maintenance is rejected. Account queue/submission budgets apply. Progress/results persist in details. Advanced scope allows 500 files; whole-library auto internally groups up to 20,000. Episode evidence must come from the selected title's real metadata.
 
-维护任务单独保存在 `library_task`，不混入下载历史、不冒领 qBittorrent 任务。独立 `library` worker 阶段由 `local-worker` 监督，沿用 SQLite 租约、20 秒续租和文件操作锁。每次写入前检查当前租约与权限，外部耗时调用仍由原字幕链路释放锁并在回来时复核。
+## Deletion
 
-相同请求键重复提交返回原任务；重叠文件的不同维护任务会被拦截，避免重复处理。维护任务计入账户队列和提交预算。进度与待复核结果在作品详情显示，刷新后仍存在；失败时重新检查原因并选择相应文件再次提交。
+Advanced explicit deletion previews list selected source files, library hardlinks, recorded/indexed subtitles, attributable companions and cleanable directories. Indexed independent files can be deleted by verified physical identity without prior AI identification.
 
-高级手动维护每次最多选择 500 个文件；全库自动任务按作品内部拆组，一次最多 20000 个文件。识别预览的来源是所选 TMDB 候选与当前季集资料；不能用文件名猜测不存在的集数。
+Preview is read-only. Execution rechecks permissions/identity/fingerprints/download ownership and stops associated queue work. Cancellation revokes leases, while actual deletion waits for worker mutation checkpoints. qBittorrent removes only precisely owned tasks and always retains downloader files. Files use non-overwriting temporary quarantine hardlinks in their original directory; original entries are removed, records cleaned, then quarantine released. Interrupted execution resumes with the same plan without deleting later replacements.
 
-## 升级与验收
+Include entire media directories only when no unrelated indexed media or unknown videos exist. Shared directories retain other files. Newly appearing files are retained and reported. Clean selected mappings/subtitles/inventory/identity/classification and unreferenced display records, while preserving deletion audit and unknown-request evidence. Public cloud TMDB cache is independent of personal media deletion.
 
-此功能涉及两端：NAS 的聚合 API、身份确认与维护 worker，以及 cloud 的海报页面和识别 Provider 转发。分别在各自项目目录使用 `sh setup.sh local` / `sh setup.sh cloud` 更新；两端都更新后才是完整的新页面与识别流程。
+Whole-library auto processes pending only and rejects global `all`; reidentify within a single work. Completed files and poster-only gaps do not trigger AI.
 
-新增 `library.js` 静态模块。原 `media`、下载、扫描导入和 MCP 接口保留兼容。私有 `.env`、媒体目录和状态库不提交 Git。
+## Deployment and disposable acceptance
 
-自动测试使用一次性目录和 SQLite。完整浏览器验收：
+The feature spans NAS APIs/workers and cloud assets/provider forwarding. Update each through `sh setup.sh local` / `sh setup.sh cloud`. `library.js` is packaged with existing interfaces; keep private configuration/state/media out of Git.
 
 ```sh
 MEDIA_PREVIEW_COLLECTIONS=true MEDIA_PREVIEW_MANIFEST=/tmp/media-collections-preview.json \
   PYTHONPATH=src nice -n 15 python3 tests/manual/preview_platform.py
-
-# 另一个终端：
+# In another terminal:
 PLAYWRIGHT_MODULE=/path/to/playwright-core CHROME_EXECUTABLE=/path/to/chrome \
   nice -n 15 node tests/manual/acceptance_collections_browser.cjs
 ```
 
-预览创建虚构媒体、作品 Provider 和字幕处理器。真实队列、指纹、SQLite 与硬链接操作在一次性目录中运行；浏览器脚本在删除测试整理链接前检查目录标记与虚构文件内容，不能用于真实服务。测试覆盖合集分组、海报、按季确认、崩溃恢复、补链、字幕任务、刷新持久化、中英文、手机与桌面布局。默认截图和结果在 `/tmp/media-collections-acceptance/`。
-
-
-## 删除媒体与文件
-
-作品详情的高级选项提供“删除媒体与文件”，支持勾选文件缩小范围。预览列出源文件、
-媒体库硬链接、登记或索引的字幕、可确认归属的附属文件和可清理目录。库存中已索引
-但未形成映射的单份文件也能按真实文件身份删除，不需要先用 AI 识别。
-
-确认前不改文件。执行重新核对账号权限、对象身份、文件指纹及下载归属；先停止
-关联队列；取消整理任务会撤销租约，删除媒体文件仍须等待运行中的 worker 到达检查点。qBittorrent 只删除精确归属的任务，始终不让
-下载器删除文件。实际文件在原目录建立不覆盖的短暂隔离硬链接，再移除原目录项；
-完成记录清理后才释放隔离项。中断可用同一计划恢复，不能删除后来替换的文件。
-
-完整媒体目录仅在不含其他已索引媒体或未知视频时纳入预览。共享目录只删除选中
-文件，保留其他媒体和目录；执行后新出现的文件也保留，并报告未清理的目录。
-清理映射、选中字幕、库存与身份/分类索引及不再被引用的作品展示记录，保留删除
-审计和未知请求证据。云端公共 TMDB 缓存不是个人媒体记录，不因删一份媒体而删除。
-
-全库自动整理只处理 pending，已完成项目和仅缺海报的作品不会重新识别；全库 all
-范围被后端拒绝。重新识别在单部作品详情操作，可通过文件勾选进一步缩小范围。
+Fictional providers/subtitles and disposable files exercise real queues, fingerprints, SQLite and hardlinks. Destructive acceptance checks the disposable marker and fixture bytes first. It covers grouping/posters/season identity/recovery/linking/subtitle persistence/bilingual/mobile/desktop. Artifacts default to `/tmp/media-collections-acceptance/`. Never run it against production.

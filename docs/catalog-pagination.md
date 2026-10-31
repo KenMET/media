@@ -1,22 +1,15 @@
-# 发现页榜单分页
+# Discovery pagination
 
-TMDB 今日趋势、本周趋势和历史高分支持上一页、下一页及当前页码显示。
-分页使用来源返回的总页数，最多访问 500 页。切换来源、电影／剧集或榜单时回到第一页。
-SIMKL 使用其前 100 名榜单，校验有效条目后按每页 20 条展示；无法继续访问榜单之外的内容。
+TMDB day/week trends and all-time top rated provide previous/next controls and page numbers, using provider totals up to 500 pages. Changing source, movie/TV or window resets to page one. SIMKL exposes its top 100 list, validates entries and presents 20 per page; it cannot extend beyond that source list.
 
-`GET /api/discover` 接收 `page`（1–500，默认 1），返回 `page`、`total_pages`、
-`has_next` 及当前页的 `items`。TMDB 各页独立缓存；SIMKL 各页复用同一份来源缓存。
-数据源失败时只回退到相应榜单／页的缓存，并保留已有的过期提示。
-旧版预览缓存保留在数据库，新版使用独立缓存键以避免混用响应格式。
+`GET /api/discover` accepts `page` (1–500, default 1) and returns `page`, `total_pages`, `has_next` and current `items`. TMDB pages cache independently; SIMKL pages share one source snapshot. Source failures retain the corresponding stale page/list and warning. Legacy preview cache remains in SQLite; new keys avoid format mixing.
 
-隔离的浏览器验收（需要 Playwright 和 Chromium）：
+Disposable browser acceptance requires Playwright/Chromium:
 
 ```sh
 node tests/manual/acceptance_catalog_pagination.cjs
 ```
 
-此验收模拟所有 API 请求，不连接真实媒体。可通过 `PLAYWRIGHT_MODULE` 指定已有 Playwright 模块。
+All APIs are mocked and no real media is mounted. `PLAYWRIGHT_MODULE` can point to an existing module.
 
-部署仍使用现有入口：云端网站运行 `sh setup.sh cloud up`；分离部署的 NAS 控制端运行
-`sh setup.sh local control`。单机部署使用 `sh setup.sh up`，会涉及 worker，需等待安全检查点。
-代码推送不会自动更新其他主机的容器。
+Deploy cloud with `sh setup.sh cloud up` and split NAS control with `sh setup.sh local control`. Standalone `sh setup.sh up` also affects workers and requires a safe checkpoint. Pushing source does not update another host's images.

@@ -35,7 +35,7 @@ def cloud_task(records, tmdb, indexer):
             assert response.status_code==200,response.text
             return response.json()['data']
         tmdb.search.return_value=[tmdb.detail.return_value]
-        for query in ('验收电影','Fixture'):
+        for query in ('\u9a8c\u6536\u7535\u5f71','Fixture'):
             assert call('search_titles',{'query':query,'kind':'movie'})['titles']
         found=call('search_releases',{'title_id':'movie:991234','resolution':1080})
         plan=call('plan',{'release_id':found['releases'][0]['release_id']})
@@ -73,9 +73,9 @@ def main():
         '-t','2','-c:v','libx264','-threads','1','-y',str(video)],check=True)
     source_hash=hashlib.sha256(video.read_bytes()).hexdigest()
     subtitle=video.with_suffix('.zh-CN.srt')
-    subtitle.write_text('1\n00:00:00,100 --> 00:00:01,900\n你好，这是隔离字幕验收。\n',encoding='utf-8')
+    subtitle.write_text('1\n00:00:00,100 --> 00:00:01,900\n\u4f60\u597d，\u8fd9\u662f\u9694\u79bb\u5b57\u5e55\u9a8c\u6536。\n',encoding='utf-8')
     tmdb=Mock();tmdb.detail.return_value={'title_id':'movie:991234','kind':'movie','tmdb_id':991234,
-        'title':'验收电影','original_title':'Fixture','date':'2020-01-01','original_language':'en'}
+        'title':'\u9a8c\u6536\u7535\u5f71','original_title':'Fixture','date':'2020-01-01','original_language':'en'}
     indexer=Mock();indexer.search.return_value={'releases':[{'name':'Fixture.2020.1080p','resolution':1080,
         'size':video.stat().st_size,'seeders':1,'indexer':'isolated-fixture',
         'download_url':'magnet:?xt=urn:btih:'+'a'*40}], 'diagnostics':[{'site':'isolated-fixture','status':'ok','raw_count':1}]};indexer.torrent.return_value=None
@@ -130,7 +130,7 @@ def main():
     try:
         model=Mock()
         model.classify.return_value={'success':True,'kind':'movie','source_path':str(video),'tmdb_id':991234,
-            'title':{'zh':'验收电影','original':'Fixture','base':'验收电影(Fixture)'},
+            'title':{'zh':'\u9a8c\u6536\u7535\u5f71','original':'Fixture','base':'\u9a8c\u6536\u7535\u5f71(Fixture)'},
             'year':2020,'original_language':'en','confidence':0.99}
         counts=full_scan_triage(CodexMediaTriageAgent(model),str(video),test_mode=True,run_subtitles=False)
         assert sum(counts[:3])>0 and counts[3]==0,counts

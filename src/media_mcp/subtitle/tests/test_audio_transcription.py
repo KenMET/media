@@ -16,13 +16,13 @@ class AudioTranscriptionTest(unittest.TestCase):
         content = render_srt(
             [
                 SubtitleEvent(1, 1.234, 3.456, ' Hello   world '),
-                SubtitleEvent(2, 4.0, 5.0, '第二句'),
+                SubtitleEvent(2, 4.0, 5.0, '\u7b2c\u4e8c\u53e5'),
             ]
         )
 
         self.assertIn('00:00:01,234 --> 00:00:03,456', content)
         self.assertIn('Hello world', content)
-        self.assertIn('第二句', content)
+        self.assertIn('\u7b2c\u4e8c\u53e5', content)
 
     def test_build_asr_sidecar_path(self):
         self.assertEqual(

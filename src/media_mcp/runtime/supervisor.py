@@ -36,12 +36,12 @@ def main():
             try:
                 check_hardlinks()
                 CodexClient(timeout=45, max_retries=0).check_connection()
-                if not send_notification('Media MCP 启动通过', 'Codex 认证与硬链接探针通过，后台任务即将启动。'):
+                if not send_notification('Media MCP startup passed', 'Codex authentication and hardlink probes passed. Background workers will start shortly.'):
                     raise RuntimeError('startup_notification_failed')
                 break
             except Exception as exc:
                 if not failed_notified:
-                    failed_notified = send_notification('Media MCP 启动失败', f'{type(exc).__name__}；下载提交与处理暂停，60秒后重试。')
+                    failed_notified = send_notification('Media MCP startup failed', f'{type(exc).__name__}; download submission and processing are paused. Retry in 60 seconds.')
                 for _ in range(60):
                     if stop:
                         return

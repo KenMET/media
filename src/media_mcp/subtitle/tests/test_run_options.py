@@ -627,7 +627,7 @@ class SubtitleRunOptionsTest(unittest.TestCase):
             'source_path': '/data/downloads/movie.mkv',
             'target_path': '/data/media_hub/movie.mkv',
             'media_type': 'movie',
-            'media_name': '电影名',
+            'media_name': '\u7535\u5f71\u540d',
         }
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, 'movie.mkv')
@@ -646,8 +646,8 @@ class SubtitleRunOptionsTest(unittest.TestCase):
         notify.assert_called_once()
         _, kwargs = notify.call_args
         self.assertEqual('notify.send_notification', notify.call_args.args[0])
-        self.assertEqual('Media字幕通知', kwargs['title'])
-        self.assertIn('电影 电影名 字幕按AI翻译处理完成', kwargs['content'])
+        self.assertEqual('Media subtitle notification', kwargs['title'])
+        self.assertIn('Movie \u7535\u5f71\u540d: subtitles completed using AI translation', kwargs['content'])
 
     def test_subtitle_dry_run_does_not_send_notification(self):
         agent = SubtitleAgent(provider_registry=Mock(providers=[]))
@@ -655,7 +655,7 @@ class SubtitleRunOptionsTest(unittest.TestCase):
             'source_path': '/data/downloads/movie.mkv',
             'target_path': '/data/media_hub/movie.mkv',
             'media_type': 'movie',
-            'media_name': '电影名',
+            'media_name': '\u7535\u5f71\u540d',
         }
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, 'movie.mkv')
@@ -679,7 +679,7 @@ class SubtitleRunOptionsTest(unittest.TestCase):
             'source_path': '/data/downloads/show/S01E01.mkv',
             'target_path': '/data/media_hub/show/S01E01.mkv',
             'media_type': 'tv',
-            'media_name': '剧名',
+            'media_name': '\u5267\u540d',
             'season': 1,
             'episode': 1,
         }
@@ -687,7 +687,7 @@ class SubtitleRunOptionsTest(unittest.TestCase):
             'source_path': '/data/downloads/show/S01E02.mkv',
             'target_path': '/data/media_hub/show/S01E02.mkv',
             'media_type': 'tv',
-            'media_name': '剧名',
+            'media_name': '\u5267\u540d',
             'season': 1,
             'episode': 2,
         }
@@ -880,9 +880,9 @@ class SubtitleRunOptionsTest(unittest.TestCase):
             'filename': "Persona 3 the Movie #2 Midsummer Knight's Dream.mkv",
             'media_type': 'movie',
             'media_tmdb_id': 297189,
-            'media_name': '女神异闻录3 剧场版 第二章 仲夏骑士之梦',
-            'base_title': "女神异闻录3 剧场版 第二章 仲夏骑士之梦(劇場版「ペルソナ3」第2章 Midsummer Knight's Dream)",
-            'alt_name': "劇場版「ペルソナ3」第2章 Midsummer Knight's Dream",
+            'media_name': '\u5973\u795e\u5f02\u95fb\u5f553 \u5267\u573a\u7248 \u7b2c\u4e8c\u7ae0 \u4ef2\u590f\u9a91\u58eb\u4e4b\u68a6',
+            'base_title': "\u5973\u795e\u5f02\u95fb\u5f553 \u5267\u573a\u7248 \u7b2c\u4e8c\u7ae0 \u4ef2\u590f\u9a91\u58eb\u4e4b\u68a6(\u5287\u5834\u7248「ペルソナ3」\u7b2c2\u7ae0 Midsummer Knight's Dream)",
+            'alt_name': "\u5287\u5834\u7248「ペルソナ3」\u7b2c2\u7ae0 Midsummer Knight's Dream",
             'year': 2014,
         }
 
@@ -1077,8 +1077,8 @@ class SubtitleRunOptionsTest(unittest.TestCase):
         provider = ProviderStub(candidate)
         agent = SubtitleAgent(provider_registry=Mock(providers=[provider], provider_statuses=None))
         content = (
-            '1\n00:00:01,000 --> 00:00:02,000\n中文字幕第一行\n\n'
-            '2\n00:09:50,000 --> 00:10:00,000\n中文字幕第二行\n'
+            '1\n00:00:01,000 --> 00:00:02,000\n\u4e2d\u6587\u5b57\u5e55\u7b2c\u4e00\u884c\n\n'
+            '2\n00:09:50,000 --> 00:10:00,000\n\u4e2d\u6587\u5b57\u5e55\u7b2c\u4e8c\u884c\n'
         ).encode('utf-8')
         validated = ValidatedOnlineSubtitle(
             content=content,

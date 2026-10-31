@@ -1,23 +1,17 @@
-# 空扫描误报与真实媒体挂载修复 · 2026-10-28
+# Empty scan and real media mount repair: 2026-10-28
 
-用户截图中的“已找到资源”不代表实际扫描结果非空。只读检查运行状态库发现，先前的导入和最新预览均为 0 项，`media_link` 和 `media_inventory` 都是 0 条。NAS 容器把项目内的空 `data/` 挂载为容器 `/data`，而真实媒体位于宿主机 `/data`。这是挂载配置错误与空结果误报叠加，不能用先前的虚构文件验收代替实际目录核验。
+The screenshot's found-resources text did not establish nonempty data. Read-only state showed zero previous/latest entries and zero mappings/inventory. Containers mounted empty project `data/` at `/data`, while actual media lived at host `/data`. Fixture acceptance could not establish correct production mounts.
 
-## 实际修复与读取证据
+## Repair evidence
 
-- 在 ignored state 目录备份原 `.env` 和 SQLite；仅将本地私有配置的 `MEDIA_DATA_DIR` 改为 `/data`。
-- 通过唯一部署入口 `sh setup.sh local` 重建更新本项目 web/worker。继续复用已有下载器；未修改其他项目服务或其数据库。更新前本项目 acquisition 和 processing 队列为空。
-- Docker 实际挂载验证为 `/data -> /data`。本地控制端及 worker 均通过启动和健康检查，执行镜像中的 scanner/frontend SHA256 与工作副本一致。
-- 非空扫描：2,879 项，其中 1,614 个已配对视频路径（807 组硬链接）、9 个待整理视频、777 个已匹配外挂字幕、479 个待匹配外挂字幕。
-- 实际 SQLite 导入回执：2,879 个索引、807 条新媒体映射；字幕文件索引共 1,256 项。没有新建下载任务或改写视频/字幕。
-- 结束导入进程后，用另一个新进程读取相同状态库：仍为 2,879 项；管理员媒体查询首批返回 100 条、分页游标 100，其中有 90 个字幕观察记录。两次查询合计约 0.67 秒。
+Privately backed up `.env`/SQLite under ignored state, changed only private `MEDIA_DATA_DIR=/data`, and used `sh setup.sh local` to rebuild this project's web/worker. Existing downloader/unrelated services/databases were unchanged; acquisition/processing queues were empty before restart.
 
-这是 NAS 状态库和应用服务读取证据；没有使用用户浏览器会话，也没有登录其公网网站进行浏览器确认。公网网站仍通过既有云端转发读取 NAS 数据。旧前端也能识别后端新增的 `empty` 状态而不再提供空结果确认按钮。
+Docker mount was verified `/data -> /data`; control/workers were healthy and scanner/frontend hashes matched source. A nonempty scan found 2,879 entries: 1,614 paired video paths (807 hardlink pairs), nine unorganized videos, 777 matched and 479 unmatched sidecars. Import receipt: 2,879 indexes, 807 new mappings, 1,256 subtitle indexes; no acquisition creation or media writes.
 
-## 代码与隔离验收
+A fresh process still read 2,879 indexes after import exited. First admin media page returned 100 items/cursor 100 including 90 subtitle observations; two reads took about 0.67 seconds. This was NAS/application evidence, not the user's browser/public-site acceptance. The public gateway continued reading NAS; even old frontend understood new `empty` state sufficiently to hide empty confirmation.
 
-- 空预览返回 `empty` 状态，前端不显示“已找到资源”及确认按钮；后端拒绝空导入，保留之前的已导入索引。
-- 展示宿主机目录、扫描根、实际总数和导入时间；导入事务保存实际数量回执。
-- 主媒体库在没有已确认映射时仍展示管理员已保存的独立磁盘资源。
-- Python 回归 137 项、前端测试 8 项通过。隔离 Chromium 验收分别覆盖空目录、普通硬链接、完全无硬链接三个场景；包含刷新后持久化与 320–1440px 布局。
+## Code and isolated regression
 
-`.env`、SQLite 备份、凭据和运行日志均保留在忽略目录，不纳入 Git。部署配置修复仅发生在本地私有 `.env`，不是公开默认值变更。
+Empty previews return `empty`, suppress found/confirm copy, and cannot overwrite existing inventory. Host directory, roots, totals/time and transactional receipts are visible. Admin library can display independent indexed resources without mappings.
+
+Python 137/frontend eight passed. Chromium covered empty, normal hardlinks and no-hardlink cases with persistence and 320–1440px layouts. Private configuration/database/backups/logs remained ignored; this was not a public default-path change.

@@ -1,49 +1,24 @@
-# 媒体库海报、桌面布局与全库范围保护
+# Library artwork, desktop layout and whole-library scope
 
-现场只读核查 72 个作品/合集，67 个没有保存海报 URL，其中 65 个已有明确 TMDB
-编号。通过既有云端 provider 按这 65 个编号查询，65 个都有官方海报，无错误。
-这属于展示资料缺失，不代表映射或字幕失败，不能通过重跑 AI 身份识别解决。
+Read-only inspection found 72 works, 67 without saved posters, including 65 confirmed TMDB IDs. Existing cloud provider requests found official posters for all 65 without errors. This was missing display metadata, not failed mapping/subtitles; rerunning identity AI was inappropriate.
 
-媒体库现在复用 `/api/detail`，按已知编号异步补图；未知合集不猜测、不搜索匹配。
-使用页面代次检查，离开页面后不写入新页面；同一浏览器会话共享请求结果。
-详情接口复用既有 SQLite catalog 缓存，24 小时内不重取；上游短暂失败保留旧值，
-退避五分钟。验证返回编号，防止串作品。展示补图不修改媒体身份、映射、字幕或
-源文件，不使用模型。详情读取有独立 metadata 预算 120 次/分钟、并发 2，避免
-加载海报占用原有搜索预算；搜索、提交、AI 的额度规则不变。
+The UI reuses `/api/detail` asynchronously by confirmed ID, never guessing/searching unknown collections. Page generations reject stale writes; one browser session shares results. SQLite detail TTL is 24 hours with five-minute failure backoff and identity validation. Artwork writes no media identity/mapping/subtitle/source state and uses no model. Dedicated metadata quota is 120/minute, concurrency two, preserving search/acquisition/AI budgets.
 
-桌面 >=1200px 显示三列，701–1199px 两列，手机单列。保留卡片、底部导航与
-专用搜索页面布局。
+Desktop columns: three at >=1200px, two at 701–1199px, one on mobile. Cards/navigation/dedicated search remain.
 
-全库自动整理一贯默认 pending，但旧网页“更多”提供全库 all 范围，现已移除。
-后端在建队列、幂等写入和调用 AI 前拒绝无 collection_id 的 all 请求，网页单部
-普通整理也改为 pending。高级“重新识别”仍在单部作品详情内，先选作品、预览
-季集再确认；API all 仅允许指定单部 collection。pending 不把海报缺失作为待办。
-已确认且文件未变的身份会复用；只有未识别或检查发现变化/矛盾的文件可能需要 AI，
-因此不能承诺任何全库整理都永远零模型调用。
+Removed the old global `all` action. Backend rejects unscoped `all` before queue/idempotency/model work; normal single-work organization uses pending. Advanced reidentification remains work-scoped with season preview/confirmation. Poster-only gaps are never pending. Unchanged confirmed identity is reused, but genuinely changed/unknown files may still require AI.
 
-自审核对了端到端请求范围、缓存串号、失败回退和页面切换；没有新依赖、表、
-运行时修复脚本，也没有改动原有未完成 FIFO 工作。
+Review covered end-to-end scope, cache identity/fallback and page switching. No dependency/table/runtime repair script or unfinished FIFO changes were included.
 
-验证：NAS 依赖下独立发布源码 41 项 Python 回归全部通过，串行 nice -n 15，
-SQLite 和媒体夹具为临时目录；包含全局 all 拒绝、缺字幕复用身份且 AI 调用 0、
-缓存复用/失败退避/编号不符拒绝。12 项 JS 回归通过。
-一次性预览浏览器通过 1440/1000/390/320px 验收，分别三/二/一/一列，无溢出或
-脚本错误；6 个缺图作品按编号补图，跨布局刷新仍只有 6 次详情请求，全局按钮
-只提交 pending；无全库强制入口。截图使用假海报夹具，不冒充实际公网部署。
+Validation: isolated release source on NAS dependencies passed 41 Python tests, serial nice 15 with disposable SQLite/media. Covered global-all rejection, missing-subtitle identity reuse with zero AI and cache/backoff/mismatch. Twelve JS tests passed. Disposable browser at 1440/1000/390/320px showed 3/2/1/1 columns, no overflow/errors. Six poster gaps caused only six detail calls across layouts; global actions submitted pending only. Fixture posters were not public deployment evidence.
 
-NAS 后端已在空闲检查点通过 `sh setup.sh local` 发布提交 `15b16f5`，
-local-control、local-worker 均 healthy、重启 0，安装模块/静态文件哈希匹配。
-其他服务容器 ID、镜像和启动时间未变，工作区原有四个修改文件摘要未变。
-现场全局 all 被拒绝且没有创建任务；正常 pending 返回 0 项、completed，任务
-`293feb1552e74553bb005e8a18379cc6`，未发起识别 AI。
+NAS deployed commit `15b16f5` at an idle checkpoint through `sh setup.sh local`; control/workers healthy, zero restarts, installed hashes matching. Other container IDs/images/start times and four preexisting dirty file digests were unchanged. Real unscoped all was rejected without jobs. Normal pending returned zero/completed, task `293feb1552e74553bb005e8a18379cc6`, without AI.
 
-云端本轮未重建。用户此前重建的是本次新提交之前的版本，网页补图/三列布局仍
-待更新；通过浏览器夹具的证明不等同于已在公网部署。云端更新需要在既有项目目录执行：
+Cloud was not rebuilt. The user's earlier rebuild preceded this commit; artwork/three-column UI still required:
 
 ```sh
 git pull --ff-only
 sh setup.sh cloud
 ```
 
-此次 NAS 后端保护已经生效，无需用户再次重建 NAS。发布镜像使用已提交的
-runtime/state.py，随后恢复工作区未完成 FIFO 文件。
+NAS protection was already deployed. Release used committed `runtime/state.py` and restored unfinished FIFO afterward.

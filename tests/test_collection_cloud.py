@@ -15,9 +15,9 @@ class CollectionCloudTests(unittest.TestCase):
 
     def test_identification_uses_cloud_provider_and_requires_management_not_download(self):
         source=Path(os.environ['MEDIA_DOWNLOAD_ROOT']);source.mkdir()
-        library=Path(os.environ['MEDIA_LIBRARY_ROOT']);(library/'series/Test/第01季').mkdir(parents=True)
+        library=Path(os.environ['MEDIA_LIBRARY_ROOT']);(library/'series/Test/\u7b2c01\u5b63').mkdir(parents=True)
         src=source/'Test.S01E01.mkv';src.write_bytes(b'fixture')
-        target=library/'series/Test/第01季/Test - S01E01 - 2024.mkv';os.link(src,target)
+        target=library/'series/Test/\u7b2c01\u5b63/Test - S01E01 - 2024.mkv';os.link(src,target)
         upsert_media_link(None,str(src),str(target),status='linked')
         alice=self.accounts.actor_by_id(self.alice['id'])
         self.accounts.update_user(self.admin,alice.id,enabled=True,role='user',can_download=False,can_manage_media=True)

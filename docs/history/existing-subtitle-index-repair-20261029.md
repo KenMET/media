@@ -1,25 +1,23 @@
-# 已有生成字幕漏登记与顶部栏修复 · 2026-10-29
+# Existing generated subtitle indexing and header repair: 2026-10-29
 
-《十二怒汉》的源文件与整理文件均存在且为同一硬链接；整理目录已存在规范名称的双语 ASS，带既有生成标记，但 `media_subtitle` 没有对应记录。内容检查通过：1711 个对白条目，1709 个包含中文。这里只核对了文本内容，未重新做音画同步验收。
+12 Angry Men's source/library paths existed as one hardlink. A canonical bilingual generated ASS existed without a `media_subtitle` row. Content check found 1,711 dialogue entries, 1,709 containing Chinese; no new audiovisual synchronization acceptance occurred.
 
-根因是 `SubtitleAgent` 保留既有生成字幕及迁移旧命名的两个分支直接返回 `exists`，没有补登记 SQLite。自动整理处理器要求真实字幕文件及处理记录都就绪，因此把这些文件记录为 `automatic_subtitle_review`。这不是本例缺少字幕或识别失败。
+Two `SubtitleAgent` branches returned `exists` after keeping generated subtitles or migrating old names without registering SQLite. Automatic maintenance required files plus records, causing `automatic_subtitle_review`; this was not missing subtitles/identity failure.
 
-修复两个分支：验证中文对白后登记现有字幕；仅有生成标记、内容不合格时仍保留复核状态。保留原有迁移/样式逻辑，不重复请求翻译或在线字幕。新增四项隔离回归覆盖规范 ASS、旧命名 ASS、伪生成标记无中文对白、dry-run 不写入；完整 Python 217 项通过。
+Both branches now validate dialogue and register the existing file. Invalid generated markers still require review. Existing migration/style behavior remains, without another translation/provider request. Four disposable regressions covered canonical ASS, old-name ASS, false marker without Chinese dialogue and no-write dry run. Full Python 217 passed.
 
-对本例进行实际索引修复前保存私有 SQLite 备份。在媒体变更锁内检查视频身份、字幕身份及内容，并确认该文件已经离开当前任务的剩余处理范围，只增加字幕记录。修复后媒体库的 `ready_subtitle` 为 true，字幕 SHA256、视频和硬链接身份不变。没有重写历史任务的失败结果；网页在历史结果已有当前字幕记录时，说明“本次任务曾未确认字幕；当前已有字幕处理记录”。
+Before repairing this instance, privately backed up SQLite, checked video/subtitle identity/content under mutation lock and confirmed the file was outside the active task's remaining scope. Added records only: ready subtitle became true, subtitle SHA256 and hardlink/video identity stayed unchanged. Historical task errors were not rewritten; the UI distinguished historical uncertainty from current processing records.
 
-同时移除所有页面顶部重复的全局搜索栏，搜索表单只在搜索页保留；手机顶栏缩至 64px。浏览器检查发现/搜索/任务/媒体库无顶部输入框、搜索页功能保留，320–1440px 无横向溢出、无 JS 错误；历史字幕提示亦通过浏览器验证。证据：`/tmp/media-header-acceptance/`、`/tmp/media-subtitle-history-browser.log`、`/tmp/media-subtitle-registration-result.log`、`/tmp/media-subtitle-header-full-tests.log`。
+Removed duplicate shared-header search from all pages, retained dedicated search, and reduced mobile header to 64px. Browser discovery/search/tasks/library retained search functionality with no top input, no JS errors/320–1440px overflow, and correct historical subtitle explanation. Evidence: `/tmp/media-header-acceptance/`, `/tmp/media-subtitle-history-browser.log`, `/tmp/media-subtitle-registration-result.log`, `/tmp/media-subtitle-header-full-tests.log`.
 
-NAS 仅经 `sh setup.sh local control` 更新控制端，worker 容器及启动时间不变。当前新全库任务仍在运行，没有为了修复而打断它。字幕处理器的通用自动补登记修复已在源码和新版控制端包中；运行中的旧 worker 尚未重建，后续在任务结束后通过 `sh setup.sh local` 更新 worker，其他同类字幕才会在自动处理时使用新分支。本例的现有索引已单独修复，不依赖 worker 重启。
+Initial NAS deployment used `sh setup.sh local control`, retaining worker start time and active whole-library work. The generic processor fix initially awaited worker rebuild; this instance's index was independently repaired. Cloud remained undeployed, requiring pull and `sh setup.sh cloud`. Private state/configuration/backups stayed out of Git; unrelated line endings remained separate.
 
-cloud 网页本轮未部署，需要拉取提交并执行 `sh setup.sh cloud` 才能看到顶部栏及历史说明变更。`.env`、数据库、状态、备份和凭据不提交；既有两个无关换行改动保留。
+## Later authorized cancellation and rebuild
 
-## 后续：用户授权取消旧任务并重建
+The user explicitly requested cancelling/deleting/rebuilding. Revoked task `b85f8a889bd8482dbe2ea6d1f3d266f4` leases, attempted temporary model interruption, stopped through `sh setup.sh local stop`, then rebuilt control/workers with `sh setup.sh local`. The model terminal outcome remained unreadable; unknown/cancellation evidence remained private, and old late results were not accepted.
 
-用户明确要求取消、删除正在运行的任务并重建后，已撤销旧任务 `b85f8a889bd8482dbe2ea6d1f3d266f4` 的处理租约，尝试终止临时 AI 会话，随后经 `sh setup.sh local stop` 停止旧进程，再通过 `sh setup.sh local` 完整重建控制端与 worker。临时 AI 请求无法回读终态，未知标记与取消审计保留在私有状态中，不恢复旧任务或采纳其迟到结果；新的运行来自用户明确的重建指令。
+Removed old task/request aliases/cancelled queue records and expired unused previews. Business-table row digests matched before/after: 807 mappings, 2879 inventory, 116 identities, 124 classifications and 38 subtitles retained. No original media/completed result was deleted.
 
-旧任务主记录、请求别名及取消的队列记录已删除；未应用的预览已过期。删除前后对业务表逐行摘要核对一致：807 条映射、2879 条索引、116 条身份、124 条分类、38 条字幕记录均保留。原媒体文件和已完成成果未删除。
+New pending task `764fd52f6dad4af99aa5cee0542a4028` covered 780 items, reusing identity/valid subtitles. Observation: three completed/three ready subtitles; generated-subtitle registrations grew from one to four, proving the new worker indexed three other files. Worker processor SHA256 `500e2874bd134a3b3c64aa57525ba537355642e6d6ece4d01bda61b8acea5d9f` matched tested source; both services were healthy, superseding the earlier pending-worker state.
 
-新任务 `764fd52f6dad4af99aa5cee0542a4028` 使用默认 pending 范围，共 780 项，复用已有识别和有效字幕。核查时已完成 3 项，3 项字幕就绪；“既有生成字幕内容验证后登记”的记录由 1 条增至 4 条，证明除手工修复的《十二怒汉》外，新 worker 已自动登记其他三份字幕。新 worker 中字幕处理器 SHA256 为 `500e2874bd134a3b3c64aa57525ba537355642e6d6ece4d01bda61b8acea5d9f`，与已测试源码一致，两服务均 healthy。因此，上文“worker 尚未重建”的状态已被本次部署取代。
-
-私有备份及取消审计在 NAS `state/cancel-rebuild-20261029/`；观察记录 `/tmp/media-delete-and-recreate-task.log`、`/tmp/media-cancel-rebuild-observation.log`。本次仅执行实际运维及只读核查，没有在生产媒体上运行验收测试。
+Private backup/audit: NAS `state/cancel-rebuild-20261029/`. Observations: `/tmp/media-delete-and-recreate-task.log`, `/tmp/media-cancel-rebuild-observation.log`. These were authorized operations/read-only checks, not acceptance against production media.

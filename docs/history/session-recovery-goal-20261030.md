@@ -1,256 +1,89 @@
-# Goal：恢复不可读的模型会话，安全续跑媒体任务
+# Goal: recover unreadable model sessions and resume safely
 
-状态：实施与验收中。NAS 恢复、通知整改及会话归档已上线，原任务已越过断点；交叉场景补验、公网更新与任务终态仍待完成。
+This report retains chronological checkpoints. Initial status was implementation/acceptance; the final internal-logic section supersedes earlier pending items. Public asset delivery and independent strict FIFO remained separate.
 
-## 问题与目标
+## Incident and requirements
 
-2026-10-30 12:55–13:00 UTC 附近的 NAS 只读检查：任务
-`231fc692e11f464bad39bf412174230f` 已保存 121/746 项结果，队列正常，
-运行代码为 7200 秒检查间隔、最多 10 次；检查已执行 5 次。
-原请求读取返回 `thread not loaded`，App Server 连接本身成功。
-这不能证明当前额度不足，也不能证明旧请求已失败、丢失或仍在运行。
-当前流程将会话不可读混入额度等待，并在核对旧请求失败时跳过额度检测。
-这些数值是设计时快照，实施前必须重新读取。
+Read-only NAS snapshot around 2026-10-30 12:55–13:00 UTC: task `231fc692e11f464bad39bf412174230f` retained 121/746 results, normal queue, 7200-second interval/ten checks, five checks attempted. App Server connected but original read returned `thread not loaded`. This proved neither exhausted quota nor original failure/loss/running state. The old flow conflated unreadability with quota and skipped probes after original-read failure. These were design-time observations requiring refresh before action.
 
-最终目标：额度可用时，旧会话异常不再无限阻塞整个任务；先恢复原结果，
-确实不可恢复时通过受控替代恢复只读 AI 研究，并从已保存断点继续。
-已有成功结果、未知提交隔离、文件身份校验和写入安全都必须保留。
+Recover original output before bounded replacement of genuinely unrecoverable read-only research. Preserve accepted work, unknown fencing, physical identity and publication safety.
 
-## 恢复规则
+Required rules:
 
-1. 分开记录额度不足、服务连接失败、会话未加载、请求运行中、结果未知、
-   已完成待核对。保留受控错误码；不展示原始 RPC、凭证或服务地址。
-2. 先只读查询原 thread/turn；针对未加载会话核实当前 App Server 的受支持
-   加载方式。若需 resume，只允许加载同一会话，禁止顺带 turn/start、
-   覆盖原模型策略或触发新研究；验证其副作用后才能使用。
-3. 原请求已完成：校验请求身份、输出完整性和文件快照，按既有验证流程
-   接收缺失结果，不再研究已接受分块。明确 failed/interrupted：按原策略重试。
-   仍在运行：继续有界观察，不启动同文件的并行替代。
-4. 会话恢复默认最多 3 次，每次间隔 60 秒，持久化次数与时间，重启不重置；
-   这是恢复观察次数，不是额度检查次数。可确认请求仍运行时，另设最长
-   观察期限 10 分钟，超期转明确待核对并通知，不能据此认定失败或重放。
-5. 会话确实无法恢复时，只读 AI 识别可采用受控替代：事务中保留原请求及
-   unknown 状态，记录 superseded 关系并递增执行代次，绑定相同物理文件
-   快照、任务、输入摘要及模型策略。仅当前代次及有效租约可接收/发布结果；
-   旧代次迟到结果只留审计。替代不是清除 ai_inflight、改任务 ID 绕过隔离，
-   也不是宣称旧请求已终止；可能重复消耗一次研究额度，审计中明确记录。
-   必须先证明旧研究没有工具写入能力，且结果接收端全部受代次检查保护。
-   未满足这些条件时保留文件隔离并明确待核对，不能自动新建重放。
-6. 每个逻辑研究分块最多自动替代一次；新会话再次发生未知结果时停止该项
-   并通知，不产生无限新会话链。字幕和其他可能有副作用的调用不套用此
-   自动替代规则，继续沿用未知隔离；后续扩展须单独证明发布安全。
-7. 从持久化的未完成项/分块继续，不把“第 122 项”写死，不重新提交已完成
-   的 121 项，不重扫重建全部媒体，不新建下载、不收养下载器任务。
+1. Distinguish quota, transport, unloaded thread, running, unknown and completed-unaccepted using controlled errors without raw RPC/secrets/addresses.
+2. Read original thread/turn first. Verify supported same-thread loading; resume may load only the same ID without turn/start, policy overrides or new research.
+3. Completed output requires identity/completeness/snapshot validation; accepted groups never repeat. Failed/interrupted may retry under frozen policy. Running requests receive bounded observation without parallel replacement.
+4. Persist at most three observations, 60 seconds apart, independent of quota checks. A confirmed running call has a ten-minute observation bound; expiry means review/notification, not failure or replay authority.
+5. Only missing durable history in read-only identification may receive one transactional replacement. Preserve original unknown/superseded relation and increment generation tied to same files/task/input/policy. Only current generation/lease may accept/publish; late output is audit only. It may spend one extra research call and must be recorded honestly. Prove no tool writes and fence every acceptance path, otherwise retain review.
+6. One replacement per logical group; another unknown stops/notifies without chains. Subtitle/side-effecting calls retain unknown fences and require separate proof before any future extension.
+7. Resume durable unfinished groups rather than hardcoding item 122, repeating the accepted 121, rebuilding the whole library, adding downloads or adopting tasks.
 
-## 两小时、十次的准确含义
+## Quota semantics
 
-- 只有明确 rate_limited 才进入额度等待；初次不足不算检查。
-- 额度等待从明确限额时刻起每 7200 秒触发一次，最多 10 次。
-  每次到期检查必须记录实际结果：额度可用、额度不足、连接不可用等；
-  连接异常不得显示成已确认额度不足，但该等待周期最多仍执行 10 次，
-  避免依靠网络错误形成无限等待。第十次仍无法安全继续时保存成果、
-  明确失败原因并可靠通知。额度可用后进入恢复/续跑，不代表旧请求失败。
-- 旧会话的读取/加载重试单独计数，不消耗额度检查名额。额度检测可以
-  独立使用同一模型策略执行轻量检查，其成功不自动解除未知请求隔离。
-- 保留历史 5 次观察的原始记录；根据实际证据区分观察次数与额度检查，
-  不伪造历史“额度不足”结论，不静默清空计数或重新给满等待周期。
-  迁移方案须明确旧时间、计数归属与剩余预算，并通过测试后应用。
+Only explicit rate limits enter waiting. Initial limit is not a check. Due checks run every 7200 seconds, maximum ten, recording available/limited/transport outcomes honestly. Transport errors still consume bounded waiting attempts but never claim confirmed quota exhaustion. At ten, preserve results and notify with actual reason. Available quota permits recovery, not proof of old failure.
 
-## 实施范围与顺序
+Session load/read counters stay separate. Same-policy nonce probes do not automatically clear unknowns. Preserve historical observations/counters/deadlines and remaining budget without fabricating old quota results or silently resetting ten attempts. Original design mentioned five; actual migration later found six.
 
-- [ ] 重新读取生产任务、原请求、实际模型策略、队列租约及源码镜像状态；
-      备份 SQLite，核对已完成成果、硬链接身份和必要的源文件摘要。
-- [ ] 核实 thread/read 的 not-loaded 行为及同会话加载接口，补受控错误分类。
-- [ ] 实现持久恢复状态、执行代次、输入/身份校验、迟到结果拒收及替代上限；
-      逐个核查所有结果接收/发布路径，不只在客户端添加新建会话分支。
-- [ ] 拆开额度与会话恢复状态，安全迁移旧等待记录，保留原始请求身份及审计。
-- [ ] UI 显示真实等待原因、次数、下次时间及恢复状态；终止通知持久、可重试、
-      幂等，通知失败不冒称已送达。
-- [ ] 在一次性 SQLite/state/media 中串行、低 CPU 优先级运行针对性测试：
-      未加载恢复、完成结果核对、明确失败、运行中不替代、缺失会话受控替代、
-      两个 worker 竞争、租约丢失、重启、旧代次迟到、物理文件变化、已接受分块、
-      一次替代上限、两小时时间边界、第 9/10 次、历史计数迁移和通知失败。
-- [ ] 更新相关架构/恢复文档并校验；用浏览器验证状态与手机布局。
-- [ ] 仅通过 setup.sh 部署受影响 Media 服务。保留工作区尚未完成的严格 FIFO
-      改动，但不能把它混入这次上线；不重建其他应用或 Codex 服务。
-- [ ] 通过正式恢复入口处理原任务，观察真实模型返回以及持久进度超过部署前
-      断点；核对原成功结果未重做、媒体/硬链接身份及源字节未被恢复动作改变。
-- [ ] 检查实际用户网站的状态显示；公网端缺少部署入口时如实记录未完成，
-      NAS 验收不能替代公网验收。
+## Acceptance gates
 
-## 完成条件
+Refresh production state/identity/policy/leases/parity, back up SQLite and sample preserved bytes. Verify protocol/loading/error classes; persist generation/input/fingerprint fences and audit every result path. Separate quota/session migration. Add honest UI and durable deduplicated notification intent. Serial disposable tests cover completed results while probes fail, running/missing calls, two-worker competition, lost leases, restarts, late generations, changed files, accepted groups, replacement bound, 9/10 and historical budgets/notification failure. Validate docs/model/browser and deploy only affected Media via setup at safe checkpoints, excluding unfinished FIFO and unrelated services. Observe original progress past checkpoint through final state and report actual outcome; health/probe/new threads/queueing alone cannot complete the goal.
 
-自动化和浏览器验收通过；NAS 源码镜像一致；原任务已得到真实模型结果并
-越过原断点，随后观察至明确终态并报告完成/失败/隔离数量和原因；成功结果
-不重做、迟到结果不能发布、没有新增文件安全风险。仅健康检查、成功 probe、
-创建新会话或排入队列均不算完成。公网页面若未验收须保持为剩余项。
+## Protocol and first deployment
 
-本 Goal 解决会话与额度恢复，不替代下载交付根 FIFO、旧 MySQL 迁移等独立工作。
-模型继续使用实际任务冻结的 Terra / Low 策略，不自动升级。
+Actual NAS Codex-generated ThreadResumeParams/ThreadReadParams supported threadId-only loading. Original resume returned RPC -32600 containing `no rollout` without a new turn. Added controlled not-loaded/missing-rollout classification and recover_thread that resumes only after not-loaded, rereads and verifies IDs. Six transport tests passed: no new turn/override, missing history, connection and mismatched identity. This first local stage was not yet production integration or fence release.
 
-## 实施进度：协议核对与传输层
+Initial setup deployment rebuilt Media control/workers only, preserving Codex/Quant/Crawler/Portal IDs/start times and excluding/restoring FIFO. Hash parity and 104 focused tests passed. A separate installed run failed imports due to missing tests namespace and was explicitly not counted as passing.
 
-已检查 NAS 实际 Codex 二进制生成的 ThreadResumeParams/ThreadReadParams：
-resume 支持只传原 threadId 从磁盘加载；未传输入、模型覆盖或 turn/start。
-对原请求实际尝试同会话加载返回 RPC -32600，消息包含 no rollout，
-因此单纯再次 thread/read 不足以恢复这条请求。该操作没有提交新模型 turn。
+Formal `library_session_recover` migrated six historical observations, retaining budget/identity/history without inventing quota failures. A real nonce passed. Missing rollout received three observations then one controlled replacement, original unknown audited. At 13:23:42 UTC original task reached 129/746 with valid lease/subtitle stage. Original 121 results, 746 source stats and sampled hashes matched. This was progress, not final completion.
 
-本地新增 thread_not_loaded 与缺失 rollout 的受控分类，新增 recover_thread：
-仅遇到未加载错误才加载同一 ID 后重读，并核对两次返回的会话身份。
-6 项独立传输测试通过，包括无新 turn、无配置覆盖、缺失历史、连接错误及
-身份不匹配。暂未接入生产恢复流程、未部署，也未解除原任务隔离。
-代次隔离、受控替代、独立计数迁移、UI/通知和真实续跑仍待实施。
+## Notification incident
 
-## NAS 初版部署与真实续跑
+Initial compensation incorrectly interpreted old failed/review child records as new events, sending 104 historical attention notifications. After feedback, suppressed 164 historical terminal records/cancelled sixteen queued notices; delivered stopped increasing. Sent notices were not recalled. This was an implementation defect, not new user-task failure.
 
-已通过 setup.sh local 部署，仅重建 Media 控制端与 worker；Codex、Quant、
-Crawler、Portal 容器身份与启动时间未变。部署时受影响源码哈希与安装模块一致，
-严格 FIFO 工作区改动在构建时排除并已还原。相关隔离回归 104 项通过。
-另一次安装包回归因测试路径缺少 tests 命名空间出现导入错误，不能算通过，
-需修正验收路径重跑。
+Permanent repair accepts only new parent `terminal_notice_event`, excludes child notification intents and aggregates at parent termination. Added historical/child/no-backfill/crash-dedupe regressions. At that checkpoint the fix still awaited tests/safe deployment, without interrupting in-flight subtitles. Suppression alone was not proof of deployed repair.
 
-正式 library_session_recover 入口迁移原任务的 6 次旧会话观察，保留原始预算、
-请求身份及历史，不改写为确认额度不足；真实 nonce 检测成功后进入独立恢复。
-原记录确认缺少 rollout，3 次恢复后受控替代一次，原 unknown 保存在历史。
-2026-10-30 13:23:42 UTC 观察原任务达到 129/746，worker 租约有效，进入字幕阶段。
-原 121 项结果逐项一致，746 项源文件 stat 无变化，抽样源哈希一致。
-此为真实断点续跑证据，不代表剩余任务或整个 Goal 完成。
+Public app.js then contained model_settings but tasks.js lacked waiting_session, superseding the earlier claim Settings was absent while leaving new recovery display undeployed. Summary: `session-recovery-20261030.json`; private evidence under ignored `state/session-recovery-20261030`.
 
-## 通知事故与整改
+## Phone session lifecycle
 
-初版补偿扫描错误地把历史 needs_review/failed 子记录当作新事件，误发 104 条
-历史关注通知。用户反馈后，已标记 164 条历史终止记录不再补发，取消 16 条
-待发送通知；随后复查 delivered 数量未再增加。没有撤回已发通知。
-这是本轮实现引入的缺陷，不能归咎于用户任务新增失败。
+Persistent research threads accumulated without post-acceptance archival. Database request identity/input/accepted keys plus actual unique terminal turn proved fifteen completed Media threads, which were archived. Active list 30→15, unrelated count unchanged, one Media thread pending recovery. Archive was not deletion or unknown clearing.
 
-本地永久修复改为只补偿带 terminal_notice_event 的新主任务终止事件，
-禁止子记录入通知队列，份内恢复问题汇总到主任务最终通知；新增历史记录
-不补发、子记录不补发、崩溃补偿与去重回归。修复尚待通过针对性测试并安全部署，
-不能把现网抑制历史通知等同于永久代码修复已上线。当前在途字幕不为此强行打断。
+Automatic lifecycle persisted checkpoint/terminal evidence with archival intent atomically; a separate retrying background consumer skips unknown/running/manually extended threads. No push and no task failure on archival errors. Fifteen real archives established protocol behavior; subsequent production enqueue/drain still needed observation then.
 
-公网静态资产最新只读复核：app.js 已有 model_settings，tasks.js 尚无 waiting_session。
-因此过去“Settings 未上线”的记录已过时，但新会话恢复展示仍缺公网部署证据。
-安全摘要在 session-recovery-20261030.json；备份、原请求、文件路径与完整日志均在
-忽略的 state/session-recovery-20261030 中。
+## Intermediate installed acceptance
 
-## 用户补充要求：手机会话生命周期
+Permanent notifications, lifecycle and independent transport/session/quota counters deployed through setup, Media-only/parity/FIFO exclusion preserved. Installed 118 focused tests plus ten quota regressions passed. Installed bilingual browser 320/390/768/1440 and LikeC4 passed without overflow/errors.
 
-用户反馈手机 Codex 会话堆积。原因是 LibraryAnalysisClient 为可恢复研究使用
-持久会话，但缺少验收后的归档。已通过数据库请求身份、输入摘要和已接受 keys
-确定归属，并经真实 thread/read 核对单一终态后，对 15 个确认完成的 Media 会话
-执行归档；普通会话列表 30 → 15，未记录为 Media 的会话没有减少，保留 1 个
-待恢复核对的 Media 会话。不是永久删除，没有清除未知请求。
+Task reached 428/746; original 121 and later 428 checkpoints retained. 746 sources/745 targets/745 hardlink identities and sampled hashes unchanged. Notification counts remained 104/16. At 13:40:38 UTC a new rate limit had an observable matching failed turn, unlike missing old history. Deadline remained 15:40:38 UTC (23:40:38 UTC+8), checks zero; deployment did not advance it/replay/clear unknowns. Six old observations and superseded unknown audit remained.
 
-自动归档已部署：成功 checkpoint 和明确终态证明与归档意图原子保存，后台
-单独处理并重试；未知、仍运行、被人工追加 turn 的会话保持不动。归档不推送
-通知，失败不能中断媒体调用。已用真实请求验证 15 次归档；未来恢复批次完成后
-的自动生产/消费闭环仍须随原任务下一次推进观察。
+## User boundary and coordinator
 
-## 最新 NAS 验收
+User confirmed configuration/ports/domains already existed and requested internal logic only. Earlier cloud-access requests were withdrawn; preserve configuration, do not request SSH/console or make extra access a prerequisite. Read-only public inspection can document old assets separately.
 
-通知永久整改、会话生命周期、独立 transport/session/quota 计数均通过 setup.sh
-部署。仅更新 Media 两个服务，其他服务标识与启动时间未变；安装模块与发布
-清单哈希一致，严格 FIFO 工作区版本仍未混入镜像。安装包 118 项相关回归通过；
-追加的同一工作无进展时不因 nonce 成功重置十次预算等 10 项额度回归也在最终
-安装包通过。中英文、320/390/768/1440px 的实际安装包浏览器验收通过，未发现
-页面异常或水平溢出。独立 LikeC4 模型校验通过。
+Unified recovery coordinator validates original file/directory/input/policy/lease and accepts completed results before consuming quota probes. Session observation schedules independently each minute; quota stays at its original two-hour deadline/count. Persist confirmed failures and archive before waiting, without early research. Publish only after terminal task/idle window.
 
-真实任务当前 428/746，超过原 121 项断点；原 121 项逐项不变，两次安全更新时
-保存的 428 项也未变化。746 个源路径、745 个原目标路径及 745 组原硬链接身份
-全部保持，抽样源 SHA-256 不变。通知状态仍为已误发 104、已抑制 16，没有追加
-历史补发。
+The completed-result/new-probe-unavailable crossover passed. Original task reached terminal state and real automatic archival worked. Public waiting_session assets still lacked deployment evidence and remained an explicitly separate presentation item.
 
-13:40:38 UTC 这次请求遇到新的 rate_limited，原持久 turn 已能读到匹配 failed
-终态；不再是旧会话缺失。任务已保存并安排 15:40:38 UTC（北京时间 23:40:38）
-额度检查，检查次数 0。部署没有提前重放、清除未知标记或改变时间。旧 6 次观察
-及原先缺失请求的 superseded/unknown 审计仍保留。
+## Final internal acceptance: 2026-10-30 16:10 UTC
 
-## 仍未完成的验收门槛
+Original task resumed automatically at 15:40:38 without early checks/manual unknown clearing and reached 746/746, `completed_with_warnings`: 84 complete, 662 review (553 uncertain matches, 97 old identification unknown, 12 old subtitle unknown), failed zero/blocked zero. Unknown files stayed fenced without task/thread bypass.
 
-- [x] 旧请求已完成但新额度检测仍不可用的交叉场景：已隔离验收，优先核对既有
-      完成结果，不让轻量 probe 成功成为验收已有结果的必要条件。
-- [x] 原任务已到明确终态，报告成功、需复核、失败和隔离数量；已确认后续
-      自动归档真实生效。终态 completed_with_warnings，不代表全部文件匹配成功。
-- [ ] 公网静态资源仍是旧版本，waiting_session 等新展示尚无发布证据。
-      遵循用户最新边界，不再请求部署入口、不修改端口、域名或配置；此项只记录
-      现状，不作为内部逻辑修复的前置条件。
+Fifty-eight `library_thread_gc` records archived. Zero attributable Media threads remained in the observed active list; fourteen unrelated entries stayed untouched. Unknown/running/manually extended threads remained protected. Notification counts stayed delivered 104/suppressed sixteen, no further backfill.
 
-## 用户最新边界（2026-10-30）
+Coordinator/pre-call durable quota budgets deployed through `setup.sh local`. Independent source tests: 106 recovery + nineteen platform/model; twelve JS and LikeC4 passed. Final installed Python 125 and JS twelve passed; installed disposable bilingual browser at four widths had zero errors/overflow.
 
-用户明确所有配置已在项目中，端口和域名已配置好，只需修复内部逻辑。
-本轮沿用既有 .env、端口、域名和部署配置，不再索取 SSH/控制台入口，
-也不把额外网络接入当作逻辑修复的前置条件。先前“需要提供云端入口”的
-请求已撤回；公网只按现有地址只读核验，未发布的静态资源如实记录。
+746 source/745 target paths and 745 hardlink identities plus sampled hashes were unchanged. Original 121/all 746 results matched. Installed source hashes matched; unfinished FIFO excluded/restored. `.env`, setup/Compose hashes and unrelated container IDs/images/start times remained unchanged.
 
-为完成“优先恢复旧结果”交叉场景，已加入统一恢复协调器：按原请求的
-绑定文件/目录/输入/策略和有效租约核对结果；已完成结果直接验收，不先消费
-新的额度 probe。会话观察每分钟独立调度，额度 probe 仍只在原两小时期限到期
-执行，早期会话观察不改变额度期限或次数。已确认失败的旧请求先持久化终态，
-自动归档后继续等待原额度期限，不提前提交新的研究。隔离回归通过后，
-待原任务终结进入空闲窗口才发布，最终验收见下节。
+Research failure checkpoints reconstructed parent waiting deadlines after crashes; attempts persisted before external probes. Subtitle unknowns remained fenced without claiming equivalent thread-output recovery. Public old assets remained recorded undeployed display scope under the user's boundary, not an internal logic blocker.
 
+Private receipts: `state/session-recovery-20261030/coordinator-release/verified.json`, `installed-tests.log`, `thread-audit.json`, `configuration-hashes.json`, `other-services.before/after`, `setup.log`.
 
-## 最终内部逻辑验收（2026-10-30 16:10 UTC）
+Internal recovery/original terminal acceptance completed, without claiming the entire project or strict FIFO/public delivery complete.
 
-原任务按 15:40:38 UTC 的原期限自动继续，没有提前检查或人工清除 unknown。
-已完成 746/746，终态 completed_with_warnings：84 项 completed、662 项 needs_review，
-其中匹配不确定 553、旧识别请求结果未知 97、旧字幕请求结果未知 12；failed 0，
-blocked 0。未知项保持隔离，未通过重建任务或新会话绕过。
+## Later simplification review
 
-自动会话归档生产/消费已真实生效：累计 58 个 library_thread_gc 记录 archived。
-原有活动会话列表中，能由 Media 数据库明确归属的会话已为 0，其余 14 项未动。
-这里是归档而非永久删除；未知、正在运行或被人工续用的会话仍受保护。
-历史通知计数保持 delivered 104、suppressed 16，无进一步历史补发。
+No package reorganization/framework/dependency. Four runtime modules retain distinct session/coordinator/notice/archival responsibilities, reusing Records/supervisor/Codex/notifications. Removed unused early manual observation, retaining automatic scheduling/legacy waiting migration. Consolidated budget reuse/lease-permission closures and duplicate wait persistence.
 
-统一恢复协调器及写前持久化额度预算已通过 setup.sh local 发布。源码隔离验收
-106 项恢复相关测试 + 19 项平台/模型设置测试全部通过；12 项 JS 测试通过，
-LikeC4 模型校验通过。安装包回归结果见下述发布凭据。
+Fixed bounded history falsely blocking new tasks: reproduced with 130 completed entries, then scanned genuinely unknown entries only while still rejecting later true unknowns. Related 126 passed. Current docs/model stayed under docs, dated report/JSON under history; unfinished FIFO/three line-ending-only edits untouched. At this checkpoint no commit/push had yet occurred.
 
-746 个源路径、745 个目标路径、745 组硬链接身份未变，抽样源 SHA-256 未变；
-原 121 项和发布前全部 746 项结果逐项一致。发布的所有运行时代码与源码清单
-哈希一致；刻意排除尚未完成的严格 FIFO 工作区版本，工作区原文件已还原。
-.env、setup.sh、compose 配置哈希未变；其他服务容器 ID、镜像和启动时间未变。
-
-研究失败 checkpoint 可以重建父任务未及时保存的原等待期限，检查尝试在外部
-调用前先落盘；此崩溃恢复交叉场景有隔离测试。字幕 unknown 仍原样隔离，未声称
-字幕有相同的原 thread 结果恢复能力。公网旧静态资源属于已记录的未发布展示项，
-遵循用户要求不更改域名、端口或部署入口，不作为本轮内部逻辑的阻塞。
-
-发布凭据（均位于忽略的私有 state 目录）：
-`state/session-recovery-20261030/coordinator-release/verified.json`、
-`installed-tests.log`、`thread-audit.json`、`configuration-hashes.json`、
-`other-services.before/after` 和 `setup.log`。
-
-
-最终安装包 125 项 Python 测试全部通过，12 项 JS 测试通过。
-实际安装包的隔离浏览器验收再次通过：中英文、320/390/768/1440px，页面错误 0、
-水平溢出 0。验收服务使用临时 SQLite 和虚构媒体，未指向真实媒体。
-本轮内部恢复逻辑及原任务终态验收完成；公网旧静态展示和独立严格 FIFO 工作
-如实保留为范围外事项，不据此声称整个项目全部完成。
-
-
-## 后续结构与冗余审查
-
-本次未改运行包层级，也未增加框架或依赖。保留 runtime 中职责各异的会话状态、
-工作协调、终态通知意图、归档意图四个模块，继续复用 Records、现有 supervisor、
-Codex 客户端和通知适配器。移除没有正常流程使用的手动提前观察接口；后台调度
-自动观察原会话，旧版本等待迁移接口仍保留。
-
-合并重复的额度预算沿用规则和租约/权限闭包；删除协调器重复保存额度等待的操作。
-发现并修复历史积累误阻塞：仅真正未知的历史进入跨任务隔离扫描上限，已完成
-历史不再占用额度。隔离测试先复现 130 条已完成历史导致误阻塞，再验证修复及
-随后出现的真实 unknown 仍被拦截。126 项相关回归通过。
-
-当前使用说明与模型放在 docs/session-recovery.md、docs/session-recovery.c4；
-本日期验收记录和 JSON 放入现有 docs/history，不另建模型目录。原有未完严格 FIFO
-和三份仅换行符变化的文件保持不动。本轮没有 commit 或 push。
-
-
-审查补充：删除仅用于首次历史补归档的 enqueue_existing 辅助入口，归档测试直接
-使用常驻 enqueue/drain 路径；变更后 7 项归档测试通过。126 项完整相关安装包
-回归已通过，最终归档精简后的安装包另行复验 7 项。历史说明已加入 README
-和 docs/acceptance.md 的索引；未新增顶层目录、依赖或数据库表。
-
-最终精简版已通过 setup.sh 同步到现有 Media，安装包 7 项归档复验通过，
-源码哈希、原 746 项结果、源文件与硬链接均已核对。配置及其他服务未变；
-本轮仍未 commit/push，原有独立未完成工作未混入镜像。
+Removed one-time `enqueue_existing` helper, testing regular enqueue/drain directly; seven archival tests passed after simplification in the installed final package, in addition to 126 full related tests. README/index links added without new top-level directory/dependency/table. Final setup release reverified hashes/original 746/source-hardlinks/configuration/unrelated services. Commit/push remained pending at that historical report; the later delivery review records closure.

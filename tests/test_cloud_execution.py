@@ -23,7 +23,7 @@ class CloudExecutionTests(unittest.TestCase):
     def providers(self):
         tmdb, indexer = Mock(), Mock()
         identity = {'title_id':'movie:1', 'kind':'movie', 'tmdb_id':1,
-                    'title':'测试电影', 'original_title':'Example', 'date':'2026-01-01'}
+                    'title':'\u6d4b\u8bd5\u7535\u5f71', 'original_title':'Example', 'date':'2026-01-01'}
         tmdb.detail.return_value = identity
         tmdb.search.return_value = [identity]
         indexer.search.return_value = {'releases':[{'name':'Example.2026.1080p',
@@ -52,7 +52,7 @@ class CloudExecutionTests(unittest.TestCase):
                 response=client.post('/api/command',json={'operation':name,'arguments':arguments})
                 self.assertEqual(response.status_code,200,response.text)
                 return response.json()['data']
-            for query in ('测试电影','Example'):
+            for query in ('\u6d4b\u8bd5\u7535\u5f71','Example'):
                 self.assertEqual(invoke('search_titles',{'query':query,'kind':'movie'})['titles'][0]['title_id'],'movie:1')
             releases=invoke('search_releases',{'title_id':'movie:1','resolution':1080})
             release_id=releases['releases'][0]['release_id']
@@ -113,7 +113,7 @@ class CloudExecutionTests(unittest.TestCase):
                 result=response.json()['result']['structuredContent']
                 self.assertTrue(result.get('success'),result)
                 return result['data']
-            self.assertEqual(tool('media_search_titles',{'query':'测试电影','kind':'movie'})['titles'][0]['title_id'],'movie:1')
+            self.assertEqual(tool('media_search_titles',{'query':'\u6d4b\u8bd5\u7535\u5f71','kind':'movie'})['titles'][0]['title_id'],'movie:1')
             releases=tool('media_search_releases',{'title_id':'movie:1'})
             plan=tool('media_plan_acquisition',{'release_id':releases['releases'][0]['release_id']})
             job=tool('media_start_acquisition',{'plan_id':plan['plan_id'],'revision':plan['revision'],
@@ -202,8 +202,8 @@ class CloudExecutionTests(unittest.TestCase):
     def test_tv_metadata_and_magnet_are_frozen_without_local_indexer_access(self):
         commands,token=self.commands()
         commands.tmdb.detail.return_value={'title_id':'tv:1','kind':'tv','tmdb_id':1,
-            'title':'测试剧集','original_title':'Example','date':'2026-01-01'}
-        commands.tmdb.get.return_value={'episodes':[{'episode_number':1,'name':'第一集'}]}
+            'title':'\u6d4b\u8bd5\u5267\u96c6','original_title':'Example','date':'2026-01-01'}
+        commands.tmdb.get.return_value={'episodes':[{'episode_number':1,'name':'\u7b2c\u4e00\u96c6'}]}
         magnet='magnet:?xt=urn:btih:'+'a'*40
         commands.indexer.search.return_value={'releases':[{'name':'Example.S02E01.1080p',
             'download_url':magnet,'resolution':1080,'categories':[5000]}],
@@ -212,7 +212,7 @@ class CloudExecutionTests(unittest.TestCase):
         found=commands.invoke('search_releases',{'title_id':'tv:1','season':2})
         plan=commands.invoke('plan',{'release_id':found['releases'][0]['release_id']})
         self.assertEqual(plan['scope']['episodes'],[1])
-        self.assertEqual(plan['scope']['episode_metadata'],[{'episode':1,'title':'第一集'}])
+        self.assertEqual(plan['scope']['episode_metadata'],[{'episode':1,'title':'\u7b2c\u4e00\u96c6'}])
         job=self.remote.call('/internal/command',{'operation':'start','arguments':{
             'plan_id':plan['plan_id'],'revision':plan['revision'],'idempotency_key':'cloud-tv-magnet-123'}},user_token=token)
         downloader=Mock();downloader.find.return_value=None

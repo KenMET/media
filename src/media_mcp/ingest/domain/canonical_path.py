@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 canonical_path.py
-媒体硬链接 canonical 路径规范化与严格校验。
+Normalize and strictly validate canonical media hardlink paths.
 """
 
 from __future__ import annotations
@@ -36,14 +36,14 @@ def validate_canonical_hardlink_path(result: Dict[str, Any], hardlink_path: str,
             return False, 'movie path must match /data/media_hub/movie/<title - year.ext>', canonical_path
     elif media_type == 'tv':
         if len(parts) != 4 or parts[0] != 'series':
-            return False, 'tv path must match /data/media_hub/series/<title>/第XX季/<title - SxxExx - episode - year.ext>', canonical_path
+            return False, 'tv path must match /data/media_hub/series/<title>/<localized-season>/<title - SxxExx - episode - year.ext>', canonical_path
         season = result.get('season')
-        expected_season_dir = f'第{int(season):02d}季'
+        expected_season_dir = f'\u7b2c{int(season):02d}\u5b63'
         if parts[2] != expected_season_dir:
             return False, f'invalid season directory: expected {expected_season_dir}', canonical_path
     elif media_type == 'tv_extra':
-        if len(parts) != 4 or parts[0] != 'series' or parts[2] != '特典':
-            return False, 'tv_extra path must match /data/media_hub/series/<title>/特典/<title - typeXX - year.ext>', canonical_path
+        if len(parts) != 4 or parts[0] != 'series' or parts[2] != '\u7279\u5178':
+            return False, 'tv_extra path must match /data/media_hub/series/<title>/<localized-extras>/<title - typeXX - year.ext>', canonical_path
     else:
         return False, f'unsupported media type: {media_type}', canonical_path
 

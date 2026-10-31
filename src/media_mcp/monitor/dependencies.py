@@ -19,14 +19,14 @@ def check_downloader(factory=Downloader):
 def main():
     result=check_downloader()
     if result['success']:
-        print('下载器 API 检查通过：qBittorrent '+result['version'])
+        print('Downloader API check passed: qBittorrent '+result['version'])
         return
     messages={
-        'downloader_auth_failed':'认证失败，请核对 QBITTORRENT_USERNAME / QBITTORRENT_PASSWORD 或本机免认证设置',
-        'invalid_downloader_response':'服务响应不是有效的 qBittorrent 版本，请检查下载器地址和端口',
-        'downloader_unavailable':'连接失败，请检查 QBITTORRENT_URL、下载器状态及网络',
+        'downloader_auth_failed':'Authentication failed; check QBITTORRENT_USERNAME / QBITTORRENT_PASSWORD or local authentication bypass settings',
+        'invalid_downloader_response':'The service did not return a valid qBittorrent version; check the downloader address and port',
+        'downloader_unavailable':'Connection failed; check QBITTORRENT_URL, downloader status and network access',
     }
-    raise SystemExit('下载器 API 检查未通过：'+messages[result['error_code']]+'。')
+    raise SystemExit('Downloader API check failed: '+messages[result['error_code']]+'.')
 
 
 if __name__=='__main__':

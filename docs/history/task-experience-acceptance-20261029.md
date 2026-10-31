@@ -1,45 +1,31 @@
-# 后台任务与核心流程验收 · 2026-10-29
+# Background task and core workflow acceptance: 2026-10-29
 
-## 实际故障与原任务
+## Original incident
 
-用户锁屏后看到超时。只读核查时，原任务 `e9895708d1cd4ff199b4ca409c724864` 仍在 NAS 执行：816 个文件已处理 221 个，library worker 租约及心跳正常；后续观察推进到 393 个。网页的进度默认折叠，查询异常后停止轮询，回到前台也不主动恢复；通用超时文案还将状态读取与提交混在一起，造成任务丢失的观感。
+After lockscreen timeout, read-only observation showed task `e9895708d1cd4ff199b4ca409c724864` still running on NAS: 221/816, healthy lease/heartbeat, later 393. Collapsed progress, polling termination after read errors, no foreground recovery and conflated read/submission timeout copy made work appear lost.
 
-原任务在部署本轮控制端前已达到 `completed_with_warnings`，816/816 个文件都有结果。其真实结果为：保存识别 60 个，附加分类 8 个，字幕就绪 14 个；22 个文件完整完成，794 个仍有未处理事项。其中 380 个匹配不可靠、38 个字幕未就绪、12 个直接报告 AI 限流、364 个在该轮 AI 不可用后保留原状。没有把遍历结束等同于全部识别成功，也没有通过改写原任务伪造成功。
+Before control deployment, the original task reached `completed_with_warnings`, 816/816 results: 60 identities saved, eight extras, 14 ready subtitles, 22 fully complete and 794 unresolved (380 unreliable matches, 38 unready subtitles, 12 direct rate limits, 364 retained after AI became unavailable). Traversal completion was not falsely reported as full success; original results were not rewritten.
 
-## 五项核心流程
+## Changes
 
-逐项行为和保留的必要选择见 [任务与使用体验](../task-experience.md)。
+[Task experience](../task-experience.md) describes discovery, automatic release search/default season, single explicit download action, dedicated maintenance progress/background summaries and existing automatic subtitle processing. Advanced options remain collapsed; actual stages/counts are separate.
 
-- 热门：移除占屏宣传块，保留媒体、来源、评分与更新时间。
-- 搜索：打开作品即自动搜索资源；剧集使用可见的默认季，年份、集数与清晰度等选项折叠。搜索、作品及任务地址支持恢复。
-- 下载：一次明确点击即创建持久任务，不再二次确认同一个资源。下载、整理和字幕各自显示实际阶段及计数。
-- 整理过滤：点击后直接进入独立进度页；其他页面有后台摘要，任务中心可找回历史任务，保留自动分类与安全补链边界。
-- 字幕：继续复用现有自动处理链路；正常下载/整理无需额外提交。显示就绪、缺失、失败与复核结果，逐文件展开已有字幕记录、脱敏原因和当前映射记录。
+Lightweight status SQL excludes frozen snapshots and filesystem/lock work; details paginate every success/issue. Old worker substeps remain readable; terminal tasks no longer claim active research. Foreground/network/page restoration triggers reads, preserving stale observations with backoff. Lost receipts reconcile per-user original keys without mutation replay. Request ownership prevents concurrent initialization/poll/results from clearing completed details; session changes clear caches and permission checks remain.
 
-全局任务监控与文件结果查询分开：状态 SQL 不传输完整冻结快照，不扫描媒体或取得变更锁；结果分页查看成功项及全部异常。旧 worker 任务也能显示子任务的探测/检索进度。仅在识别阶段显示识别子进度，终态不继续显示“正在检索”。
+## Disposable results
 
-锁屏、网络恢复、页面恢复时立即重新查询，网络异常保留旧进度并标记、退避重连。提交回执丢失时按用户保存的同一请求标识只读核对，不自动重发变更。页面初始化、轮询与结果切换之间保留请求归属，避免已完成任务详情被并发读取清空。会话切换清除缓存，读取继续检查拥有者和当前权限。
+Python 213/frontend 12 passed, including reads while mutation lock held, no scanning, substep/lease evidence, >50 issue pagination, read-only idempotency lookup, owner isolation, old-worker reasons, redaction and control-only deployment. Real HTTP covered gateway/static task modules. Browser suites: task experience, automatic flow, collections, compact extras, advanced AI.
 
-## 隔离验证
+Core fixture task had 45 files: 44 identities, 30 new links, six extras, 38 ready subtitles and one unknown. All results paginated. Hidden/offline restoration, polling timeout, refresh/reopen and lost download/maintenance receipts did not duplicate submission. Stages/reasons/confidence, discovery→release search, single download/default season and search restoration passed. Bilingual 320–1440px had no overflow/JS errors.
 
-- Python 全套 213 项通过。新增覆盖变更锁持有期间仍可查询、无媒体扫描、子步骤与有效租约、成功及超过 50 个异常的分页、幂等回执只读查找、拥有者隔离、旧 worker 理由回读、字幕诊断脱敏；control-only 更新不重启 worker/依赖。云端转发与任务静态模块经过实际 HTTP 测试。
-- 前端 12 项通过，包括断线自动重查、恢复时替换挂起的读取、隐藏期间停止读取及回到前台立即更新。
-- 五组浏览器通过：核心任务体验、原全自动流程、原合集维护、紧凑附加分类、高级 AI 预览。
-- 核心浏览器实际运行一次性 45 文件任务：自动识别保存 44 个、补建硬链接 30 个、附加分类 6 个、字幕就绪 38 个，1 个未知保留原因；全部文件可分页查看。模拟隐藏与断网后恢复、轮询连接超时、刷新/详情重开、丢失整理及下载回执均不重复提交；当前阶段、逐项理由与置信度可见。热门到自动搜资源、一键下载、默认季、搜索状态恢复均通过。
-- 320–1440px 无横向溢出，中英文按钮检查通过，无页面 JavaScript 错误。截图与 `result.json` 在 `/tmp/media-task-experience-acceptance/` 的五个流程子目录；核心为 `task_experience/`。
+Artifacts `/tmp/media-task-experience-acceptance/` across five flow directories, core `task_experience/`. Fictional providers/AI/subtitles used real HTTP/SQLite/queues/hardlinks and browser reconnect, not production downloader/subtitle quality or real iOS lockscreen. No new live AI tests or model-policy changes occurred.
 
-预览使用虚构媒体、Provider、AI、字幕服务，不连接真实下载器。真实 HTTP/SQLite/队列/硬链接和前端重连链路在一次性目录执行。浏览器隐藏与离线是锁屏/失联行为模拟，不冒充实机 iOS 锁屏，也不代表真实字幕质量验收。本轮未更改模型工具配置，未额外向真实 AI 发起测试请求。
+## Deployment boundaries
 
-## 控制端部署与公网边界
+`sh setup.sh local control` updated only NAS control after private backup; setup retained mode 100755. Worker ID/start time and dependencies were unchanged. Healthy services served task assets through HTTP. Original-task local read took about 0.015s excluding cloud networking; first page returned 25 issues with continuation. Observation did not change revision/queue count.
 
-使用 `sh setup.sh local control` 更新 NAS 控制端，部署前保留私有 SQLite 备份。新增该入口是为了将只读 API 更新与 worker 更新分开；Git 执行权限仍为 100755。Docker worker 的容器 ID 和启动时间部署前后完全相同，不重启识别，不重建依赖。
+Final installed API/service/views/assets matched source; app SHA256 `4a8732c155c8621d9d99630a6bdb9ac0b7904e9d312801fe4bb573d9c46d4474`. Row/column backup comparison retained 807 mappings, 2879 inventory, 52 identities, 60 classifications and 215 `library_%` rows. No production acceptance/replay.
 
-部署就绪检查通过；control / worker 均 healthy，新任务静态模块由实际 HTTP 正常提供。原任务控制进程内只读状态查询耗时约 0.015 秒（不含云端网络），详情第一页 25 个异常并可继续分页。只读观察没有改变任务 revision 或处理队列数量。
+Evidence: `/tmp/media-task-full-tests.log`, `/tmp/media-task-node-final-tests.log`, `/tmp/media-task-browser-suite.log`, `/tmp/media-task-installed-final-observation.log`, `/tmp/media-task-data-integrity.log`.
 
-最后一次控制端重建已通过。安装的 API、服务、任务视图及静态模块 SHA256 与最终源码一致；主网页模块为 `4a8732c155c8621d9d99630a6bdb9ac0b7904e9d312801fe4bb573d9c46d4474`。与本轮部署前私有备份逐行、逐列比较：807 条映射、2879 条索引、52 条身份、60 条分类和 215 条 `library_%` 记录全部保持一致。没有对生产库运行验收任务或重发用户任务。
-
-证据：`/tmp/media-task-full-tests.log`、`/tmp/media-task-node-final-tests.log`、`/tmp/media-task-browser-suite.log`、`/tmp/media-task-installed-final-observation.log`、`/tmp/media-task-data-integrity.log`。
-
-cloud 无可用部署入口，仓库也无自动部署工作流。本轮不声称公网网页已更新；云端项目拉取提交后执行 `sh setup.sh cloud`，再刷新网页，才能获得任务入口、自动重连和简化后的页面。分类、整理和字幕仍由 NAS worker 执行。
-
-`.env`、SQLite、状态、备份及凭据不提交；原有 `docs/standalone.md`、`tests/manual/acceptance_sqlite.py` 的换行改动不纳入本轮。
+Cloud access/automatic deployment were unavailable. Pull and `sh setup.sh cloud` remained necessary for public task/reconnect/UI changes. NAS workers still handled classification/linking/subtitles. Private state/config/backups/credentials and original standalone/manual line-ending changes were excluded.

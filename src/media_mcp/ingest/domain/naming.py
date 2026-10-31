@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 naming.py
-统一媒体展示名与路径基名，避免中英文混用、重复括号名。
+Normalize media display names and path basenames without duplicate parenthesized titles.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import re
 from typing import Optional
 
 SEASON_SUFFIX_PATTERNS = [
-    re.compile(r'\s*第\s*[一二三四五六七八九十0-9]+\s*季\s*$', re.IGNORECASE),
+    re.compile('\\s*\u7b2c\\s*[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u53410-9]+\\s*\u5b63\\s*$', re.IGNORECASE),
     re.compile(r'\s*Season\s*\d+\s*$', re.IGNORECASE),
     re.compile(r'\s*S\d+\s*$', re.IGNORECASE),
 ]

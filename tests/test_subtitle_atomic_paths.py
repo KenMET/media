@@ -14,8 +14,36 @@ from media_mcp.subtitle.domain.translation import SubtitleTranslationError, writ
 
 
 class SubtitleAtomicPathTests(unittest.TestCase):
+    def test_english_cross_device_error_keeps_explicit_copy_fallback_working(self):
+        import errno
+        from media_mcp.ingest.domain.file_utils import create_hardlink
+        from media_mcp.subtitle.services.subtitle_agent import SubtitleAgent
+        from media_mcp.subtitle.services import dependencies
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder, 'source.srt'); source.write_bytes(b'subtitle bytes')
+            target = Path(folder, 'library', 'movie.srt')
+            with patch('media_mcp.ingest.domain.file_utils.os.link', side_effect=OSError(errno.EXDEV, 'Cross-device link')):
+                linked, reason = create_hardlink(str(source), str(target))
+            self.assertFalse(linked)
+            candidate = SimpleNamespace(path=str(source), extension='.srt', language='en', subtitle_type='normal')
+            agent = SubtitleAgent.__new__(SubtitleAgent)
+            with (
+                patch.object(agent, '_canonicalize_numbered_sidecar', return_value=candidate),
+                patch.object(agent, '_is_existing_target_sidecar', return_value=False),
+                patch.object(dependencies, 'build_sidecar_path', return_value=str(target)),
+                patch.object(dependencies, 'create_hardlink', return_value=(False, reason)),
+                patch.object(dependencies, 'ALLOW_COPY_FALLBACK', True),
+                patch.object(dependencies, 'assert_mutation_lock'),
+                patch.object(dependencies, 'upsert_media_subtitle'),
+            ):
+                self.assertEqual(agent._process_sidecar({'target_path':str(Path(folder, 'movie.mkv'))}, candidate), 'copied')
+            self.assertEqual(source.read_bytes(), b'subtitle bytes')
+            self.assertEqual(target.read_bytes(), source.read_bytes())
+            self.assertNotEqual(source.stat().st_ino, target.stat().st_ino)
+            self.assertEqual(list(target.parent.iterdir()), [target])
+
     def target(self, folder, extension='.srt'):
-        return Path(folder, '字' * 78 + extension)
+        return Path(folder, '\u5b57' * 78 + extension)
 
     def test_extraction_supports_long_utf8_name_and_cleans_staging(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -60,9 +88,9 @@ class SubtitleAtomicPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             source=Path(folder,'source.ass');source.write_text('source bytes')
             target=self.target(folder,'.ass');os.link(source,target)
-            write_text_atomic(str(target),'新的中文字幕\n')
+            write_text_atomic(str(target),'\u65b0\u7684\u4e2d\u6587\u5b57\u5e55\n')
             self.assertEqual(source.read_text(),'source bytes')
-            self.assertEqual(target.read_text(),'新的中文字幕\n')
+            self.assertEqual(target.read_text(),'\u65b0\u7684\u4e2d\u6587\u5b57\u5e55\n')
             self.assertFalse(os.path.samefile(source,target))
             self.assertEqual(set(Path(folder).iterdir()),{source,target})
 
@@ -107,13 +135,13 @@ class SubtitleAtomicPathTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which('ffmpeg'),'ffmpeg required for real extraction')
     def test_real_ffmpeg_extracts_to_long_name_without_changing_video(self):
         with tempfile.TemporaryDirectory() as folder:
-            subtitle=Path(folder,'input.srt');subtitle.write_text('1\n00:00:00,000 --> 00:00:00,900\n这是中文字幕\n')
+            subtitle=Path(folder,'input.srt');subtitle.write_text('1\n00:00:00,000 --> 00:00:00,900\n\u8fd9\u662f\u4e2d\u6587\u5b57\u5e55\n')
             video=Path(folder,'input.mkv')
             subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','color=c=black:s=16x16:d=1:r=1',
                 '-i',str(subtitle),'-map','0:v','-map','1:0','-c:v','ffv1','-c:s','srt','-threads','1','-t','1',str(video)],check=True,capture_output=True,timeout=30)
             before=hashlib.sha256(video.read_bytes()).hexdigest();target=self.target(folder)
             stream=EmbeddedSubtitleStream(1,1,'subrip','zh-CN','chi','Chinese','normal',False,False)
             self.assertEqual(extract_embedded_subtitle(str(video),stream,str(target)),(True,'embedded_extracted'))
-            self.assertIn('这是中文字幕',target.read_text())
+            self.assertIn('\u8fd9\u662f\u4e2d\u6587\u5b57\u5e55',target.read_text())
             self.assertEqual(hashlib.sha256(video.read_bytes()).hexdigest(),before)
             self.assertEqual(set(Path(folder).iterdir()),{subtitle,video,target})

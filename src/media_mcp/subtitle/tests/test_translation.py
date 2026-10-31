@@ -45,7 +45,7 @@ class SubtitleTranslationTest(unittest.TestCase):
         events = parse_text_subtitle(path)
         rendered = render_bilingual_ass(
             events,
-            ['你好，约翰。', '你在哪里？'],
+            ['\u4f60\u597d，\u7ea6\u7ff0。', '\u4f60\u5728\u54ea\u91cc？'],
             chinese_font_size=54,
             source_font_size=40,
         )
@@ -54,7 +54,7 @@ class SubtitleTranslationTest(unittest.TestCase):
         self.assertIn('Style: Chinese,Arial,54', rendered)
         self.assertIn('Style: Source,Arial,40', rendered)
         self.assertIn('Dialogue: 0,0:00:01.00,0:00:03.50,Chinese', rendered)
-        self.assertIn('你好，约翰。', rendered)
+        self.assertIn('\u4f60\u597d，\u7ea6\u7ff0。', rendered)
         self.assertIn(r'\N{\rSource}Hello, John.', rendered)
         self.assertIn('Hello, John.', rendered)
 
@@ -102,7 +102,7 @@ class SubtitleTranslationTest(unittest.TestCase):
             return {
                 'success': True,
                 'translations': [
-                    {'id': item['id'], 'zh': f'译文{item["id"]}'}
+                    {'id': item['id'], 'zh': f'\u8bd1\u6587{item["id"]}'}
                     for item in payload['batch']['entries']
                 ],
             }
@@ -116,10 +116,10 @@ class SubtitleTranslationTest(unittest.TestCase):
             max_characters=100,
         )
 
-        self.assertEqual(['译文1', '译文2'], translations)
+        self.assertEqual(['\u8bd1\u65871', '\u8bd1\u65872'], translations)
         self.assertEqual([], payloads[0]['previous_context'])
         self.assertEqual(
-            [{'source': 'Hello.', 'zh': '译文1'}],
+            [{'source': 'Hello.', 'zh': '\u8bd1\u65871'}],
             payloads[1]['previous_context'],
         )
 
@@ -140,7 +140,7 @@ class SubtitleTranslationTest(unittest.TestCase):
             return {
                 'success': True,
                 'translations': [
-                    {'id': item['id'], 'zh': f'译文{item["id"]}'}
+                    {'id': item['id'], 'zh': f'\u8bd1\u6587{item["id"]}'}
                     for item in payload['batch']['entries']
                 ],
             }
@@ -170,7 +170,7 @@ class SubtitleTranslationTest(unittest.TestCase):
             calls.append(payload)
             if len(calls) == 1:
                 return {'success': True, 'translations': []}
-            return {'success': True, 'translations': [{'id': 1, 'zh': '你好'}]}
+            return {'success': True, 'translations': [{'id': 1, 'zh': '\u4f60\u597d'}]}
 
         translations = translate_events(
             events,
@@ -179,7 +179,7 @@ class SubtitleTranslationTest(unittest.TestCase):
             'en',
         )
 
-        self.assertEqual(['你好'], translations)
+        self.assertEqual(['\u4f60\u597d'], translations)
         self.assertEqual([1], [item['id'] for item in calls[1]['batch']['entries']])
 
     def test_missing_id_retry_bounds_context_and_cannot_overwrite_accepted_lines(self):
@@ -189,14 +189,14 @@ class SubtitleTranslationTest(unittest.TestCase):
         def translator(payload):
             calls.append(payload)
             if len(calls)==1:
-                return {'success':True,'translations':[{'id':i,'zh':'已译'+str(i)} for i in range(3,31)]}
-            return {'success':True,'translations':[{'id':3,'zh':'错误覆盖'},
-                {'id':1,'zh':'第一句'},{'id':2,'zh':'第二句'}]}
+                return {'success':True,'translations':[{'id':i,'zh':'\u5df2\u8bd1'+str(i)} for i in range(3,31)]}
+            return {'success':True,'translations':[{'id':3,'zh':'\u9519\u8bef\u8986\u76d6'},
+                {'id':1,'zh':'\u7b2c\u4e00\u53e5'},{'id':2,'zh':'\u7b2c\u4e8c\u53e5'}]}
         translated=translate_events(events,translator,{'title':'fixture'},'en')
         self.assertEqual(2,len(calls))
         self.assertEqual([1,2],[entry['id'] for entry in calls[1]['batch']['entries']])
         self.assertLessEqual(len(calls[1]['recovered_context']),5)
-        self.assertEqual(['第一句','第二句','已译3'],translated[:3])
+        self.assertEqual(['\u7b2c\u4e00\u53e5','\u7b2c\u4e8c\u53e5','\u5df2\u8bd13'],translated[:3])
         self.assertEqual(30,len(translated))
 
     def test_translation_rejects_ids_missing_after_retries(self):
@@ -351,31 +351,31 @@ class SubtitleTranslationTest(unittest.TestCase):
             )
             archive.writestr(
                 'movie.zh-TW.srt',
-                '1\n00:00:01,000 --> 00:00:02,000\n這是一段繁體中文字幕內容。\n\n'
-                '2\n00:00:03,000 --> 00:00:04,000\n角色正在進行對話。\n\n'
-                '3\n00:00:05,000 --> 00:00:06,000\n字幕應該被正確選中。\n\n'
-                '4\n00:00:07,000 --> 00:00:08,000\n這不是英文字幕。\n\n'
-                '5\n00:00:09,000 --> 00:00:10,000\n最後一行中文字幕。\n',
+                '1\n00:00:01,000 --> 00:00:02,000\n\u9019\u662f\u4e00\u6bb5\u7e41\u9ad4\u4e2d\u6587\u5b57\u5e55\u5167\u5bb9。\n\n'
+                '2\n00:00:03,000 --> 00:00:04,000\n\u89d2\u8272\u6b63\u5728\u9032\u884c\u5c0d\u8a71。\n\n'
+                '3\n00:00:05,000 --> 00:00:06,000\n\u5b57\u5e55\u61c9\u8a72\u88ab\u6b63\u78ba\u9078\u4e2d。\n\n'
+                '4\n00:00:07,000 --> 00:00:08,000\n\u9019\u4e0d\u662f\u82f1\u6587\u5b57\u5e55。\n\n'
+                '5\n00:00:09,000 --> 00:00:10,000\n\u6700\u5f8c\u4e00\u884c\u4e2d\u6587\u5b57\u5e55。\n',
             )
 
         validated = validate_online_subtitle(buffer.getvalue(), 'subtitle.zip')
 
         self.assertEqual('.srt', validated.extension)
-        self.assertIn('繁體中文字幕', validated.content.decode('utf-8'))
+        self.assertIn('\u7e41\u9ad4\u4e2d\u6587\u5b57\u5e55', validated.content.decode('utf-8'))
 
     def test_online_subtitle_accepts_utf16_chinese(self):
         text = (
-            '1\n00:00:01,000 --> 00:00:02,000\n這是第一行中文字幕。\n\n'
-            '2\n00:00:03,000 --> 00:00:04,000\n這是第二行中文字幕。\n\n'
-            '3\n00:00:05,000 --> 00:00:06,000\n這是第三行中文字幕。\n\n'
-            '4\n00:00:07,000 --> 00:00:08,000\n這是第四行中文字幕。\n\n'
-            '5\n00:00:09,000 --> 00:00:10,000\n這是第五行中文字幕。\n'
+            '1\n00:00:01,000 --> 00:00:02,000\n\u9019\u662f\u7b2c\u4e00\u884c\u4e2d\u6587\u5b57\u5e55。\n\n'
+            '2\n00:00:03,000 --> 00:00:04,000\n\u9019\u662f\u7b2c\u4e8c\u884c\u4e2d\u6587\u5b57\u5e55。\n\n'
+            '3\n00:00:05,000 --> 00:00:06,000\n\u9019\u662f\u7b2c\u4e09\u884c\u4e2d\u6587\u5b57\u5e55。\n\n'
+            '4\n00:00:07,000 --> 00:00:08,000\n\u9019\u662f\u7b2c\u56db\u884c\u4e2d\u6587\u5b57\u5e55。\n\n'
+            '5\n00:00:09,000 --> 00:00:10,000\n\u9019\u662f\u7b2c\u4e94\u884c\u4e2d\u6587\u5b57\u5e55。\n'
         )
 
         validated = validate_online_subtitle(text.encode('utf-16'), 'movie.srt')
 
         self.assertEqual('utf-16', validated.encoding)
-        self.assertIn('中文字幕', validated.content.decode('utf-8'))
+        self.assertIn('\u4e2d\u6587\u5b57\u5e55', validated.content.decode('utf-8'))
 
 
 if __name__ == '__main__':

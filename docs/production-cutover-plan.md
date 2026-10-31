@@ -1,67 +1,63 @@
-# 旧 Media 数据复用与云端/本地正式部署方案
+# Production cutover and legacy Media reuse
 
-2026-10-26。按用户需求检查旧 `phantom_slayer/apps/media` 和实际旧运行环境；本次仅做只读预检，不进行正式切换、停机或媒体变更。
+2026-10-26. Read-only preflight of `phantom_slayer/apps/media` and the actual old runtime; no production cutover, shutdown or media mutation occurred in this inspection.
 
-部署入口已简化，当前推荐配置见 [两端精简部署](split-deployment.md)。新 cloud 默认复用现有本机反代，无需重复域名配置；内部认证通过私有 FRP 首次自动配对，不再要求手工同步 token。下文网络配置段是最初方案，数据迁移边界保持有效。
+Current configuration is in [split deployment](split-deployment.md): reuse the existing reverse proxy and private FRP, with automatic initial service pairing. The migration boundaries below remain valid even though the original network plan evolved.
 
-## 已确认的现状
+## Observed state
 
-- 旧 `media-monitor` 与共享 `phantom-mysql` 正在运行。旧 media 使用 MySQL，新项目使用本地 SQLite；没有一个 `.env` 选项能让当前新项目直接改用旧 MySQL。
-- 只读事务查询得到：`media_link` 808 条、`media_subtitle` 1242 条、`tmdb_cache` 210 条，媒体映射均标记 linked。实际检查的旧库不存在 `media_processing_job` 和 `media_version_change`，不能把仓库里较新源码的表结构当成线上已经部署的结构。
-- 旧容器使用 `/data:/data`，源目录 `/data/downloads`、目标 `/data/media_hub` 存在。仅抽样前 32 条 linked 记录：32 组文件均存在、路径在预期根目录下、源/目标同设备同 inode；未全量遍历或读取所有视频。
-- 旧监控运行配置指向本机下载器端口 8100；无认证读取其版本接口返回 403，正式接入仍需使用已有私有认证配置。本次没有尝试默认密码或修改认证。
-- 新旧项目有对应的媒体、字幕、TMDB 缓存数据模型，适合转换导入。已有文件和硬链接可以原样保留，迁移数据库不需要重建它们。
-- 当前没有正式的 MySQL→SQLite 迁移命令。旧库的 SQL dump/数据目录也不能当成 SQLite 文件；正式接管前必须补导出、字段转换、校验和 dry-run/报告流程。
+- Old `media-monitor` and shared `phantom-mysql` were running. Old Media uses MySQL; this project uses local SQLite. No `.env` switch connects the new runtime directly to old MySQL.
+- Read-only transactions found `media_link` 808 rows, `media_subtitle` 1242, `tmdb_cache` 210, with mappings marked linked. The actual old database lacked `media_processing_job` and `media_version_change`; newer repository schemas were not deployed evidence.
+- Old container mounted `/data:/data`; `/data/downloads` and `/data/media_hub` existed. Only the first 32 linked pairs were sampled: all existed within expected roots with matching device/inode. This was not a full scan or full video read.
+- Old downloader configuration targeted port 8100. Unauthenticated version access returned 403. Existing private credentials are required; no default-password attempt or authentication change occurred.
+- Corresponding media/subtitle/TMDB models support conversion while retaining existing files/hardlinks.
+- No completed MySQL→SQLite migration command was established. Dumps/data directories are not SQLite; export, conversion, validation and dry-run reporting must precede adoption.
 
-## 拓扑
+## Topology
 
-| 新加坡 | 大陆 NAS |
+| Singapore/cloud | Mainland NAS |
 | --- | --- |
-| HTTPS 网站入口、网页网关、Jackett/索引访问、可选同域 MCP、FRPS 或 VPN | 现有 qBittorrent、本地控制 API、worker、正式 SQLite、下载文件、硬链接库、模型凭据/连接 |
+| HTTPS web/gateway, Jackett/indexers, optional same-origin MCP, FRPS/VPN | Existing qBittorrent, control API, workers, production SQLite, downloads/library, model connection/credentials |
 
-云端不挂载下载文件/视频目录，也不持有正式媒体数据库。浏览器/AI 请求经认证入口到本地控制端；本地 worker 访问已有下载器，完成文件操作。已有 qBittorrent URL 配置非空，因此 `setup.sh local` 不启动第二个下载器。
+Cloud mounts neither videos nor production media database. Authenticated requests reach NAS, whose workers handle files. A nonempty existing downloader URL avoids a second downloader.
 
-最小可行的 FRP 路线：本地控制端明确监听 NAS 的 `192.168.8.1:18213`，同机 host 网络的 FRPC 使用相同本地 IP 和端口，转发到云端 **仅回环绑定** 的例如 `28213`；云端只填 `MEDIA_CLOUD_CONTROL_PORT=28213`。所有搜索及种子获取均由云端完成，NAS 不需要云端地址；内部凭据首次自动配对，仅接受本机自连接。不能把原始控制 API/FRP 控制转发端口开放公网。
+Suggested FRP: NAS explicit `192.168.8.1:18213`, same-host FRPC local target, cloud loopback mapping such as `28213`; set only cloud `MEDIA_CLOUD_CONTROL_PORT=28213`. Cloud handles search/torrents; initial pairing accepts only local self-connections. Never expose raw control/FRP ports publicly.
 
-云端网页/MCP 后端可分别监听回环 `18214`/`18210`，现有 HTTPS 反代将网站和 `/mcp` 路由到对应服务，保留 Host 并覆盖/追加真实客户端来源。新反代模式不要求域名变量；具体 Docker 反代配置见两端部署文档。这只是部署方案，尚未验证实际域名、证书或云端 FRPS 配置。
+The original backend plan used loopback web/MCP 18214/18210 behind HTTPS with Host and actual client provenance. Current Docker proxy details are in split deployment. This plan did not verify a real domain, certificate or FRPS configuration. Existing VPN is another option, requiring reachable addresses, probes and host policy rather than blindly replacing loopback URLs.
 
-也可使用已有 VPN 双向私网通道；届时应按实际私网地址设置监听、健康探针和允许 Host，不能只把回环 URL 替换成一个不可达的远程地址。
+## Paths
 
-## 路径与已有文件
-
-优先保留当前 `/data/downloads` 和 `/data/media_hub` 的容器内路径。这样旧库路径无需改写，下载器返回的 content_path 也更容易保持一致。
-
-本地配置示意（不是已可执行的生产配置）：
+Prefer preserving in-container `/data/downloads` and `/data/media_hub` so old records and downloader content paths remain valid. Illustrative configuration, not approved production settings:
 
 ```dotenv
 MEDIA_LOCAL_DATA_DIR=/data
-MEDIA_LOCAL_STATE_PATH=/你的本地磁盘/media-production-state
+MEDIA_LOCAL_STATE_PATH=/local-disk/media-production-state
 MEDIA_DOWNLOAD_ROOT=/data/downloads
 MEDIA_LIBRARY_ROOT=/data/media_hub
-QBITTORRENT_URL=http://你的已有下载器地址:端口
+QBITTORRENT_URL=http://existing-downloader:port
 MEDIA_LOCAL_CONTROL_BIND=192.168.8.1
 MEDIA_LOCAL_CONTROL_PORT=18213
 ```
 
-下载器认证、模型凭据与 control-token 留在私有 `.env`/文件中。`MEDIA_LOCAL_STATE_PATH` 必须在 NAS 本机磁盘上，不能指向 Windows SMB 挂载的 SQLite。
+Keep authentication/model/service tokens private. SQLite state must be on NAS local storage, not a Windows SMB mount.
 
-可以选择其他目录，但要区分宿主机路径和容器内路径，并明确完整映射。下载器返回的路径必须在 worker 中原样可见；目前没有任意路径翻译。下载根和硬链接目标须在同一文件系统，并通过**共同父目录的一次挂载**保留硬链接能力；不能默认分别挂载两个目录后就能跨挂载点 link，即便宿主机看起来是同一块盘。不同磁盘只能另选复制方案，当前硬链接模式不会自动回退复制。
+For alternate roots, document complete host/container mappings. Downloader paths must exist unchanged in workers. Use one common-parent mount to preserve hardlinks; separately mounting two paths can prevent `link` even on one host disk. Cross-filesystem operation does not silently fall back to copying.
 
-核心下载/目标根支持环境变量，但旧式全量扫描入口仍有 `/data/downloads` 常量，字幕全量根还有 `SUBTITLE_SCAN_ROOT`。若更换容器内路径，需统一这些入口、改写导入记录的路径与路径哈希并回归；不能声称只修改两个 `.env` 值就已验证所有扫描方式。初次接管建议不搬旧文件。
+Some legacy full-scan paths retain `/data/downloads`, and subtitle scans have `SUBTITLE_SCAN_ROOT`. Alternate container paths require auditing every entrypoint plus imported paths/hashes and regression. Two changed environment values do not establish complete scan compatibility. Avoid moving old files at initial cutover.
 
-## 数据迁移与兼容边界
+## Migration requirements
 
-1. 导出三张相关表和结构到私有快照，保留整个旧 MySQL 的既有备份方案；不迁移 Quant/Crawler/用户等其他表，也不停止共享 MySQL。
-2. 在隔离 SQLite 副本初始化新结构，检查列、时间/JSON 类型、重复源/目标哈希及路径冲突，转换导入媒体映射、字幕关联和 TMDB 缓存。导入应可 dry-run、重复运行不重复记录，并保留源行标识/迁移清单。
-3. 核对全量记录计数、文件存在性、路径范围、inode/device，以及字幕目标关联。缺失文件/冲突单独报告，不能自动改名、重建或删除。现有 32 条抽样不是全量验收。
-4. 导入的是媒体库记录，不是新系统 acquisition 任务。旧下载器中的下载/做种任务保持原状，不补 `media-mcp` 标签、不冒领；因此不会自动出现在新下载历史或恢复为新系统下载队列。确需历史展示，可另做有明确来源的只读历史导入，不能伪造新任务身份。
-5. 新系统账号/令牌、任务权限需要初始化。导入媒体默认管理员/具有媒体管理能力的用户可见，普通下载用户不自动获得所有旧媒体的访问权；不猜测历史所有者。
-6. 对 downloads 中“有文件但没有旧映射”的内容另生成只读待核对清单，不在切换启动时自动全库重识别/重建硬链接。
+1. Privately export the three relevant tables and schemas while retaining existing whole-MySQL backups. Do not migrate unrelated Quant/Crawler/account tables or stop shared MySQL.
+2. Initialize an isolated SQLite copy, validate columns/time/JSON types, duplicate hashes and conflicts. Convert media mappings, subtitle associations and TMDB cache with dry-run, idempotence and source-row manifests.
+3. Verify all counts, existence, path bounds, device/inode and subtitle associations. Report missing/conflicting files without automatic rename/rebuild/deletion. The 32-row sample is insufficient.
+4. Import library records, not fabricated acquisition jobs. Existing downloader/seeding tasks remain unchanged and untagged; they do not become new download history or queue ownership. Any historical view must explicitly retain its read-only provenance.
+5. Initialize accounts/tokens/grants. Imported media is visible to administrators/media managers, not automatically all ordinary users. Do not guess historical ownership.
+6. Inventory downloaded files without old mappings separately for read-only review; do not trigger whole-library reidentification at startup.
 
-## 切换顺序
+## Cutover sequence
 
-先完成导入工具和隔离演练，准备生产配置但不启动 worker；网站先连接生产状态的导入副本，核对媒体展示。正式窗口暂停旧 `media-monitor` 及其他实际会写相同目录的任务，做最终一致性导出/增量校验，再启动唯一的新 worker。MySQL 锁与 SQLite 文件锁互不协调，不能让新旧写入者并跑同一媒体库。
+Complete tooling and disposable rehearsal first. Prepare production settings with workers stopped; inspect an imported-state copy through the website. During the actual window, pause old `media-monitor` and all writers of the same directories, take a consistent final export/incremental check, then start the sole new worker. MySQL locks and SQLite filesystem locks do not coordinate concurrent old/new writers.
 
-保留旧数据库、容器配置和一致性快照用于回滚。回滚时先停新写入者，核对切换后产生的新记录/文件变更，再恢复匹配的旧状态；不能承诺简单启动旧监控就无损回滚。整个过程不删除视频、不停止或重建已有下载器，也不把目前的 18414 测试数据库直接当作生产库。
+Retain old database, container configuration and consistent snapshots. For rollback, stop new writers and reconcile post-cutover records/files before restoring matching old state. Restarting old monitoring alone does not guarantee lossless rollback. Do not delete videos, restart/rebuild the existing downloader, or use the port-18414 test database as production.
 
-云端实际目录、现有 Jackett 状态、HTTPS 域名/SSH 和用户最终选择的两个目录还需确认。正式执行命令仍是准备完成后的 `sh setup.sh local` / `sh setup.sh cloud`；现在不能跳过迁移直接对旧目录执行启动。
+Cloud directory, existing Jackett, HTTPS/SSH access and final host paths remained unresolved in this preflight. Actual execution remains `sh setup.sh local` / `sh setup.sh cloud` only after preparation; do not bypass migration by starting against legacy media.

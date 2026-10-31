@@ -97,17 +97,17 @@ def detect_language(text: str, sample: list[str] | None = None) -> str | None:
 
     has_bilingual_marker = _contains_any(
         lowered,
-        ('bilingual', 'dual', 'chs&eng', 'chi&eng', 'zh&en', '简英', '中英', '双语', '简体&英文'),
+        ('bilingual', 'dual', 'chs&eng', 'chi&eng', 'zh&en', '\u7b80\u82f1', '\u4e2d\u82f1', '\u53cc\u8bed', '\u7b80\u4f53&\u82f1\u6587'),
     )
     has_simplified_marker = _contains_any(
         lowered,
-        ('zh-cn', 'zh_cn', 'zh-hans', 'zhs', 'chs', 'gb', 'simplified', 'simplified chinese', '简体', '简中', '简'),
+        ('zh-cn', 'zh_cn', 'zh-hans', 'zhs', 'chs', 'gb', 'simplified', 'simplified chinese', '\u7b80\u4f53', '\u7b80\u4e2d', '\u7b80'),
     )
     has_traditional_marker = _contains_any(
         lowered,
-        ('zh-tw', 'zh_tw', 'zh-hk', 'zh_hk', 'zh-hant', 'zht', 'cht', 'big5', 'traditional', 'traditional chinese', '繁体', '繁中', '繁'),
+        ('zh-tw', 'zh_tw', 'zh-hk', 'zh_hk', 'zh-hant', 'zht', 'cht', 'big5', 'traditional', 'traditional chinese', '\u7e41\u4f53', '\u7e41\u4e2d', '\u7e41'),
     )
-    has_zh_marker = _contains_any(lowered, ('zh', 'chi', 'zho', 'cmn', 'chinese', '中文', '中字'))
+    has_zh_marker = _contains_any(lowered, ('zh', 'chi', 'zho', 'cmn', 'chinese', '\u4e2d\u6587', '\u4e2d\u5b57'))
 
     if has_bilingual_marker and (has_simplified_marker or _looks_simplified(joined_sample)):
         return 'zh-CN-bilingual'
@@ -174,8 +174,8 @@ def analyze_subtitle_sample(sample: list[str] | None) -> dict[str, int | float |
     text = '\n'.join(content_lines)
     chinese_count = sum('\u3400' <= char <= '\u9fff' for char in text)
     latin_count = sum(char.isascii() and char.isalpha() for char in text)
-    simplified_count = sum(char in '这为国汉后发话里们来时会个门见说车东与云无过还进开关听写体学万长么从对头样' for char in text)
-    traditional_count = sum(char in '這為國漢後發話裡們來時會個門見說車東與雲無過還進開關聽寫體學萬長麼從對頭樣' for char in text)
+    simplified_count = sum(char in '\u8fd9\u4e3a\u56fd\u6c49\u540e\u53d1\u8bdd\u91cc\u4eec\u6765\u65f6\u4f1a\u4e2a\u95e8\u89c1\u8bf4\u8f66\u4e1c\u4e0e\u4e91\u65e0\u8fc7\u8fd8\u8fdb\u5f00\u5173\u542c\u5199\u4f53\u5b66\u4e07\u957f\u4e48\u4ece\u5bf9\u5934\u6837' for char in text)
+    traditional_count = sum(char in '\u9019\u70ba\u570b\u6f22\u5f8c\u767c\u8a71\u88e1\u5011\u4f86\u6642\u6703\u500b\u9580\u898b\u8aaa\u8eca\u6771\u8207\u96f2\u7121\u904e\u9084\u9032\u958b\u95dc\u807d\u5beb\u9ad4\u5b78\u842c\u9577\u9ebc\u5f9e\u5c0d\u982d\u6a23' for char in text)
     bilingual_lines = sum(
         any('\u3400' <= char <= '\u9fff' for char in line)
         and any(char.isascii() and char.isalpha() for char in line)
@@ -260,17 +260,17 @@ def analyze_subtitle_sample(sample: list[str] | None) -> dict[str, int | float |
 
 def detect_subtitle_type(text: str, language: str | None = None) -> str | None:
     lowered = text.lower()
-    if any(marker in lowered for marker in ('commentary', '评论', '導評', '导评')):
+    if any(marker in lowered for marker in ('commentary', '\u8bc4\u8bba', '\u5c0e\u8a55', '\u5bfc\u8bc4')):
         return 'commentary'
     if re.search(r'\b(?:signs|songs)(?:\s*(?:&|/|and)\s*(?:signs|songs))?\b', lowered):
         return 'forced'
-    if any(marker in lowered for marker in ('forced', '强制', '強制')):
+    if any(marker in lowered for marker in ('forced', '\u5f3a\u5236', '\u5f37\u5236')):
         return 'forced'
-    if any(marker in lowered for marker in ('sdh', 'cc', 'hearing impaired', '听障', '聽障')):
+    if any(marker in lowered for marker in ('sdh', 'cc', 'hearing impaired', '\u542c\u969c', '\u807d\u969c')):
         return 'sdh'
     if language == 'zh-CN-bilingual':
         return 'bilingual'
-    if any(marker in lowered for marker in ('bilingual', 'dual', '双语', '中英', '简英')):
+    if any(marker in lowered for marker in ('bilingual', 'dual', '\u53cc\u8bed', '\u4e2d\u82f1', '\u7b80\u82f1')):
         return 'bilingual'
     return 'normal'
 
@@ -283,7 +283,7 @@ def parse_episode_markers(text: str) -> tuple[int | None, int | None]:
     match = re.search(r'(\d{1,2})x(\d{1,3})', lowered)
     if match:
         return int(match.group(1)), int(match.group(2))
-    match = re.search(r'(?:ep?|第)\s*(\d{1,3})\s*(?:集|话|話)?', lowered)
+    match = re.search('(?:ep?|\u7b2c)\\s*(\\d{1,3})\\s*(?:\u96c6|\u8bdd|\u8a71)?', lowered)
     if match:
         return None, int(match.group(1))
     return None, None
@@ -321,8 +321,8 @@ def parse_subtitle_candidate(path: str) -> SubtitleCandidate:
 
 
 def _looks_simplified(text: str) -> bool:
-    return any(ch in text for ch in '简体国汉后发话')
+    return any(ch in text for ch in '\u7b80\u4f53\u56fd\u6c49\u540e\u53d1\u8bdd')
 
 
 def _looks_traditional(text: str) -> bool:
-    return any(ch in text for ch in '繁體國漢後發話')
+    return any(ch in text for ch in '\u7e41\u9ad4\u570b\u6f22\u5f8c\u767c\u8a71')

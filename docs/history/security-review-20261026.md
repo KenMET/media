@@ -1,53 +1,31 @@
-# 多用户网页与网关安全复核
+# Multiuser web and gateway security review
 
-后续整改已完成：S1 网关登录误伤已修复，D1 默认管理绑定已收口，D3 已增加后端频率/并发/队列及 token 数量限制，D2/D4 增加公网与多人部署校验和说明。当前仍是 LAN HTTP，并未完成实际公网 TLS 部署；后续安装包回归与边界见 [云端搜索验收](cloud-execution-goal.md) 和 [当前部署说明](../split-deployment.md)。以下保留初次审查结论，不以历史“未修复”描述覆盖后续交付状态。
+Later repairs addressed S1 shared login throttling, D1 broad admin binds, D3 server quotas and D2/D4 public/multiuser validation/guidance. Actual deployment was still LAN HTTP, not public TLS. See [cloud execution](cloud-execution-goal.md) and [current split guide](../split-deployment.md). Findings below retain their original review status rather than superseding later repairs.
 
-日期：2026-10-26。此次按“先看看还有没有漏洞”进行审查，未修改认证配置或重启服务。范围包括新增网页、账户能力、网关、本地/远程 MCP，以及 Compose 管理端口。结合源码、无网络隔离容器中的复现和当前容器只读配置检查；未对真实登录入口进行错误密码攻击，未提交下载，未扫描整个内网。不是完整渗透测试或依赖 CVE 审计。
+Date: 2026-10-26. Read-only review of web/accounts/capabilities/gateway/local-remote MCP/Compose admin ports; no authentication configuration change, restart, real password attack, download or LAN scan. Used source, offline disposable reproduction and selected read-only runtime settings, not a full penetration/CVE audit.
 
-## 已确认的问题
+## S1: shared gateway login-source bucket (medium)
 
-### S1：网关登录限流共用来源桶（中，优先修复）
+Historical locations: `platform/api.py:211`, `platform/gateway.py:105–119`, `platform/accounts.py:121–133`. Local login keyed throttling by socket peer. Gateway lacked authenticated client provenance, making every user appear from one gateway IP. Ten failures blocked even correct logins until the 900-second source window expired; existing sessions remained.
 
-位置：`platform/api.py:211`、`platform/gateway.py:105–119`、`platform/accounts.py:121–133`。
+Disposable installed-image/temporary-SQLite/InProcessHTTP reproduction simulated two different outer peers. First sent ten nonexistent-account failures, second valid admin login returned 429. No real account/service was attacked. Ignored script `state/security-audit-probe-20261026.py`.
 
-本地 API 以实际 socket peer 建立登录限流桶。网页网关转发请求时没有提供经过认证的原始客户端身份，因此所有经同一个网关进入的客户端，在本地都表现为网关的同一 IP。10 次失败后，来源桶被限制到本轮 900 秒窗口结束，其他账号的正确登录也返回 429。已登录会话不因此注销。
+Unauthenticated gateway visitors could temporarily deny login to others. Required actual socket-based gateway limits and authenticated dedicated provenance, trusted only from service-authenticated gateways, without trusting arbitrary X-Forwarded-For or removing source throttles.
 
-隔离复现：使用当前安装镜像、临时 SQLite 和 InProcessHTTP 网关传输，外层两组客户端分别模拟不同 IP。第一组对 10 个不同的不存在账号提交错误密码；第二组以有效管理员凭据登录，返回 429。没有请求任何真实账号或外部服务。脚本位于忽略的 `state/security-audit-probe-20261026.py`。
+## Deployment/resource findings
 
-影响：可访问网关登录入口的人，无需账号即可暂时阻止所有经同一网关进入的用户登录。公网网关尤其需要处理。修复方向：网关按真实 socket 来源限流，并在服务身份验证后传递专用客户端标识；本地只信任认证网关的标识。不能直接信任外部 X-Forwarded-For，也不能简单删除来源限流。
+**D1: broad admin binds.** Historical `compose.yml:40,63`/`compose.cloud.yml:27` used 0.0.0.0 for downloader/Jackett, with LAN bypass, disabled downloader Host checks and no Jackett admin password (`bootstrap.py:47–58`). Actual exposure depended on firewall/security groups. The live test already bound admin 18411/18412 to loopback, so no public-admin exposure was established. BT data listening was separate. Cloud defaults needed loopback/protected administration.
 
-## 部署与资源风险（与代码越权漏洞分开）
+**D2: HTTP.** Actual 18414 used `MEDIA_WEB_PUBLIC=false`, wildcard bind and no Secure cookie. HttpOnly/SameSite/CSRF did not encrypt credentials/sessions. Trusted LAN testing could continue; public/untrusted use required real HTTPS and Secure cookies, not Secure alone on HTTP.
 
-### D1：默认管理端口绑定过宽（云端部署前必须收口）
+**D3: absent server business budgets.** Search/acquisition/subtitle/token creation lacked account frequency/concurrency/count limits; UI locks did not constrain direct APIs. Different keys could consume disk/model/external budgets despite per-key idempotency. Source confirmed the gap without production load tests. Required queue/concurrency/admission limits and meaningful errors.
 
-`compose.yml:40,63` 和 `compose.cloud.yml:27` 默认以 `0.0.0.0` 发布 qBittorrent/Jackett 网页。初始化仍有 LAN 下载器免认证、Host 校验关闭、Jackett 未设管理密码的默认设置（`bootstrap.py:47–58`）。直接把这些默认端口放在云端可能暴露管理入口，是否实际公网可达还取决于主机/安全组防火墙。
+**D4: owner LAN MCP is a separate trust boundary.** Default `MEDIA_AUTH_MODE=none` (`compose.yml:84`) used unscoped owner MediaService, intentionally preserved. Untrusted direct callers bypassed ordinary web capability/private views. Restrict reachability or explicitly choose platform identity for multiuser use; web login alone did not protect every LAN entrypoint.
 
-当前实际测试副本已收口：qBittorrent 管理端口 `127.0.0.1:18411`，Jackett `127.0.0.1:18412`。BT 传输端口对外监听是另一类端口，不能据此断言管理页暴露。当前没有发现这些管理页被发布到公网的证据。建议云端默认回环绑定，仅发布需要的认证入口。
+## Verified fences and recommendations
 
-### D2：当前网页使用 HTTP
+Accounts/sessions/CSRF/capabilities/ownership and constrained IDs/parameters are checked server-side. Acquisition/subtitles retain existing idempotency/locks. Real isolated protocol revocation returned HTTP 200 before token revoke and 401 on the next call, not merely a database assertion. Gateway/provider routes are allowlisted with independent service credentials plus user identity. Actual admin loopback binds were checked without revealing secrets.
 
-当前 18414 网页 `MEDIA_WEB_PUBLIC=false`，监听 `0.0.0.0`；实际访问为 HTTP，未设置 Secure cookie。登录密码和会话没有传输层加密。HttpOnly/SameSite/CSRF 能降低脚本和跨站风险，不能阻止链路窃听。可信 LAN 测试可继续；跨不可信网络或正式云端入口应使用 HTTPS，公网配置启用 Secure cookie。不要在纯 HTTP 上只开启 Secure 后就认为已解决。
+No evidence established anonymous remote takeover or ordinary-web-to-admin escalation; that was not a vulnerability-free guarantee. Media tool sandboxing/root/host network/latest images/capacity remained in [earlier review](../security-review.md).
 
-### D3：高成本业务操作缺少后端配额
-
-搜索、下载提交、字幕处理和令牌创建没有账号级频率/并发/数量配额；前端按钮锁只能防误点击，不能约束直接 API 调用。具有相应能力的账号可消耗外部搜索额度、排队资源、磁盘和模型费用。幂等键防同一请求重放，不限制使用不同 key 提交不同任务。源码确认缺少这一层约束，未对真实服务做负载或耗费测试。建议补账号并发上限、队列/下载容量约束和可查询的配额错误。
-
-### D4：个人 LAN MCP 不是网页用户权限边界
-
-默认 `MEDIA_AUTH_MODE=none`（`compose.yml:84`），本地 `server.py` 会使用不带账户范围的 MediaService。这是项目明确保留的可信个人 LAN 模式，不是本轮擅自改变的默认行为。若允许不可信普通用户直连这个入口，他们不会受到网页用户开关和私有任务视图的限制。多人部署应限制该端口的网络可达性，或明确选择已有 platform 认证模式统一身份；不能只凭网页登录就声称整个 LAN 的所有入口均隔离。
-
-## 已复核的防线与边界
-
-- 账户、会话、CSRF、能力与对象归属在后端校验，隐藏按钮不是唯一防线。任务、计划 ID 和参数均有约束；下载与字幕仍经过既有服务和幂等/锁边界。
-- 撤销本地 platform MCP 令牌的真实协议隔离测试：撤销前 tools/call HTTP 200，撤销后同一客户端下一次请求 HTTP 401。没有把仅检查数据库当作网络撤销的证明。
-- 网关 API 转发使用路由白名单，Provider 方法/路径有白名单，服务间接口要求独立服务凭据；用户命令还要求用户身份。
-- 当前管理端口回环绑定已只读检查。没有读取或输出配置中的密码/令牌。
-- 未发现足以确认“匿名远程接管”或“普通网页账号直接获得管理员”的证据；这不是无漏洞保证。外部媒体工具沙箱、root/host 网络、镜像 latest 与容量积累仍见此前 `security-review.md`。
-
-## 建议修复顺序
-
-1. 修复 S1 并增加跨不同客户端来源的网关限流回归测试。
-2. 将云端管理端口默认收口、明确多用户 MCP 边界；正式跨网部署启用 HTTPS。
-3. 增加服务端账号配额和高成本操作的并发限制。
-
-此次仅交付审查结论。上述未关闭项没有标记为已修复。
+Original priority: repair S1 with cross-peer tests; restrict cloud administration/clarify MCP identity/provide HTTPS; add backend resource quotas. The initial review alone did not claim those recommendations were implemented; later status above records the subsequent delivery.

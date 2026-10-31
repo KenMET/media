@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 utils.py
-媒体处理工具函数
+Media processing utilities
 """
 
 import os
@@ -31,13 +31,13 @@ def same_recorded_source(record: dict, path: str) -> bool:
 
 def is_video_file(filename: str) -> bool:
     """
-    判断文件是否为视频文件
+    Return whether a file is a supported video.
 
     Args:
-        filename: 文件名
+        filename: File name.
 
     Returns:
-        是否为视频文件
+        Whether the file is a video.
     """
     ext = os.path.splitext(filename)[1].lower()
     return ext in VIDEO_EXTENSIONS
@@ -49,18 +49,18 @@ def _raise_scan_error(error):
 
 def get_main_media(directory: str, size_ratio: int = 10) -> List[Dict[str, any]]:
     """
-    搜索目录中的主要媒体文件
+    Find primary media files under a directory.
 
     Args:
-        directory: 目录路径或文件路径
-        size_ratio: 兼容旧调用参数，不再按相对文件大小丢弃媒体
+        directory: Directory or file path.
+        size_ratio: Legacy compatibility parameter; relative file size no longer excludes media.
 
     Returns:
-        媒体文件列表，每项包含path和size_mb
+        Media entries containing path and size_mb.
     """
     main_media = []
 
-    # 如果是文件，直接处理
+    # Handle a file directly.
     if os.path.isfile(directory):
         if is_video_file(directory):
             size = os.path.getsize(directory)
@@ -71,7 +71,7 @@ def get_main_media(directory: str, size_ratio: int = 10) -> List[Dict[str, any]]
         else:
             return []
 
-    # 如果是目录，递归搜索
+    # Search directories recursively.
     for root, dirs, files in os.walk(directory,onerror=_raise_scan_error):
         for file in files:
             if not is_video_file(file):
@@ -88,7 +88,7 @@ def get_main_media(directory: str, size_ratio: int = 10) -> List[Dict[str, any]]
     if len(main_media) == 0:
         return []
 
-    # 按大小排序，最大的优先
+    # Sort by size, largest first.
     main_media.sort(key=lambda x: x["size_mb"], reverse=True)
 
     # File size does not establish whether a video is an episode or an extra.
@@ -99,13 +99,13 @@ def get_main_media(directory: str, size_ratio: int = 10) -> List[Dict[str, any]]
 
 def list_directory_recursive(path: str) -> Dict:
     """
-    递归列出目录内容
+    List directory contents recursively.
 
     Args:
-        path: 目录路径
+        path: Directory path.
 
     Returns:
-        嵌套的目录结构字典
+        Nested directory structure.
     """
     result = {
         "name": os.path.basename(path),
@@ -126,10 +126,10 @@ def list_directory_recursive(path: str) -> Dict:
         full_path = os.path.join(path, entry)
 
         if os.path.isdir(full_path):
-            # 递归子目录
+            # Recurse into subdirectories.
             result["children"].append(list_directory_recursive(full_path))
         else:
-            # 文件信息
+            # File information.
             result["children"].append({
                 "name": entry,
                 "type": "file",
@@ -228,9 +228,9 @@ def _shorten_target_path_for_limit(hardlink_path: str, max_bytes: int = MAX_FILE
 
 def create_hardlink_with_target(source_path: str, hardlink_path: str) -> tuple[bool, str | None, str | None]:
     if not source_path or not hardlink_path:
-        return False, "source_path 或 hardlink_path 缺失", None
+        return False, "source_path or hardlink_path is missing", None
     if not os.path.isfile(source_path):
-        return False, f"源文件不存在: {source_path}", None
+        return False, f"Source file does not exist: {source_path}", None
     if os.path.islink(source_path):
         return False, 'Source symlink is not a regular media file', None
     parent = os.path.abspath(os.path.dirname(source_path))
@@ -256,13 +256,13 @@ def create_hardlink_with_target(source_path: str, hardlink_path: str) -> tuple[b
                     return True, 'Skip hardlink'
                 return False, 'Target conflict: existing file is not the source inode'
             except OSError as e:
-                return False, f"处理已存在文件时失败: {e.strerror}"
+                return False, f"Failed to handle existing file: {e.strerror}"
         except OSError as e:
             if e.errno == errno.EXDEV:
-                return False, "无法创建硬链接：源路径与目标路径不在同一文件系统（跨设备）"
+                return False, "Cannot create hardlink: source and destination are on different filesystems"
             if e.errno == errno.ENAMETOOLONG:
                 return False, '__ENAMETOOLONG__'
-            return False, f"创建硬链接失败: {e.strerror}"
+            return False, f"Failed to create hardlink: {e.strerror}"
 
     os.makedirs(target_dir, exist_ok=True)
     flag, msg = _link_once(hardlink_path)
@@ -273,7 +273,7 @@ def create_hardlink_with_target(source_path: str, hardlink_path: str) -> tuple[b
 
     shortened_path = _shorten_target_path_for_limit(hardlink_path)
     if shortened_path == hardlink_path:
-        return False, '创建硬链接失败: File name too long', None
+        return False, 'Failed to create hardlink: File name too long', None
 
     flag, msg = _link_once(shortened_path)
     if flag:
@@ -282,7 +282,7 @@ def create_hardlink_with_target(source_path: str, hardlink_path: str) -> tuple[b
         return True, f'Shortened filename: {os.path.basename(shortened_path)}', shortened_path
 
     if msg == '__ENAMETOOLONG__':
-        return False, '创建硬链接失败: File name too long', None
+        return False, 'Failed to create hardlink: File name too long', None
     return False, msg, None
 
 

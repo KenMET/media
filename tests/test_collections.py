@@ -13,7 +13,7 @@ import test_platform
 class Provider:
     def detail(self,title_id):
         kind,ident=title_id.split(':')
-        return {'title_id':title_id,'kind':kind,'tmdb_id':int(ident),'title':'测试合集',
+        return {'title_id':title_id,'kind':kind,'tmdb_id':int(ident),'title':'\u6d4b\u8bd5\u5408\u96c6',
                 'original_title':'Test Collection','original_language':'en','date':'2024-01-01',
                 'poster_url':'https://image.tmdb.org/t/p/w342/test.jpg','rating_source':'TMDB'}
     def get(self,path,**params):
@@ -31,7 +31,7 @@ class CollectionsTests(unittest.TestCase):
         for i in range(1,count+1):
             season=1 if i<=2 else 2
             src=source/f'Show.S{season:02d}E{i:02d}.mkv';src.write_bytes(b'original-'+str(i).encode())
-            target=library/'series'/'同一作品'/f'第{season:02d}季'/f'同一作品 - S{season:02d}E{i:02d} - 2024.mkv'
+            target=library/'series'/'\u540c\u4e00\u4f5c\u54c1'/f'\u7b2c{season:02d}\u5b63'/f'\u540c\u4e00\u4f5c\u54c1 - S{season:02d}E{i:02d} - 2024.mkv'
             target.parent.mkdir(parents=True,exist_ok=True);os.link(src,target)
             upsert_media_link(None,str(src),str(target),media_name=target.stem,status='linked')
             self.paths.append((src,target))
@@ -326,9 +326,9 @@ class CollectionsTests(unittest.TestCase):
 
     def test_numeric_title_is_not_mistaken_for_release_year(self):
         from media_mcp.application.collections import guess
-        file={'target_path':str(Path(os.environ['MEDIA_LIBRARY_ROOT'])/'movie/银翼杀手2049(Blade Runner 2049) - 2017.mkv')}
+        file={'target_path':str(Path(os.environ['MEDIA_LIBRARY_ROOT'])/'movie/\u94f6\u7ffc\u6740\u624b2049(Blade Runner 2049) - 2017.mkv')}
         result=guess(file)
-        self.assertEqual(result['title'],'银翼杀手2049(Blade Runner 2049)')
+        self.assertEqual(result['title'],'\u94f6\u7ffc\u6740\u624b2049(Blade Runner 2049)')
         self.assertEqual(result['year_hint'],2017)
         first=guess({'source_path':str(Path(os.environ['MEDIA_DOWNLOAD_ROOT'])/'First.S01E01.mkv')})
         second=guess({'source_path':str(Path(os.environ['MEDIA_DOWNLOAD_ROOT'])/'Second.S01E01.mkv')})

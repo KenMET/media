@@ -30,9 +30,9 @@ def main():
     else:
         assert len(before) == 1 and before[0]['job_id'] == expected_job
     identities = []
-    for query in ('Frieren','葬送的芙莉莲'):
+    for query in ('Frieren','\u846c\u9001\u7684\u8299\u8389\u83b2'):
         rows = command('search_titles',{'query':query,'kind':'tv'})['titles']
-        title = next(row for row in rows if row['original_title'] == '葬送のフリーレン')
+        title = next(row for row in rows if row['original_title'] == '\u846c\u9001のフリーレン')
         identities.append(title['title_id'])
     assert identities[0] == identities[1]
     report = command('search_releases',{'title_id':identities[0],'season':1,'episodes':[1]})

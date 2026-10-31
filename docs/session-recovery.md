@@ -1,74 +1,37 @@
-# 模型会话与额度恢复
+# Model session and quota recovery
 
-`thread_not_loaded` 是会话加载状态，不代表额度不足。恢复流程只加载原会话，
-不调用 turn/start，也不覆盖原会话策略；原请求完成则复用其结果和研究证据，
-再经过现有输出、文件快照、目录和权限验证。
+`thread_not_loaded` describes session loading, not exhausted quota. Recovery loads the original thread without starting another turn or overwriting policy. Completed original results/research evidence are reused only after output, file, directory and permission checks.
 
-原记录缺失时，每 60 秒观察一次，最多 3 次。只有确认缺少持久记录、调用属于
-只读网页识别且文件快照一致时，才允许替代一次。网络失败、身份不匹配、
-缺少原请求 ID 和仍在运行的请求都不会授权替代。仍运行请求最多观察 10 分钟，
-之后明确待核对。第二次未知不会形成无限替代链。
+Observe absent records every 60 seconds, at most three times. One replacement is allowed only for a read-only web-identification call with confirmed missing durable records and unchanged snapshots. Network errors, mismatched identity, missing request IDs and running calls never authorize replacement. Observe running calls up to 10 minutes, then require reconciliation. A second unknown cannot start an unlimited replacement chain.
 
-识别研究为恢复而持久保存，但已用完的会话不应一直占据手机会话列表。
-每个研究分块的输出校验、文件校验和结果 checkpoint 成功后，原子保存自动归档
-意图；明确失败/中断的请求也须先持久保存匹配的终态证据。后台只处理明确属于
-Media 的会话，重新核对唯一 turn 与已保存的完成或失败证据一致后归档。
-归档失败独立重试，不中断媒体任务、不发送推送。未知、仍运行或被用户继续
-使用的会话不自动归档；不永久删除会话，不扫描并收养其他项目或人工聊天。
+## Archival and fencing
 
-原请求的 unknown 状态、原始 thread/turn、输入摘要、策略及替代关系保存在
-历史中；新执行有独立代次。旧代次回调和识别计划不能写回。跨任务物理文件
-隔离仍适用；不能靠换任务编号绕过。字幕未知请求继续保持隔离。
+After output/file validation and a committed research checkpoint, atomically persist archival intent. Failed/interrupted calls require matching terminal evidence first. Only explicitly Media-owned threads are considered; recheck a unique turn against saved terminal evidence before archive. Archive failure retries independently without blocking tasks or sending push notifications. Unknown/running/user-continued threads are never automatically archived. Never permanently delete sessions or adopt unrelated/manual chats.
 
-重新整理现有文件时，隔离按文件生效：同一作品中其他没有未知请求的文件继续
-识别。对于已结束任务遗留的识别标记，只观察同一账号记录中的原 thread/turn；
-只有原会话仅含这个 turn 且明确完成、失败或中断，才清除活动标记并保存终态
-审计。会话缺失、仍运行、身份不符和已有 unknown 历史继续隔离，不提交替代。
+History retains original unknown state, thread/turn IDs, input digest, policy and replacement relation; new execution has a separate generation. Stale callbacks/plans cannot write back. Physical-file fencing spans tasks and cannot be bypassed with another task ID. Unknown subtitle calls remain fenced.
 
-字幕处理正常返回后立即清除进行中标记，即使返回结果仍需复核；真正结果未知
-的异常保留标记。旧版本已经结束的子项若明确保存了
-`automatic_subtitle_review`，说明字幕调用已返回，不再被遗留标记误拦截。
-已成功提取为外置文件的内嵌中文字幕（`embedded_extracted`）也属于就绪成果；
-文件仍须存在于媒体库范围内，后续整理直接复用，不重新调用字幕处理。
-长中文文件名的字幕输出在同目录的短临时目录内写入，避免临时名追加 UUID 后
-超过文件系统单文件名上限。提取仍通过硬链接原子发布，保留已有目标；翻译
-写入通过替换目标目录项保存，保留硬链接源文件的原字节。
+Existing-file organization fences individual files, allowing unaffected files in the work to continue. For markers from ended tasks, observe only the same account's original thread/turn. Clear active markers with terminal audit only when the thread contains exactly that turn and it is completed/failed/interrupted. Missing/running/mismatched threads or unknown history stay fenced without replacement submission.
 
-电视剧的自动匹配仍需对应季的 TMDB 来源，研究指令明确要求该链接。来源不足
-分别显示作品编号或对应季证据缺失，保留 AI 原因和置信度，不降低验收条件。
-进度中的“已检查”包含成功与待复核；“全部完成”仅计算完整成功的文件。
-已识别、新增映射、字幕就绪是可重叠的阶段成果，不能相加作为成功文件数。
-当前作品的字幕阶段随子项检查点显示已检查数，避免大作品在处理几十个文件时
-只显示不变的主任务数；主任务计数和逐项结果仍使用已提交的整组结果。
+Clear subtitle in-flight markers immediately after a normal return even if review remains; genuine unknown exceptions retain them. Historical terminal child records with `automatic_subtitle_review` prove the call returned and should not be blocked by leftover markers. Existing `embedded_extracted` Chinese sidecars are ready results only while files still exist within library bounds; reuse them without another subtitle call.
 
-已接受分块不会重新提交。请求完整输入持久保存，恢复时不会因缓存补全而
-改变原输入。模型策略在研究前冻结，替代使用同一策略；历史未知请求没有
-策略快照且系统策略已修改时，停止并报告无法确认原策略。
+Long multilingual filenames use short same-directory temporary directories rather than UUID-expanded filenames exceeding filesystem limits. Extraction publishes atomically by hardlink without replacing existing targets. Translation replaces the destination directory entry while preserving source bytes shared through hardlinks.
 
-额度等待独立执行轻量检测，每 7200 秒一次、最多 10 次。初次限额不算检查。
-先观察和验收原请求的既有结果，再判断是否需要额度检测；即使新调用仍限额，
-已完成的原结果也能独立验收。会话观察与额度检测各自保存期限和次数，提前观察
-不改变原额度期限。检查次数及下次期限先于外部调用落盘，进程中断不会抹掉
-已尝试的检查；研究失败 checkpoint 保留原始失败时间，重启可重建父任务等待。
-检测成功不等于旧请求失败；只有研究恢复流程可以决定如何继续。旧版本把
-会话观察计入额度检查的记录会保留原预算，并单列 legacy_observation_checks
-与 actual_probe_checks，不声称历史观察都确认了额度不足。轻量检测成功本身不结束额度等待预算：
-同一份工作没有新增已接受成果却再次遇到限额时，沿用检查次数，避免每次 nonce
-成功都重新获得十次等待。只有真正完成工作或接受新的识别分块后才进入新阶段。
+TV identification still requires the correct TMDB season source. Missing title/season evidence remains a distinct review reason with model rationale/confidence, never relaxed acceptance. Checked counts include review; fully completed counts include only successful files. Identified/mapped/subtitle counts overlap and cannot be summed as successful files. Current-work subtitle checkpoints show inspected items while parent totals use committed group results.
 
-终止通知只处理带显式新终止事件的主任务，子项问题在主任务结束时汇总。
-历史 failed/needs_review 记录不会因为部署而补发。通知使用 SQLite 中独立的、
-按主任务和原因去重的通知意图，失败 60 秒后
-重试，只有发送器返回成功才记录 delivered。外部通知服务未提供事务性去重，
-进程在“已发送但尚未记账”间崩溃时可能重复通知；语义为至少一次交付，
-不承诺跨服务恰好一次。
+Accepted research groups are never resubmitted. Persist complete input so cache enrichment cannot change recovery input. Freeze model policy before research and retain it on replacement. Historical unknown calls lacking snapshots stop if current policy changed and the original cannot be established.
 
-独立 LikeC4 模型在 [session-recovery.c4](session-recovery.c4)。
-验收与实际部署证据见 [验收记录](history/session-recovery-goal-20261030.md)。
-现有文件反复需复核的后续诊断见
-[现有媒体恢复修复记录](history/existing-media-recovery-20261031.md)。
+## Quota waiting
 
-全库自动整理只处理 pending，复用已确认且文件未变化的身份、映射和就绪字幕。
-后端拒绝未指定单部作品的 all 范围；重新识别入口仅在单部作品详情内。
-海报缺失不是待处理原因：媒体库按已确认的 TMDB 编号读取缓存展示资料，不调用
-AI、不重写文件身份；上游无图或作品尚未确认时保留占位。
+Quota probes run every 7,200 seconds, at most ten times; the initial limit response is not a probe. Observe/accept original results before deciding whether a probe is necessary. A completed original result can pass even if new calls remain limited.
+
+Session observation and quota budgets have separate counters/deadlines. Early observation does not move the quota deadline. Persist attempted count/next deadline before external calls; crashes cannot erase attempts. Failure checkpoints preserve original time so restart can restore parent waiting state.
+
+Probe success does not establish original failure; only research recovery decides continuation. Legacy records retain the original budget while separating `legacy_observation_checks` and `actual_probe_checks`; never claim all historical observations proved quota exhaustion. A successful lightweight nonce probe alone does not reset the budget: renewed limits without new accepted work keep prior counts. Only completed work or newly accepted research groups begin another phase.
+
+## Notifications
+
+Only parents with explicit new termination events create notifications; child problems aggregate at parent termination. Deployment does not backfill old failed/review notifications. SQLite notification intents deduplicate by parent/reason; failed sending retries after 60 seconds, and only sender success records delivered. The external service lacks transactional deduplication, so a crash after send/before accounting may duplicate delivery. Semantics are at least once, never cross-service exactly once.
+
+See [LikeC4 model](session-recovery.c4), [acceptance/deployment evidence](history/session-recovery-goal-20261030.md), and [existing-media follow-up](history/existing-media-recovery-20261031.md).
+
+Whole-library automatic organization handles pending only, reusing unchanged confirmed identities/mappings/ready subtitles. Backend rejects global `all`; reidentification is work-scoped. Poster gaps are not pending processing: fetch display cache by confirmed TMDB ID without AI or identity writes, retaining placeholders when unavailable/unknown.

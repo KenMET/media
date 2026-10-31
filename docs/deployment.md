@@ -1,108 +1,104 @@
-# 部署、更新与运维
+# Deployment, updates and operations
 
-快速首次使用按 [README](../README.md) 顺序执行。本页所有命令默认在服务器的 `media/` 目录执行，不在 Windows 客户端执行 Linux 部署命令。
+Follow the [README](../README.md) for initial setup. Commands on this page run in the server's `media/` directory, not on a Windows editing client.
 
-已有反向代理和私有 FRP 时，优先使用 [两端精简部署](split-deployment.md) 与统一 `.env.example` 中的 cloud / local 分组；cloud 网站默认监听 `0.0.0.0`，支持容器反代访问并保留账号认证，不需要重复域名配置；两端内部凭据自动配对。两端连接只填 `MEDIA_CLOUD_CONTROL_PORT`，NAS 不配置云端地址；搜索和种子获取全部在 cloud。本页下方依赖组合与显式 `MEDIA_WEB_PUBLIC=true` 的域名/TLS 校验是保留的传统单机/高级模式，并非新模板必填项。
+For an existing reverse proxy and private FRP, use [split deployment](split-deployment.md) and the cloud/local groups in `.env.example`. Cloud web defaults to `0.0.0.0`, supports container proxies and retains account authentication. Internal credentials pair automatically. Cloud needs only `MEDIA_CLOUD_CONTROL_PORT`; the NAS needs no cloud address. Search and torrent retrieval run on cloud. The advanced standalone settings below, including explicit `MEDIA_WEB_PUBLIC=true` domain/TLS validation, are not mandatory fields in the minimal split template.
 
-## 配置表
+## Configuration
 
-### 复用已有下载器和 Jackett
+### Existing downloader and Jackett
 
-在各服务所属角色内分别判断：URL 填写非空地址时连接已有服务；URL 未配置或为空时，初始化并启动对应内置容器，使用默认本机端口。新 local 只负责下载器，cloud 只负责 Jackett；传统单机支持任意混合组合。例如复用已有服务：
+A nonempty URL reuses an existing service; an empty or absent URL starts the bundled container on its owning host. Local owns the downloader, cloud owns Jackett; standalone supports mixed combinations.
 
 ```dotenv
-QBITTORRENT_URL=http://实际主机地址:8080
-QBITTORRENT_USERNAME=你的用户名
-QBITTORRENT_PASSWORD=你的密码
-JACKETT_URL=http://实际主机地址:9117
-MEDIA_JACKETT_CONFIG_DIR=/服务器上的已有Jackett配置根目录
+QBITTORRENT_URL=http://actual-host:8080
+QBITTORRENT_USERNAME=your-username
+QBITTORRENT_PASSWORD=your-password
+JACKETT_URL=http://actual-host:9117
+MEDIA_JACKETT_CONFIG_DIR=/existing/jackett/config-root
 ```
 
-凭据只保存在私有 `.env` 中；下载器允许无认证访问时可省略用户名和密码。Jackett API key 默认从只读配置读取，也可显式填写 `JACKETT_API_KEY`。URL 不要包含凭据。
+Store credentials only in private `.env`. Omit downloader credentials only when its existing policy permits unauthenticated access. Jackett's key is read from the read-only configuration or explicit `JACKETT_API_KEY`; never embed credentials in URLs.
 
-然后用 `sh setup.sh`。例如只填 `QBITTORRENT_URL`、留空 `JACKETT_URL`，就复用下载器并自动启动 Jackett。指定的外部服务不可达时报告失败，不回退启动另一个容器。logs/stop 仅管理 MCP、worker 和当前选中的内置依赖。切换到外部地址不会自动停止旧的内置容器；若需退役请显式处理并保留持久数据。URL 使用简单的、无引号的完整地址，不要加行尾注释；宿主机同名环境变量优先于 `.env`。
+Run `sh setup.sh`. For example, setting only `QBITTORRENT_URL` reuses that downloader and starts bundled Jackett. An unreachable external service fails rather than falling back to another container. Logs/stop manage Media and selected bundled dependencies. Switching URLs does not retire old bundled containers automatically; handle retirement explicitly while retaining data. Use unquoted complete URLs without trailing comments. Host environment values take precedence over `.env`.
 
-复用已有 Jackett 时，当前站点列表来自配置文件，配置根目录必须包含 `Jackett/ServerConfig.json` 和 `Jackett/Indexers/`。该目录只读挂载；缺失时搜索会报告未配置或没有站点。只有远程 URL/API key 还不够。本段描述传统单机模式；local/cloud 分组部署见 [同机测试说明](platform-testing.md)。
+Legacy standalone Jackett requires a configuration root containing `Jackett/ServerConfig.json` and `Jackett/Indexers/`, mounted read-only. A remote URL/key alone cannot supply the configured-site list. See [local testing](platform-testing.md) for role-based deployments.
 
-`MEDIA_LOCAL_DATA_DIR` 是宿主机挂载到容器 `/data` 的目录。下载器返回的文件路径必须在 worker 中原样可用；默认 `/data/downloads`，可通过 `MEDIA_DOWNLOAD_ROOT` 指定 `/data` 下其他路径。当前没有路径翻译功能。下载根与库根（默认 `/data/media_hub`，可设 `MEDIA_LIBRARY_ROOT`）必须支持同一文件系统硬链接。容器使用 host 网络，URL 中 localhost 指部署服务器本身，其他容器应使用宿主机发布端口或实际可达地址。
+`MEDIA_LOCAL_DATA_DIR` is the host directory mounted at `/data`. Downloader paths must be visible unchanged to the worker. Defaults are `/data/downloads` and `/data/media_hub`; advanced overrides are `MEDIA_DOWNLOAD_ROOT` and `MEDIA_LIBRARY_ROOT`. There is no arbitrary path translation. Downloads and library must support hardlinks on one filesystem. Host networking makes localhost refer to the deployment server; other containers need reachable published ports or addresses.
 
-`.env.example` 只列日常必需配置和外部服务接入项。下面的高级配置仍可自行加入 `.env`，省略时使用原有默认值；精简模板不会覆盖或清理已有 `.env`。
+The minimal template omits advanced settings, which can still be added without changing defaults. It never rewrites existing `.env`. Compose reads the file; do not `source .env`. The launcher uses simple `KEY=value` parsing for paths/ports: avoid quotes, variable references, trailing comments and spaces. Use actual absolute paths or `./relative-path`.
 
-`.env` 从 `.env.example` 复制。不要用 `source .env` 来加载配置；Compose 会读取它。当前启动器用简单的 `KEY=value` 读取路径和端口：不要为这些值加引号、变量引用、行尾注释或空格。使用实际绝对路径或 `./相对路径`，避免路径包含空格。
-
-| 配置 | 默认 / 说明 |
+| Setting | Default / purpose |
 | --- | --- |
-| `QBITTORRENT_URL` | 省略或空值自动启动对应容器；填写后连接已有服务 |
-| `QBITTORRENT_USERNAME` / `QBITTORRENT_PASSWORD` | 默认空；使用已有下载器认证 |
-| `JACKETT_URL` | 省略或空值自动启动对应容器；填写后连接已有服务 |
-| `JACKETT_API_KEY` | 可选，默认读取挂载配置 |
-| `MEDIA_JACKETT_CONFIG_DIR` | 仅传统单机使用，默认 `MEDIA_SERVICES_DIR/jackett`；cloud 固定 `/root/container_cache/jackett/config`，无需此变量 |
-| `TMDB_API_KEY` | 必填；作品/年份/季集元数据查询 |
-| `CODEX_APP_SERVER_URL` | `ws://127.0.0.1:8108`；既有适配模型服务，不由本项目安装 |
-| `CODEX_TOKEN_FILE` | `./state/codex-token`；宿主机 token 文件，必须与模型端点匹配，不能为空 |
-| `MEDIA_LOCAL_STATE_PATH` | `./state`；本机 SQLite、WAL、SHM、锁及日志目录 |
-| `MEDIA_LOCAL_DATA_DIR` | `./data`；完整下载/库根目录，容器内统一为 `/data` |
-| `MEDIA_SERVICES_DIR` | `./services`；内置依赖的持久配置目录 |
-| `MEDIA_LOCAL_MCP_BIND` | `0.0.0.0`；个人 LAN MCP 监听地址；调整时保留本机健康探针可达 |
-| `MEDIA_ADMIN_BIND` | `127.0.0.1`；内置下载器/Jackett 管理端口独立绑定。公网模式启动器仅允许本机绑定 |
-| `MEDIA_LAN_IP` | 可选；只改变启动打印的访问地址，不改变监听或防火墙 |
-| `MEDIA_LAN_CIDRS` | 可选，逗号分隔 MCP 实际客户端来源网段；默认私网/本机。收窄时保留 `127.0.0.0/8,::1/128` 给健康检查 |
-| `MEDIA_ALLOWED_HOSTS` | 可选，逗号分隔准确 DNS 主机名，例如 `media.home`；不含协议、端口、路径，不支持通配符。LAN IP 和 localhost 无需填写 |
-| `MEDIA_LOCAL_MCP_PORT` | `18210`；HTTP MCP，路径 `/mcp` |
-| `MEDIA_QBITTORRENT_PORT` | `18211`；下载器管理/API 端口 |
-| `MEDIA_JACKETT_PORT` | `18212`；Jackett 管理/API 端口 |
-| `MEDIA_TORRENT_PORT` | `48181` TCP/UDP；仅内置下载器的 BT 数据端口 |
-| `PUID` / `PGID` | `0` / `0`；内置依赖文件属主；不修改外部依赖配置，不是 MCP/worker 的非 root 开关 |
+| `QBITTORRENT_URL` | Empty starts bundled service; nonempty reuses existing service |
+| `QBITTORRENT_USERNAME` / `QBITTORRENT_PASSWORD` | Empty; existing downloader authentication |
+| `JACKETT_URL` | Empty starts bundled service; nonempty reuses existing service |
+| `JACKETT_API_KEY` | Optional; defaults to mounted configuration |
+| `MEDIA_JACKETT_CONFIG_DIR` | Standalone only, default `MEDIA_SERVICES_DIR/jackett`; cloud fixes `/root/container_cache/jackett/config` |
+| `TMDB_API_KEY` | Required for title/year/season/episode metadata |
+| `CODEX_APP_SERVER_URL` | `ws://127.0.0.1:8108`; existing compatible model service |
+| `CODEX_TOKEN_FILE` | `./state/codex-token`; nonempty host credential file matching the endpoint |
+| `MEDIA_LOCAL_STATE_PATH` | `./state`; local SQLite, WAL, SHM, locks and logs |
+| `MEDIA_LOCAL_DATA_DIR` | `./data`; full data parent mounted at `/data` |
+| `MEDIA_SERVICES_DIR` | `./services`; bundled dependency configuration |
+| `MEDIA_LOCAL_MCP_BIND` | `0.0.0.0`; personal LAN MCP; keep local health probes reachable |
+| `MEDIA_ADMIN_BIND` | `127.0.0.1`; separate downloader/Jackett admin binding; public mode requires loopback |
+| `MEDIA_LAN_IP` | Optional display address only; changes neither binding nor firewall |
+| `MEDIA_LAN_CIDRS` | Optional comma-separated actual MCP client networks; defaults private/loopback; retain `127.0.0.0/8,::1/128` for probes |
+| `MEDIA_ALLOWED_HOSTS` | Exact DNS names such as `media.home`, without scheme/port/path/wildcards; LAN IPs and localhost need no entry |
+| `MEDIA_LOCAL_MCP_PORT` | `18210`; HTTP MCP at `/mcp` |
+| `MEDIA_QBITTORRENT_PORT` | `18211`; downloader admin/API |
+| `MEDIA_JACKETT_PORT` | `18212`; Jackett admin/API |
+| `MEDIA_TORRENT_PORT` | `48181` TCP/UDP; bundled downloader BT traffic only |
+| `PUID` / `PGID` | `0` / `0`; bundled dependency ownership, not an MCP/worker non-root switch; external services unchanged |
 | `TZ` | `Asia/Shanghai` |
-| `OPENSUBTITLES_API_KEY`、`SUBDL_API_KEY`、`ASSRT_API_KEY` | 对应可选字幕服务凭据；仍受各自额度、认证和可用性影响 |
-| `BARK_URL` | 可选完整设备推送 endpoint；为空只写通知日志，不会推送到手机 |
-| `SUBTITLE_SYNC_MODE` | `required`；同步不成功不当作已同步，可选 `auto`、`disabled` 会降低对齐保证 |
-| `SUBTITLE_ENABLE_AUDIO_ASR` | `false`；改 true 不会自动安装或下载 ASR 模型 |
-| `INSTALL_OCR` | `true`；镜像构建时安装 PGS OCR 工具；改动需重建 |
-| `MEDIA_AUTH_MODE` | 传统单机默认 `none`；可选 `bearer`/`oauth` 单所有者认证或 `platform` 网页账号个人令牌，仍受 LAN 中间件限制。cloud 分组自动使用个人令牌认证 |
+| `OPENSUBTITLES_API_KEY`, `SUBDL_API_KEY`, `ASSRT_API_KEY` | Optional providers, subject to their quotas, authentication and availability |
+| `BARK_URL` | Optional full device push endpoint; empty writes local records only |
+| `SUBTITLE_SYNC_MODE` | `required`; failed synchronization is not success; `auto`/`disabled` weaken alignment guarantees |
+| `SUBTITLE_ENABLE_AUDIO_ASR` | `false`; enabling does not install/download an ASR model |
+| `INSTALL_OCR` | `true`; install PGS OCR tools at image build time; changes require rebuild |
+| `MEDIA_AUTH_MODE` | Standalone `none`; explicit `bearer`/`oauth` owner mode or `platform` web-account tokens, still subject to LAN middleware; cloud uses user tokens |
 
-可选认证：bearer 模式还需服务端 `MEDIA_MCP_TOKEN`（至少 32 字符）；OAuth 需 `MEDIA_PUBLIC_URL` 和 `MEDIA_OWNER_PASSWORD`（至少 24 字符）。这些是另一个显式部署选择，不是快速开始的必填项；选择认证也不会自动提供 TLS、隧道或公网网络通路。不要在聊天中传入密钥。
+Bearer mode additionally requires `MEDIA_MCP_TOKEN` of at least 32 characters. OAuth requires `MEDIA_PUBLIC_URL` and `MEDIA_OWNER_PASSWORD` of at least 24 characters. These are explicit alternatives, not quick-start requirements. They do not provide TLS, tunnels or network reachability. Never send secrets through chat.
 
-目录设置在首次下载前确定。更改 `MEDIA_LOCAL_DATA_DIR`、容器内路径、PUID/GID 或数据库位置，不等于已经迁移已有任务路径和文件权限。本启动器不初始化已有下载器或 Jackett；调整权限前需检查已有文件归属。
+Choose directories before the first download. Changing data paths, UID/GID or database location does not migrate existing jobs or permissions. The launcher does not initialize existing services. Inspect ownership before permission changes.
 
-## 模型连接检查
+## Model readiness
 
-模型运行时没有本项目支持的内置部署镜像，不参与上述自动容器选择。`CODEX_APP_SERVER_URL` 未配置或为空时连接默认兼容端点 `ws://127.0.0.1:8108`，仍需你提前部署并提供匹配凭据。TMDB/字幕服务的 API key 为空也不代表能自动启动这些外部平台。
+This project provides no bundled model-runtime image. The default compatible endpoint remains `ws://127.0.0.1:8108`; provision it and matching credentials beforehand. Empty TMDB/provider keys do not start external platforms.
 
-MCP/worker 采用宿主机网络；因此默认模型地址的 `127.0.0.1` 是服务器自身。若模型运行于另一台主机或容器，使用服务器能访问的实际端点，不能假设本机端口相同。
+MCP/workers use host networking. If the model runs elsewhere, use its actual reachable endpoint. The required interface is the compatible WebSocket App Server protocol with bearer authentication, not an arbitrary chat website or REST API. Without it, web/MCP can start but workers cannot normally submit/process.
 
-所需的是本项目适配的 WebSocket App Server 协议和 bearer 认证入口，不是任意聊天网页、REST API 或直接运行一个未适配的同名服务。本目录没有自包含的模型服务部署脚本；迁到新主机必须先提供这个外部依赖。缺少它仍能启动网页/MCP，但 worker 不会进入正常提交/处理状态。
+Inspect model authentication, hardlink probes and heartbeats in `sh setup.sh logs`. For `token_missing`, `token_unreadable` and `token_rejected`, check file content presence, permissions and endpoint matching without printing the token. A placeholder empty file only permits other services to start.
 
-检查 `sh setup.sh logs` 中的模型认证、硬链接探针和 worker 心跳。`token_missing`、`token_unreadable`、`token_rejected` 分别检查空文件、可读权限和 token 是否匹配端点。不要打印 token 排错。默认占位空文件只用于让其他服务能启动，不代表已完成模型配置。
+## Network boundaries
 
-## 网络与访问边界
+MCP/workers use host networking; dependency network policies remain their own. Loopback API URLs require ports reachable from the host. Change one network setting at a time while troubleshooting.
 
-MCP/worker 使用 host network。下载器/Jackett 的网络由各自部署管理；默认回环 API 地址要求对应端口可在服务器本机访问。不要为排错同时改多个网络选项。
+- Personal LAN mode trusts private-network clients without identity authentication. Consider guest Wi-Fi, VPN users and other containers.
+- MCP checks socket peers without trusting forwarded headers. Host accepts LAN IPs, localhost or configured names; browser Origin must match Host.
+- Custom hostnames/proxies require exact allowed hosts, preserved Host and protected client access. Adding a hostname does not authorize public exposure.
+- Do not publicly forward admin ports `18210/18211/18212` or expose them through untrusted proxies. Restrict them to trusted devices/networks.
+- `48181` is BT traffic, not an admin port. Its inbound policy does not configure indexers or justify opening other ports.
+- A protected client-to-LAN path is required for remote use. Tunnels may make external traffic appear local; LAN checks do not replace authentication on that path.
 
-- 默认免登录信任私有网段客户端；私网地址不是用户身份。访客 Wi-Fi、其他 VPN 用户和其他容器是否可达，也必须考虑。
-- MCP 不信任转发头，检查实际 socket 来源；Host 只接受 LAN IP、localhost 或明确配置的主机名，浏览器 Origin 必须匹配 Host。
-- 自定义域名或反向代理需设置准确 `MEDIA_ALLOWED_HOSTS`，保留 Host，并确认客户端身份和网络隔离。添加域名不等于授权公网访问。
-- 管理端口 `18210/18211/18212` 不做路由器公网转发，不通过不受信任代理暴露。防火墙只允许受信任设备/网段。
-- `48181` 是 BT 数据端口，是否需要入站连接由网络情况决定；开放它不能替代配置资源站，也不应顺带开放管理端口。
-- 客户端不支持云端访问 LAN 时，先解决受保护的网络通路，不要通过把默认服务暴露公网来解决。隧道/代理可能让外部请求显示为本机来源，LAN 判断不能代替该通路的身份认证。
+Downloader and Jackett admin pages bypass MCP middleware. See [security](security-review.md).
 
-下载器与 Jackett 的独立管理页面**不经过 MCP 中间件**。已知限制和安全建议见 [安全检查](security-review.md)。
+## Evidence at each stage
 
-## 如何检查每一步
-
-| 检查 | 能说明什么 / 不能说明什么 |
+| Check | What it establishes / limitations |
 | --- | --- |
-| `/healthz` 返回 ok | MCP HTTP 进程可用；不代表模型、Jackett、字幕、推送均正常 |
-| `sh setup.sh status` | 容器状态/健康检查；不直接说明某个任务成功 |
-| `media_status` | worker 心跳、凭据/站点存在；不验证外部搜索效果 |
-| Jackett Test + Manual Search | 单站连接及具体词搜索效果；不保证种子传输速度 |
-| `media_get_job` | 指定任务各阶段的实际状态，是进度依据 |
-| 字幕 `content_verifications` | 已记录的内容校验与对白覆盖率；来源标签和 handled 数量不能代替它 |
-| `notifications.jsonl` | 后端写入通知事件；存在记录不等于手机送达 |
+| `/healthz` ok | MCP HTTP process only, not all dependencies |
+| `sh setup.sh status` | Container/health state, not individual job success |
+| `media_status` | Heartbeat and configured credentials/sites, not effective external search |
+| Jackett Test + Manual Search | Site connectivity and specific title search, not torrent speed |
+| `media_get_job` | Actual stage state for the identified job |
+| Subtitle `content_verifications` | Recorded content checks and dialogue coverage; labels/handled counts are insufficient |
+| `notifications.jsonl` | Backend notification record, not phone delivery |
 
-MCP 请求成功或拿到 job_id 只表示已提交。下载完成、视频硬链接入库、字幕完成分别判断。
+A successful request or job ID means submission only. Assess download, library hardlink and subtitle completion separately.
 
-## 更新和正常停止
+## Updates and stop
 
 ```sh
 sh setup.sh status
@@ -111,72 +107,63 @@ sh setup.sh stop
 sh setup.sh
 ```
 
-`setup.sh` 构建 Media 镜像，再更新所属分组，并初始化、启动未指定 URL 的内置依赖。启动器不删除持久目录，不停止父项目 Quant/Crawler。每次更新按顺序运行，不在资源紧张的服务器上同时构建、测试多个项目。
+The launcher builds Media, updates the selected role and initializes selected bundled dependencies. It retains persistent directories and does not stop parent Quant/Crawler services. Run builds/tests serially on constrained hosts.
 
-外部第三方服务由其自身部署管理；内置服务可通过 `QBITTORRENT_IMAGE`、`JACKETT_IMAGE` 选择镜像，更新前先备份再显式拉取固定版本或 digest。默认 latest 不等于可重现版本。不要把“重建 Media”当作“所有第三方组件已更新且无漏洞”。
+External dependencies manage their own updates. Bundled image choices use `QBITTORRENT_IMAGE` / `JACKETT_IMAGE`; back up first and explicitly select/pull a fixed version or digest. `latest` is not reproducible, and rebuilding Media does not prove all third-party components are current or vulnerability-free.
 
-不要执行 `docker compose down -v` 或清空 `state/` 来修复任务。容器日志会轮转；发布前保留原始错误码和阶段，分享日志时脱敏。
+Never use `docker compose down -v` or delete `state/` to repair jobs. Logs rotate; preserve original error codes/stages and redact before sharing.
 
-## 备份、迁移与恢复
+## Backup and restore
 
-下面是**默认目录布局**示例。若改过路径，把配置中的实际目录加入备份清单。将备份写到本机已有且空间足够的私有目录，归档不放在被打包目录内：
+Include actual configured paths when they differ from these defaults. Write archives outside the directories being archived, into an existing private directory with sufficient capacity.
 
 ```sh
 sh setup.sh stop
 umask 077
-tar -cpf /你的私有备份目录/media-state.tar .env state services
-# 视频、做种源文件、字幕另行备份；需要完整可恢复备份时也必须包含 data。
+tar -cpf /your/private-backup/media-state.tar .env state services
+# Back up videos, seeding sources and subtitles separately; full recovery also requires data.
 ```
 
-`.env`、token、站点 cookie/passkey、数据库与归档均视为私有。仅备份元数据不能恢复丢失的视频。先停止所有写入者，再拷贝数据库所在整个状态目录；不要只复制运行中的 SQLite 主文件遗漏 WAL。若有其他共享目录写入服务，也先停止它们。
+Treat `.env`, tokens, cookies/passkeys, databases and archives as private. Metadata cannot restore missing videos. Stop all writers before copying the entire SQLite state directory, including WAL. Stop other services writing the same media too.
 
-恢复时在空的目标目录保留正确权限，恢复匹配版本代码、配置及所有实际持久目录，确认本机路径和模型服务可达，再运行 `sh setup.sh`。不要覆盖正在运行的状态。更换目录、UID 或数据路径后要先检查权限和任务中的路径，不能承诺无需迁移就直接续传。回滚需使用对应旧镜像/代码与一致的状态备份，不要只回退一个 SQLite 文件。
+Restore into an empty destination with proper permissions, matching code/configuration and all persistent directories. Verify paths/model access before startup. Do not overwrite running state. Directory/UID/path changes require migration checks. Rollback needs the corresponding old image/code and consistent state, not one SQLite file.
 
-## 常见错误
+## Identity, public mode and quotas
 
-### 安全入口与服务端配额（2026-10-26）
+Web roles govern web and platform MCP. Default personal LAN MCP remains unauthenticated and can access unscoped owner jobs; restrict its reachability. Unified standalone identity explicitly requires `MEDIA_MULTI_USER=true` and `MEDIA_AUTH_MODE=platform`. `setup.sh local` starts control/workers without an additional unauthenticated MCP; cloud MCP requires revocable user tokens.
 
-多人使用前明确身份边界：网页角色只约束网页及 platform MCP。默认个人 LAN MCP 仍免认证，并可访问无账户范围的任务；限制该端口的可达设备。若独立部署需要统一网页/MCP 身份，显式设置 `MEDIA_MULTI_USER=true`、`MEDIA_AUTH_MODE=platform`。`setup.sh local` 只起控制与 worker，不额外启动免认证 MCP；cloud MCP 本身要求可撤销的用户令牌。
+Bundled admin pages bind loopback by default; use an authenticated SSH tunnel or protected admin path. Existing external services are never reconfigured automatically.
 
-内置下载器、Jackett 管理页默认只绑定回环地址，需要管理时可通过已认证的 SSH 隧道或受保护管理入口访问。`MEDIA_ADMIN_BIND` 与 MCP 监听分开；不要为图方便直接将管理页发布到公网。外部已有服务的地址/认证不由本项目自动修改。
+For explicit public web mode, set `MEDIA_WEB_PUBLIC=true`, `MEDIA_WEB_PUBLIC_URL=https://media.example.com`, and `MEDIA_ALLOWED_HOSTS=media.example.com`. It validates HTTPS origin/hosts and sets Secure cookies; provision TLS/domain/proxy separately. Bind raw cloud web to loopback with `MEDIA_CLOUD_WEB_BIND=127.0.0.1` when appropriate; bind MCP to a restricted proxy-reachable address. LAN HTTP testing can remain HTTP without independently enabling Secure cookies.
 
-正式公网网页请配置 `MEDIA_WEB_PUBLIC=true`、`MEDIA_WEB_PUBLIC_URL=https://media.example.com`、`MEDIA_ALLOWED_HOSTS=media.example.com`。公网模式验证 HTTPS 源与允许域名，并设置 Secure cookie；TLS 证书、域名和反向代理需实际配置，不由该变量自动创建。使用 `MEDIA_CLOUD_WEB_BIND=127.0.0.1` 将 cloud 网站绑定回环地址，不要公网发布裸 HTTP 后端。cloud MCP 同样应通过 HTTPS 反代访问，将 `MEDIA_CLOUD_MCP_BIND` 绑定到反代可达的受限地址。当前 LAN 测试可保持 HTTP，不在未启用 TLS 时单独开启 Secure cookie。
+Trusted HTTPS proxies can be listed as exact IP/CIDRs in `MEDIA_WEB_TRUSTED_PROXIES`, e.g. `127.0.0.1/32`. Preserve Host and overwrite `X-Real-IP` with the actual client, never trust arbitrary client headers or internet-wide CIDRs. Nginx examples: `proxy_set_header Host $http_host;` and `proxy_set_header X-Real-IP $remote_addr;`. This does not globally trust all Uvicorn forwarding or change LAN socket checks. Control accepts `x-media-client-ip` only from a service-authenticated gateway; external values are overwritten/rejected.
 
-网关只认可其 socket 来源。若 HTTPS 反代与网关分开，可显式填写准确的 `MEDIA_WEB_TRUSTED_PROXIES` IP/CIDR，例如同机反代 `127.0.0.1/32`。反代必须**覆盖** `X-Real-IP` 为实际来源，并保留入口 Host；不要追加客户端提供的值，不要信任整个互联网网段。以 Nginx 为例，反代需设置 `proxy_set_header Host $http_host;` 和 `proxy_set_header X-Real-IP $remote_addr;`。该设置不启用 Uvicorn 对任意转发头的全局信任，也不更改 LAN socket 检查。控制端的专用 `x-media-client-ip` 仅接受服务凭据认证的网关，外部传入同名头会被覆盖或拒绝。
+Server quotas apply to administrators too: search 30/minute with concurrency 2; plans 10/minute with concurrency 2; new download/subtitle tasks combined 10 per 10 minutes; at most 10 nonterminal jobs/account and 100 global new tasks; token creation 5/hour and 10 active tokens. Cloud catalog and local query quota pools are separate. HTTP 429 codes include `account_rate_limited`, `account_concurrency_limited`, `account_queue_full`, `account_token_limit`. Reconcile submitted requests with the original key without consuming a new admission; never change keys to evade limits. Unknown submissions and review jobs retain occupancy. Limits do not replace disk monitoring.
 
-后端配额不依赖页面按钮：搜索每分钟 30 次、并发 2；计划每分钟 10 次、并发 2；新下载/字幕任务每 10 分钟合计 10 次；每账号最多 10 个未终结任务，本地全局新任务准入上限 100；连接密钥每小时创建 5 个、有效数量 10 个。管理员也适用。cloud 榜单与 local 查询的数据库配额池独立。命中限制返回 429 和 `account_rate_limited` / `account_concurrency_limited` / `account_queue_full` / `account_token_limit`。已提交请求沿用原 key 核对结果，不再占用新任务额度；不要换 key 绕过限制。未知提交和待复核任务保留队列占用，必须按原有安全流程解决。数量限制不代替磁盘容量监控。
+See [cloud execution acceptance](history/cloud-execution-goal.md) and [historical security review](history/security-review-20261026.md).
 
-当前验收范围见 [云端搜索与本地执行验收](history/cloud-execution-goal.md)，历史安全发现见 [安全复核](history/security-review-20261026.md)。
-
-| 错误 / 现象 | 处理 |
+| Symptom | Action |
 | --- | --- |
-| Docker/Compose 不可用 | 先在服务器完成 Docker 安装与启动；此脚本不安装 Docker |
-| 构建依赖、OCR 或镜像下载失败 | 检查服务器镜像仓库/软件源网络和架构；保留缓存重试，不删任务数据库 |
-| MCP 已启动但 worker 未就绪 | 查模型端点、token、硬链接权限、心跳；不要声称已正常下载 |
-| `hardlink_cross_device` / probe 失败 | 下载与库放同一文件系统，并使用统一 `/data` 挂载 |
-| `untrusted_host` | 先用实际 LAN IP 访问；DNS 名显式加入 `MEDIA_ALLOWED_HOSTS` |
-| `cross_origin_request_denied` | 页面 Origin 与入口 Host 不同；使用正确同源入口或原生 MCP 客户端，不取消检查 |
-| `configured_sites=0` / 搜不到 | 按 [Jackett 文档](jackett.md) 添加、测试并做确切片名搜索 |
-| 已下载但 needs_review | 用 job_id 查看错误码；身份、路径或范围冲突不要强行覆盖 |
-| `submission_unknown` | 保持原任务和 key 观察对账，禁止换 key 重复下载 |
-| 字幕是英文但文件标中文 | 内容核验会拒绝；更新后为已有 media_id 重跑字幕，不重下视频 |
-| 旧字幕文件变成 `.rejected-language` | 不合格原件的保留备份；新的中文字幕另行获取，备份不自动删除 |
-| `missing` / 字幕持续失败 | 检查 Provider 额度、来源素材、模型和同步工具；不是所有片都有可用中文 |
-| 没有手机推送 | 检查 BARK_URL 是否完整、服务器网络和本地日志；日志存在不代表送达 |
+| Docker/Compose unavailable | Install/start them on the server; the launcher does not install Docker |
+| Build/image/OCR download failure | Check repository access and architecture; preserve caches and job state |
+| MCP up, worker unready | Check endpoint, token, hardlink permissions and heartbeat; do not claim normal downloads |
+| `hardlink_cross_device` / probe failure | Use one filesystem and common `/data` mount |
+| `untrusted_host` | Try actual LAN IP; explicitly allow custom DNS names |
+| `cross_origin_request_denied` | Use the correct same-origin entrypoint or native MCP client; retain the check |
+| No sites/results | Follow [Jackett configuration](jackett.md) and exact-title search |
+| Downloaded but `needs_review` | Inspect job errors; do not force identity/path/scope conflicts |
+| `submission_unknown` | Observe/reconcile original job/key; never duplicate submission |
+| English subtitle labeled Chinese | Content checks reject it; reprocess the existing media ID without redownloading |
+| `.rejected-language` backup | Retained rejected original; obtain valid content separately; backups are not automatically deleted |
+| Missing/failed subtitles | Check provider quota, source material, model and sync tools; Chinese is not always available |
+| No phone push | Check full BARK_URL, connectivity and records; a record is not delivery proof |
 
-仅在用户明确要求、原因已处理后使用 `media_retry_job`，它只重试允许的处理阶段。确定在提交前失败的下载准备任务，可以重新搜索/规划新任务；不能用这个办法绕过“提交结果未知”保护。
+Use `media_retry_job` only after an explicit request and resolution of the cause, for allowed processing stages. A preparation failure proven to precede submission can be searched/planned anew; this cannot bypass unknown-submission fencing.
 
-## Media 模型用量策略
+## Model usage policy
 
-管理员登录网页后，进入 Settings（我的账号）底部的“媒体处理模型”。默认模型
-`gpt-6.1-terra`，推理档位 `low`；页面可从当前模型服务支持的模型中选择，并显式选择
-`low` 或 `medium`。配置及修改记录保存在 NAS 共用的 SQLite 中，不是网页浏览器的本地设置。
+An administrator can choose Media processing models at the bottom of Settings. Defaults are `gpt-6.1-terra` and reasoning `low`; supported models and explicit `low`/`medium` choices come from the current model service. Shared NAS SQLite stores settings and audit history.
 
-保存后下一次模型调用生效，不需要重建或重启。已创建的识别、字幕和资料分析客户端也会
-读取新配置；每个正在执行的调用保留它开始时的同一份配置，包括传输重试。
-worker 启动自检使用同一默认策略。不会在失败后自动升级模型或推理档位。
-模型不可用时不保存无效选择；沿用现有未知结果隔离、失败重试及启动门禁。
+Changes apply to the next call without restart/rebuild, including already-created identification, subtitle and analysis clients. Each in-flight call keeps its initial snapshot across transport retries. Startup probes use the same defaults; failures never automatically upgrade the model/reasoning tier. Unavailable models are rejected while preserving outcome fencing, retries and startup gates.
 
-普通用户不可修改全局模型。修改需要管理员登录和 CSRF 校验；同时编辑冲突会提示刷新。
-这次新增页面和热更新能力需要通过 `setup.sh local` 更新 NAS；有独立 cloud 网页的还需
-通过 `setup.sh cloud` 更新云端静态资源和接口转发。此后修改模型配置不用再次部署。
+Ordinary users cannot edit global model settings. Admin login, CSRF and conflict detection are required. Deploying the settings feature initially requires `sh setup.sh local` and, for separate cloud web, `sh setup.sh cloud`; subsequent settings changes require no deployment.

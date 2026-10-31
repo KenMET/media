@@ -1,21 +1,21 @@
-# 历史验收与提取记录
+# Historical acceptance and extraction index
 
-本页是历史资料索引，不是当前镜像的重新验收证明。首次配置与当前使用请阅读 [README](../README.md)，本轮检查结果见 [安全检查](security-review.md)。
+These reports record past evidence, not renewed acceptance of the current image. Use the [README](../README.md) for setup and [security review](security-review.md) for its stated review scope.
 
-| 历史资料 | 用途 |
+| Record | Scope |
 | --- | --- |
-| [恢复改动自审与交付 Goal](history/session-recovery-review-goal-20261031.md) | 合理性、去重、库复用、目录规范、Git 与容器交付边界 |
-| [会话恢复与归档验收](history/session-recovery-goal-20261030.md) | 额度与会话独立恢复、通知整改、原任务终态及代码审查 |
-| [云端搜索与本地执行验收](history/cloud-execution-goal.md) | 单向端口连接、118 项回归、真实 Provider 与隔离下载入库 |
-| [完整本地功能验收](history/local-functional-acceptance-20261026.md) | 权限、真实下载/字幕、配额和恢复 |
-| [真实 Provider 与双语验收](history/live-acceptance.md) | 榜单、中英文 public 搜索与下载证据 |
-| [0.3 首版验收](history/platform-acceptance.md) | 最初网页/MCP 平台范围及当时结果 |
-| [2026-10-26 安全复核](history/security-review-20261026.md) | 原始安全发现及后续整改边界 |
-| [0.2 隔离验收](history/acceptance-0.2.md) | SQLite、内置下载器/Jackett、LAN 默认方案的原始验收 |
-| [0.2 运行收据](history/runtime-receipt-0.2.json) | 当时的镜像和源码哈希，不用于校验当前代码 |
-| [0.1 隔离验收](history/acceptance-0.1.md) | 已被默认方案替代的 MySQL/OAuth 验收记录 |
-| [0.1 运行收据](history/runtime-receipt-0.1.json) | 旧版镜像和源码哈希 |
-| [最初交付目标](history/GOAL.md) | 历史交付范围，不是后台任务调度配置 |
-| [提取来源清单](history/source-manifest.json) | 原仓提取路径和源文件哈希；destination 相对 media 根目录，不是相对 history |
+| [Recovery review/delivery](history/session-recovery-review-goal-20261031.md) | Correctness, simplicity, reuse, layout, Git and deployment boundaries |
+| [Session recovery/archival](history/session-recovery-goal-20261030.md) | Independent session/quota recovery, notifications and original task outcome |
+| [Cloud search/local execution](history/cloud-execution-goal.md) | One-way connection, 118 tests, providers and isolated ingestion |
+| [Local functional acceptance](history/local-functional-acceptance-20261026.md) | Permissions, real downloads/subtitles, quotas/recovery |
+| [Live providers/bilingual UI](history/live-acceptance.md) | Discovery, localized/original public search and download evidence |
+| [Initial 0.3](history/platform-acceptance.md) | Initial web/MCP scope/results |
+| [2026-10-26 security](history/security-review-20261026.md) | Original findings and repair boundaries |
+| [0.2](history/acceptance-0.2.md) | Original SQLite/bundled dependencies/LAN acceptance |
+| [0.2 receipt](history/runtime-receipt-0.2.json) | Historical image/source hashes only |
+| [0.1](history/acceptance-0.1.md) | Superseded MySQL/OAuth acceptance |
+| [0.1 receipt](history/runtime-receipt-0.1.json) | Old hashes |
+| [Original goal](history/GOAL.md) | Historical scope, not queue configuration |
+| [Extraction manifest](history/source-manifest.json) | Original paths/hashes; destinations relative to Media root |
 
-这些文件不参与构建或服务运行，集中保存以便迁仓后追溯。不应按旧文档重新配置当前服务；其中出现的旧启动脚本和原脚本路径仅是历史记录。当前唯一部署入口是 `setup.sh`，保留的手工验收工具已集中在 `tests/manual/`。运行配置、任务记录和媒体文件不存放在此历史目录。
+Reports are outside runtime/build inputs. Old startup/script paths are historical only; `setup.sh` remains the sole supported deployment entrypoint. Manual tools live under `tests/manual/`. Runtime configuration, task databases and media never belong in this history directory.

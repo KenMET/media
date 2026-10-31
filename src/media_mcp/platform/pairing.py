@@ -109,22 +109,22 @@ def connect(base, destination, session=None):
 def pairing_error_message(error):
     """Explain bounded failure categories without echoing URLs or response bodies."""
     if isinstance(error,requests.Timeout):
-        reason='连接控制端超时；检查云端 FRP 映射端口及 FRPC 到本地控制 API 的连接'
+        reason='Control connection timed out; check the cloud FRP port and the FRPC connection to the local control API'
     elif isinstance(error,requests.ConnectionError):
-        reason='无法连接控制端；检查云端 MEDIA_CONTROL_PORT，并将本机 FRPC 的 localIP 指向 127.0.0.1、localPort 指向 MEDIA_LOCAL_CONTROL_PORT'
+        reason='Cannot connect to control; check cloud MEDIA_CONTROL_PORT and point local FRPC localIP to 127.0.0.1 and localPort to MEDIA_LOCAL_CONTROL_PORT'
     elif isinstance(error,requests.HTTPError):
         status=getattr(error.response,'status_code',None)
         if status==403:
-            reason='控制端拒绝配对（HTTP 403）；检查首次配对是否启用，以及请求是否来自本机 FRPC'
+            reason='Control rejected pairing (HTTP 403); check whether initial pairing is enabled and the request comes from local FRPC'
         elif status==400:
-            reason='控制端拒绝请求（HTTP 400）；若首次配对已关闭且云端凭据丢失，可在 NAS 执行 sh setup.sh local pair'
+            reason='Control rejected the request (HTTP 400); if initial pairing is disabled and cloud credentials are lost, run sh setup.sh local pair on the NAS'
         else:
-            reason='控制端 HTTP 响应异常；确认 FRP 映射指向 Media 控制 API，而非其他服务'
+            reason='Unexpected control HTTP response; confirm the FRP mapping points to the Media control API'
     elif isinstance(error,OSError):
-        reason='无法读写云端内部凭据文件；检查宿主机状态目录和文件权限'
+        reason='Cannot read or write cloud internal credentials; check the host state directory and permissions'
     else:
-        reason='控制端响应或凭据校验失败；检查映射服务及私有凭据文件，不要直接删除或覆盖已有密钥'
-    return '自动连接未完成：'+reason+'。已有密钥不会被覆盖。'
+        reason='Control response or credential validation failed; check the mapped service and private credentials without deleting or overwriting existing keys'
+    return 'Automatic connection incomplete: '+reason+'. Existing keys will not be overwritten.'
 
 
 def main():
@@ -134,7 +134,7 @@ def main():
     except Exception as error:
         # Never echo response bodies, headers, credentials or connection objects.
         raise SystemExit(pairing_error_message(error)) from None
-    print('内部认证已自动配置，无需手工填写 control token。')
+    print('Internal authentication was configured automatically; no manual control token is needed.')
 
 
 if __name__=='__main__':

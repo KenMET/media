@@ -3,12 +3,12 @@ import time
 from media_mcp.storage.records import Records
 
 REASONS={
-    'quota_checks_exhausted':'已达到 10 次恢复检查上限，仍无法安全继续，任务已停止。',
-    'session_recovery_requires_review':'部分文件的会话仍无法安全恢复，已停止这些文件的自动替代。',
-    'analysis_ai_outcome_unknown':'识别请求结果尚未确认，任务已暂停，未重复提交。',
-    'automatic_subtitle_outcome_unknown':'字幕请求结果尚未确认，任务已暂停，未重复提交。',
-    'token_rejected':'模型服务认证失效，任务已暂停。',
-    'login_required':'模型服务需要重新登录，任务已暂停。',
+    'quota_checks_exhausted':'The limit of 10 recovery checks was reached. The task stopped because it cannot safely continue.',
+    'session_recovery_requires_review':'Some file sessions cannot be safely recovered. Automatic replacement for these files has stopped.',
+    'analysis_ai_outcome_unknown':'The identification outcome is unknown. The task is paused without resubmission.',
+    'automatic_subtitle_outcome_unknown':'The subtitle request outcome is unknown. The task is paused without resubmission.',
+    'token_rejected':'Model service authentication is invalid. The task is paused.',
+    'login_required':'The model service requires login. The task is paused.',
 }
 
 
@@ -20,7 +20,7 @@ def enqueue(records, row, reason):
     key=digest(['library-terminal-notice',row['id'],reason])
     if not records.by_key(key):
         try:records.put('library_notice',{'task_id':row['id'],'reason':reason,
-                    'label':str(row['data'].get('label') or '媒体整理任务')[:200],
+                    'label':str(row['data'].get('label') or 'Media organization task')[:200],
                     'completed':len(row['data'].get('results',[])),
                     'total':row['data'].get('total',len(row['data'].get('files',[]))),
                     'attempts':0,'next_attempt_at':0},'pending',key_hash=key)
@@ -50,10 +50,10 @@ def deliver(records=None, sender=None, clock=time.time):
         try:row=records.update(row,'sending',data)
         except RuntimeError:continue
         try:
-            sent=bool(sender('Media 任务需要关注',
-                f"{data.get('label') or '媒体整理任务'}：已保存 {data['completed']}/{data['total']} 项。"
-                f"{REASONS.get(data['reason'],'任务已停止自动处理，请在任务页查看具体原因。')}"
-                f"已有成果保留。任务 {data['task_id']}。"))
+            sent=bool(sender('Media task needs attention',
+                f"{data.get('label') or 'Media organization task'}: saved {data['completed']}/{data['total']} items. "
+                f"{REASONS.get(data['reason'],'Automatic processing stopped. See the task page for details.')}"
+                f" Existing results are preserved. Task {data['task_id']}."))
         except Exception:sent=False
         try:records.update(row,'delivered' if sent else 'pending',data)
         except RuntimeError:

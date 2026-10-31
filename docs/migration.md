@@ -1,28 +1,26 @@
-# 迁移边界：0.2 LAN bundle
+# Migration boundaries: 0.2 LAN bundle
 
-正式复用旧项目 MySQL 记录、现有下载器和硬链接的最新只读预检与切换方案见 [生产接管方案](production-cutover-plan.md)。下面是 0.2 提取时的历史状态；当前 setup.sh 已支持非空 URL 复用已有依赖，但尚无已完成的旧 MySQL 数据导入工具。
+For current read-only preflight and production reuse of legacy MySQL, downloader and hardlinks, see the [cutover plan](production-cutover-plan.md). This page records the original 0.2 extraction. Current `setup.sh` supports reusing dependencies through nonempty URLs, but no completed legacy MySQL importer is established here.
 
-本文记录最初提取时的环境切换。首次部署与当前操作以 [README](../README.md) 和 [部署文档](deployment.md) 为准；启动器不会替新用户准备第三方/模型凭据。
+Use the [README](../README.md) and [operations guide](deployment.md) for current setup. The launcher does not provision third-party/model credentials.
 
-`media/` 已独立收纳识别、命名、硬链接、字幕、持久任务、文件变更恢复，以及所需数据库、Codex 和 Provider 实现，不导入原仓 `apps.*`。
+The independent `media/` tree contains classification, naming, hardlinks, subtitles, persistent jobs, filesystem recovery, database, Codex and providers without importing `apps.*`.
 
-当前默认部署与最初的 0.1 方案有明确变化：
+Changes from the original 0.1 deployment:
 
-- 使用 SQLite 本地文件，不启动 MySQL，不要求数据库账号。
-- 启动新的 qBittorrent 和 Jackett，配置持久化在 `services/`；不再依赖旧 Jackett 的地址或需要用户填写内部 API key。
-- 局域网 MCP 默认无认证，不要求 OAuth 或 bearer token。可选认证代码仅作为显式配置保留。
-- 默认使用 `./data`，避免与原生产媒体处理器争用同一份数据。
+- Local SQLite replaces bundled MySQL and database accounts.
+- New qBittorrent/Jackett state persists under `services/`; the original 0.2 bundle no longer depended on old Jackett or manual internal keys.
+- LAN MCP defaults to no authentication. Optional bearer/OAuth remains an explicit choice.
+- New downloads default to `./data`, avoiding concurrent access with the original production processor.
 
-本轮对活动 `.env` 做了上述切换，保留了已有 TMDB、字幕、Bark 与 Codex 配置。旧配置只在忽略的 `state/env-backups/` 中私有备份，不会被启动器继续加载。
+At extraction, the active private `.env` changed accordingly while retaining TMDB, subtitle, Bark and Codex settings. Old settings were privately archived under ignored `state/env-backups/`, which the launcher does not load.
 
-原项目的 `apps/media`、旧数据库、旧下载器和 NAS-Tools 仍保留。启动本目录不会停止它们，也不会迁移原有下载任务、站点登录或媒体库记录。
+The original `apps/media`, database, downloader and NAS-Tools remain. Starting this project does not stop them or import their tasks, site logins or library records.
 
-若要沿用旧文件，先停止处理这些文件的旧写入者，明确旧下载任务是否继续做种、根目录如何挂载、媒体记录如何导入。MySQL 数据不能直接作为 SQLite 文件使用；不要把旧库的 DDL 当作本地数据库初始化脚本。正式导入和旧服务退出是另外的生产接管动作。
+Before reusing old files, stop their writers and decide seeding ownership, mount roots and record import. MySQL data/DDL cannot serve as SQLite state. Production import and retirement are separate cutover operations. New downloads in new directories do not require legacy migration first.
 
-若仅在新仓开始管理新下载，可以直接使用默认新目录，无需先迁移旧库。
+SQLite, WAL and locks belong on a local filesystem. Workers must share database/lock paths. Never delete live locks or restore only one state file as a repair.
 
-SQLite 数据库、WAL 和文件锁都应位于本地文件系统。后台进程共享同一个数据库路径和锁目录；不要删除运行中的锁文件或只恢复其中一个文件来“修复”状态。
+Do not commit `.env`, state, services, media or tokens when extracting source. Preserve those private directories appropriately during actual relocation; stop containers first.
 
-复制到新仓时不要提交 `.env`、state、services、下载内容或模型 token。实际搬迁目录时则应按用途保留这些私有文件；先停止容器后再搬迁持久状态。
-
-现有手机 Remote 与 Codex runtime 不变。Media MCP 的局域网免登录不等于取消现有 Codex 服务自身的认证；其连接凭据已通过文件保存，不需要用户再向聊天发送。
+Existing phone Remote and Codex runtime remain unchanged. Unauthenticated LAN MCP does not remove model-service authentication; credentials stay in files and need not be sent through chat.

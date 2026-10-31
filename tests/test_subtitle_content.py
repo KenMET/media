@@ -3,7 +3,7 @@ from media_mcp.subtitle.domain.online_subtitle import validate_online_subtitle, 
 
 
 def srt(chinese_count, english_count):
-    texts=['这是中文对白内容。']*chinese_count+['This is English dialogue.']*english_count
+    texts=['\u8fd9\u662f\u4e2d\u6587\u5bf9\u767d\u5185\u5bb9。']*chinese_count+['This is English dialogue.']*english_count
     return ''.join(f'{i}\n00:{i//60:02d}:{i%60:02d},000 --> 00:{i//60:02d}:{i%60:02d},900\n{text}\n\n' for i,text in enumerate(texts,1)).encode()
 
 
@@ -22,13 +22,13 @@ class SubtitleContentTests(unittest.TestCase):
         self.assertEqual(result.profile['chinese_dialogue_coverage'],0)
 
     def test_ass_headers_and_style_names_are_not_dialogue(self):
-        header='[Script Info]\nTitle: 这是中文字幕制作组测试信息\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
-        text=header+''.join(f'Dialogue: 0,0:00:{i:02d}.00,0:00:{i:02d}.90,中文样式,,0,0,0,,English dialogue {i}\n' for i in range(10))
+        header='[Script Info]\nTitle: \u8fd9\u662f\u4e2d\u6587\u5b57\u5e55\u5236\u4f5c\u7ec4\u6d4b\u8bd5\u4fe1\u606f\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
+        text=header+''.join(f'Dialogue: 0,0:00:{i:02d}.00,0:00:{i:02d}.90,\u4e2d\u6587\u6837\u5f0f,,0,0,0,,English dialogue {i}\n' for i in range(10))
         with self.assertRaisesRegex(ValueError,'enough Chinese'):
             validate_online_subtitle(text.encode(),'fake.zh.ass')
 
     def test_ass_bilingual_separate_tracks_are_accepted(self):
         header='[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
-        text=header+''.join(f'Dialogue: 0,0:00:{i:02d}.00,0:00:{i:02d}.90,Default,,0,0,0,,这是中文对白。\nDialogue: 0,0:00:{i:02d}.00,0:00:{i:02d}.90,English,,0,0,0,,English dialogue {i}\n' for i in range(10))
+        text=header+''.join(f'Dialogue: 0,0:00:{i:02d}.00,0:00:{i:02d}.90,Default,,0,0,0,,\u8fd9\u662f\u4e2d\u6587\u5bf9\u767d。\nDialogue: 0,0:00:{i:02d}.00,0:00:{i:02d}.90,English,,0,0,0,,English dialogue {i}\n' for i in range(10))
         result=validate_online_subtitle(text.encode(),'movie.ass')
         self.assertGreaterEqual(result.profile['chinese_dialogue_coverage'],0.5)

@@ -90,16 +90,16 @@ class OwnerOAuth(OAuthProvider):
             nonce = request.query_params.get('request','')
             value = self.load('pending',nonce)
             if not value:
-                return HTMLResponse('授权请求已过期，请重新连接。',status_code=400,headers=headers)
+                return HTMLResponse('The authorization request expired. Reconnect to continue.',status_code=400,headers=headers)
             csrf = secrets.token_urlsafe(32)
             self.save('csrf',csrf,{'nonce':nonce},time.time()+600)
             response = HTMLResponse('<!doctype html><meta charset="utf-8"><title>Media MCP</title>'
-                '<h1>连接你的 Media MCP</h1><p>允许当前客户端搜索资源、提交下载和处理媒体及字幕。</p>'
-                '<p>请在这里输入 media/.env 中的 MEDIA_OWNER_PASSWORD；不要发给聊天模型。</p>'
+                '<h1>Connect your Media MCP</h1><p>Allow this client to search releases, submit downloads, and process media and subtitles.</p>'
+                '<p>Enter MEDIA_OWNER_PASSWORD from media/.env here. Do not send it to the chat model.</p>'
                 '<form method="post"><input type="hidden" name="request" value="'+html.escape(nonce)+'">'
                 '<input type="hidden" name="csrf" value="'+html.escape(csrf)+'">'
-                '<label>所有者密码 <input type="password" name="password" required autocomplete="current-password"></label>'
-                '<button type="submit">授权连接</button></form>',headers=headers)
+                '<label>Owner password <input type="password" name="password" required autocomplete="current-password"></label>'
+                '<button type="submit">Authorize connection</button></form>',headers=headers)
             response.set_cookie('media_oauth_csrf',csrf,httponly=True,secure=self.url.startswith('https:'),samesite='lax',max_age=600)
             return response
         form = await request.form()
@@ -107,7 +107,7 @@ class OwnerOAuth(OAuthProvider):
         saved = self.load('csrf',csrf,consume=True)
         nonce = str(form.get('request',''))
         if not saved or saved['nonce'] != nonce or not hmac.compare_digest(csrf.encode(),request.cookies.get('media_oauth_csrf','').encode()):
-            return HTMLResponse('授权校验失败，请重新连接。',status_code=400,headers=headers)
+            return HTMLResponse('Authorization validation failed. Reconnect to continue.',status_code=400,headers=headers)
         # Persistent global throttle bounds password guessing, including across new DCR clients.
         bucket = str(int(time.time()//600))
         with self.connection() as db:
@@ -115,10 +115,10 @@ class OwnerOAuth(OAuthProvider):
             db.execute('UPDATE oauth_state SET value=CAST(value AS INTEGER)+1 WHERE key=?',(bucket,))
             attempts = int(db.execute('SELECT value FROM oauth_state WHERE key=?',(bucket,)).fetchone()[0])
         if attempts > 10 or not hmac.compare_digest(str(form.get('password','')).encode(),self.password.encode()):
-            return HTMLResponse('认证失败，请稍后重新连接。',status_code=403,headers=headers)
+            return HTMLResponse('Authentication failed. Reconnect later.',status_code=403,headers=headers)
         value = self.load('pending',nonce,consume=True)
         if not value:
-            return HTMLResponse('授权请求已过期。',status_code=400,headers=headers)
+            return HTMLResponse('The authorization request expired.',status_code=400,headers=headers)
         params = AuthorizationParams.model_validate(value['params'])
         raw = secrets.token_urlsafe(32)
         grant = AuthorizationCode(code=raw,client_id=value['client_id'],scopes=params.scopes or ['media:access'],

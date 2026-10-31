@@ -714,14 +714,14 @@ class SubtitleAgent:
             detail = next(iter(detailed_action_counts or action_counts))
             label = dependencies.subtitle_detail_label(detail)
             if action in dependencies.HANDLED_ACTIONS:
-                content = f'{self._media_kind_label(media_links)} {display_name} 字幕按{label}处理完成'
+                content = f'{self._media_kind_label(media_links)} {display_name}: subtitles completed using {label}'
             else:
-                content = f'{self._media_kind_label(media_links)} {display_name} 字幕{label}'
+                content = f'{self._media_kind_label(media_links)} {display_name}: subtitles {label}'
         else:
             parts = dependencies.subtitle_notify_parts(detailed_action_counts or action_counts)
-            content = f'字幕处理[{display_name}]：' + '，'.join(parts)
+            content = f'Subtitle processing [{display_name}]: ' + ', '.join(parts)
 
-        flag_notify = dependencies.mcp_direct_call_ns('notify.send_notification', title='Media字幕通知', content=content)
+        flag_notify = dependencies.mcp_direct_call_ns('notify.send_notification', title='Media subtitle notification', content=content)
         if not flag_notify:
             raise RuntimeError(f'MCP notification failed for subtitle path: {path}, {content}')
 
@@ -735,7 +735,7 @@ class SubtitleAgent:
             if str(item.get('media_name') or item.get('base_title') or '').strip()
         }
         if len(names) == 1:
-            return f'{next(iter(names))} ({len(media_links)}个媒体)'
+            return f'{next(iter(names))} ({len(media_links)} media items)'
 
         base = dependencies.os.path.basename(path.rstrip('/')) if path else ''
         return base or 'media'
@@ -759,10 +759,10 @@ class SubtitleAgent:
     def _media_kind_label(self, media_links: list[dict[str, dependencies.Any]]) -> str:
         kinds = {str(item.get('media_type') or '') for item in media_links}
         if kinds == {'movie'}:
-            return '电影'
+            return 'Movie'
         if kinds == {'tv'}:
-            return '剧集'
-        return '媒体'
+            return 'Series'
+        return 'Media'
 
     def _resolve_path(self, raw_path: str) -> str:
         if dependencies.os.path.isabs(raw_path):
@@ -2501,7 +2501,7 @@ class SubtitleAgent:
             flag, reason = dependencies.create_hardlink(candidate.path, target_subtitle)
             if flag:
                 status = 'linked'
-            elif dependencies.ALLOW_COPY_FALLBACK and "跨设备" in str(reason):
+            elif dependencies.ALLOW_COPY_FALLBACK and ("different filesystems" in str(reason) or "\u8de8\u8bbe\u5907" in str(reason)):
                 temporary_copy = f"{target_subtitle}.{dependencies.uuid.uuid4().hex}.copy"
                 try:
                     dependencies.os.makedirs(dependencies.os.path.dirname(target_subtitle), exist_ok=True)

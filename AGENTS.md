@@ -44,3 +44,12 @@ The final report must state the review findings and fixes, validation performed,
 commit and push result, containers actually rebuilt, and any containers or other
 steps the user still needs to handle manually. Give the existing supported command
 for manual rebuilds and distinguish deployed evidence from pending deployment.
+
+## Project language
+
+Write all project-authored code comments, docstrings, documentation, model
+instructions, CLI output, operational logs, notifications, and API/MCP messages
+in English. Only the website UI supports localization, including Chinese.
+Preserve media titles, subtitle content, multilingual recognition behavior and
+fixture semantics as data. Never rename existing media or change deployment
+configuration as a language conversion. See docs/language-policy.md.

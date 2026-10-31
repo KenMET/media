@@ -70,11 +70,11 @@ class CodexClientTest(unittest.TestCase):
 
     def test_parse_json_response_accepts_trailing_garbage(self):
         parsed, repaired = CodexMediaClient._parse_json_response(
-            '{"success": true, "translations": [{"id": 1, "zh": "你好"}]}]}'
+            '{"success": true, "translations": [{"id": 1, "zh": "\u4f60\u597d"}]}]}'
         )
 
         self.assertTrue(repaired)
-        self.assertEqual({'success': True, 'translations': [{'id': 1, 'zh': '你好'}]}, parsed)
+        self.assertEqual({'success': True, 'translations': [{'id': 1, 'zh': '\u4f60\u597d'}]}, parsed)
 
     def test_parse_json_response_rejects_non_json(self):
         with self.assertRaises(json.JSONDecodeError):

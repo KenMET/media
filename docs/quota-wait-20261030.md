@@ -1,29 +1,25 @@
-# 模型额度暂停与两小时检查
+# Model quota pause and two-hour checks
 
-明确 rate_limited 不再消耗短间隔三次重试：原持久任务排为 retry，next_attempt_at 延后 7200 秒。两小时是任务检查间隔，无独立 sleep 阻塞线程；重启保留到期时间。下一次检查失败继续等待两小时，无自动模型/effort 升级。传输错误仍受原三次重试上限保护。
+Explicit `rate_limited` does not consume short three-attempt transport retries: the durable job becomes retry with `next_attempt_at` +7200 seconds. Waiting uses scheduling rather than blocking sleeps and survives restart. Failed checks wait another two hours without model/effort upgrades; transport errors retain their prior retry limit.
 
-任务公开 quota_wait.next_check_at、checks、outcome_unknown；NAS 前端显示等待额度和下次检查时间。公网前端仍需既有云端部署访问后发布。
+Public `quota_wait` exposes next_check_at/checks/outcome_unknown. NAS UI showed waiting/deadline; public assets still needed cloud deployment access.
 
-确定失败/未提交的额度错误，到期用同一配置做带随机 nonce 的轻量模型检查，成功后继续原任务进度。提交未知的请求先只读 thread/read 对照原 thread/turn；仅匹配 failed/interrupted 的研究请求可解除 ai_inflight 并检查额度。原请求仍运行、不可读、身份不匹配或已完成但未验收，均不重放。字幕调用缺少可核对的请求身份时保留隔离。新研究请求使用持久 thread 以支持后续观察。
+Proven failed/unsubmitted quota calls use a same-policy nonce probe when due, then resume progress on success. Unknown submissions first read original thread/turn. Only matching failed/interrupted research can release in-flight before probing. Running/unreadable/mismatched/completed-unaccepted originals never replay. Subtitle calls lacking observable identity remain fenced. New research uses persistent threads.
 
-维护入口 schedule_existing_quota_task 仅能为本人有媒体管理权限、已停止且子记录明确 rate_limited 的任务重新排两小时检查，CAS 更新原任务和原队列，不清除未知提交，不创建新任务编号绕过物理指纹保护。
+`schedule_existing_quota_task` is restricted to the owning media manager and stopped tasks with explicitly rate-limited child records. CAS reschedules the original task/queue without clearing unknowns or bypassing physical-file protection with another ID. Two hours promises a check, not restored quota; unobservable historical outcomes may require manual reconciliation.
 
-没有保证两小时后一定有额度；只保证到期后检查，恢复可证实安全时自动继续。结果未知且无法观察的历史请求可能仍需人工核实。
+## Historical deployment
 
-## 部署验收
+NAS image `2f46bc8f675b` was healthy with installed/source parity; 37 local and 89 in-image focused tests, waiting/deadline/legacy-error/mobile browser and LikeC4 passed. Task `231fc692e11f464bad39bf412174230f`, original queue job 10, retained 121/746 and became waiting_quota. Initial deadline 2026-10-30 03:10:37 UTC (11:10:37 UTC+8), checks zero, survived rebuild. No real due check had yet been observed; old IDs remained. Crawler/Quant start times stayed unchanged.
 
-NAS 镜像 `2f46bc8f675b` 已部署并健康，相关安装模块哈希与当前源码一致。37 项本地针对性测试、89 项部署镜像内针对性测试通过；浏览器验证额度等待、下次检查时间、旧错误说明、移动端无溢出，LikeC4 校验通过。
+Public assets remained old, and unobservable originals could not replay. A safe source archive excluded private configuration/state/media/credentials; see JSON evidence.
 
-旧任务 `231fc692e11f464bad39bf412174230f` 已通过受限维护入口重新安排原队列 job 10：进度 121/746 保留，状态 waiting_quota，首次下次检查 2026-10-30 03:10:37 UTC（11:10:37 UTC+8）。再次重建后该时间不变，checks=0，未声称已观察到首次真实两小时检查。旧 ai_inflight 与原 thread/turn 保留，仅安排观察。Crawler/Quant 启动时间不变。
+## Ten-check commit scope: 2026-10-30
 
-原 Goal 尚未完成：公网网站仍是旧版，缺少云端现有部署访问；原请求如果无法观察终态也不能自动重放。最新安全云端源码包已准备，不包含 .env/state/data/credentials，见 JSON 记录。
+Added independent recovery checks capped at ten to library/subtitle maintenance. Initial limit is not a check; unsuccessful checks 1–9 schedule +7200, check ten becomes failed/`quota_checks_exhausted`, retaining accepted results and unknown fencing. Unreadable outcomes count as unsuccessful recovery, never proof of quota exhaustion. UI exposes counts/ten, deadline and final reason.
 
-## 本次提交范围（2026-10-30）
+The new cap/display had not been redeployed at this historical checkpoint. Earlier JSON with `quota_retry_limit=null` describes the older version, not this commit; public UI and real due-time observation remained pending.
 
-本次提交在库整理及其字幕任务上增加独立的最多 10 次恢复检查：初次额度失败不算检查；第 1–9 次未能恢复时再等 7200 秒，第 10 次仍不能安全继续时保存 failed / quota_checks_exhausted 并保留已完成结果和未知提交隔离。未知请求不可读也计作一次未能恢复的检查，不能把这种情况说成已确认额度耗尽。网页显示次数 / 10、下次时间与最终停止说明。
+Strict global delivery-root FIFO was excluded: identity/migration/non-library recovery/notifications were incomplete and remained local. Existing stage claiming stayed unchanged in this release. Ten-check termination notification delivery was also not established.
 
-上述新上限和次数显示尚未重新部署。前面的部署 JSON 是先前两小时等待版本的历史记录，其中 quota_retry_limit=null，不代表本次提交版本的行为。公网网页仍需更新；本文不声称已经观察到真实到期检查。
-
-暂不提交全局严格 FIFO 调度：下载交付边界、旧任务迁移、非库 ingest/subtitle 阶段的恢复及通知还未完成。该部分保留在本地，现有各阶段领取方式在本次提交中保持原状。十次检查终止的通知交付也未在本次范围内完成，不将停止状态等同于通知已送达。
-
-本次提交前验证：从 Git 暂存区导出独立源码快照，串行低优先级运行 Python 测试 239 + 25 项全部通过；12 项前端测试通过；临时 SQLite 浏览器验证等待状态、3 / 10 计数、下次时间、历史连接错误和手机无横向溢出。测试未使用真实媒体和生产数据库。敏感路径及私钥/令牌模式扫描通过，.env/state/data/凭证不在暂存区。
+Before commit, an independent staged snapshot passed 239 + 25 Python tests serial low priority, twelve frontend tests, disposable SQLite browser checks for waiting, 3/10, deadlines, old errors and mobile layout, plus secret/path scanning. No production media/database or private files were staged.

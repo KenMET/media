@@ -1,72 +1,64 @@
-# 简单操作，完整任务反馈
+# Simple actions with complete task feedback
 
-搜索表单仅保留在搜索页；共享顶部栏只保留导航与账号控件，手机高度 64px。
+Search controls stay on the dedicated search page. The shared header contains navigation/account controls; mobile height is 64px. Derivable inputs use defaults, advanced tools remain collapsed, and backend state/results stay visible.
 
-网站围绕以下流程。能推导的参数使用默认值，复杂工具放在折叠选项中；后台状态与结果不隐藏。
-
-| 流程 | 默认行为 | 用户需要做什么 | 可见反馈 |
+| Workflow | Default behavior | User action | Feedback |
 | --- | --- | --- | --- |
-| 热门媒体 | 今日/本周趋势与 TMDB 历史高分，不限新片 | 选一部作品；按需切换电影、剧集或来源 | 海报、名称、年份、评分、榜单来源与更新时间 |
-| 搜索资源 | 只输入名称，电影与剧集按来源相关性混排；选作品后自动搜资源，剧集默认首个正常季 | 输入片名、确认对应作品；剧集需要时切换季 | 资源名称、站点、大小、做种数、清晰度；不完整搜索结果有提示 |
-| 下载资源 | 点击资源“下载”后创建持久任务，自动推进下载、整理与字幕 | 选择要下载的资源，不再二次确认同一个选择 | 自动打开任务详情；排队、下载进度、速度、整理和字幕阶段分别显示 |
-| 整理过滤 | 全库自动整理；默认处理待识别、异常映射和未就绪字幕，包含分页外资源 | 点击一次，随后可离开网页 | 独立任务链接、文件/作品进度、时长检查/AI 检索/保存/补链/字幕阶段、逐项结果 |
-| 自动字幕 | 下载及媒体整理自动调用既有字幕链路，保留有效结果 | 正常流程无需另外提交；特殊复核仍在高级选项 | 就绪数量、缺失/失败/复核状态、已有字幕记录及脱敏原因；不会把发现文件等同于校验成功 |
+| Discovery | Day/week trends and all-time TMDB top rated | Select a work; optionally switch type/source | Poster/title/year/rating/source/update time |
+| Release search | Name-only input; mixed movie/TV relevance; automatic releases after title selection; first regular TV season by default | Confirm identity and optionally season | Release/site/size/seeders/resolution and partial-search warning |
+| Acquisition | A release download action creates persistent processing without duplicate confirmation | Select release | Open job details with queue/download/speed/ingestion/subtitle stages |
+| Organization | Pending identification, mapping problems and unready subtitles across all pages | Start once; leaving is safe | Dedicated task link, file/work progress, probe/research/save/link/subtitle substeps and results |
+| Subtitles | Existing engine used automatically by acquisition/organization, preserving valid results | Advanced review only when needed | Ready/missing/failed/review counts and redacted reasons; discovery is not verification |
 
-影视身份不明或候选同名时不替用户随意选第一个结果。未知资源保留原文件；低置信度、目标冲突或外部字幕服务失败单独显示原因，不妨碍其他可处理资源继续。自动化不等于保证每个外部服务请求都会成功。
+Do not pick an arbitrary first identity for ambiguous titles. Preserve unknown source files. Explain low confidence/conflicts/external failures per item without blocking independent work. Automation cannot guarantee external service success.
 
-## 任务入口与恢复
+## Routes and reconnection
 
-底部“任务”包含下载、整理与字幕；下载历史合并在下载页下方；媒体库有“整理记录”。其他页面也能看到最近下载或正在运行的整理任务摘要，直接进入详情。下载详情使用 `#jobs/<id>`，整理详情使用 `#tasks/<id>`；刷新和返回后保留任务身份，搜索与作品链接也可恢复。
+Tasks include downloads, organization and subtitles. Download history appears beneath active downloads; the library exposes organization history. Other pages show recent/active summaries linking to detail. Download routes use `#jobs/<id>` and maintenance uses `#tasks/<id>`; refresh/back/forward preserve identity, with restorable search/title routes.
 
-任务提交后立即进入进度页。后台任务持久化在 SQLite，由独立 worker 执行，页面无需保持连接。状态查询发生网络错误后保留上次数据并明确标记，使用退避重连；页面回到前台、网络恢复或页面恢复时立即重新查询。一次查询超时不会结束后续监控，也不会取消后台任务。
+Submission opens progress immediately. SQLite and independent workers persist work without a connected browser. Read failures retain last observations with explicit stale state and backoff; foreground/network/page restoration triggers immediate reads. A single timeout neither cancels the task nor ends monitoring.
 
-提交请求与回执可能在锁屏或断网时错开。浏览器按用户保存请求标识，使用只读查询核对已创建任务；不会因为未收到回执就自动再发一次下载或整理请求。相同显式重试仍沿用原请求标识。新标签没有登录校验材料时需要重新登录；登录后仍能打开原任务地址。
+Lockscreen/disconnect can separate submission from its receipt. Persist per-user request identity and reconcile through read-only queries instead of automatic resubmission. Explicit retries keep the original key. A new tab without session verification must log in before reopening the same task URL.
 
-所有文件结果都可分页查看，可切换“全部结果”和“仅未处理”，不再只展示前 50 个异常。每项可展开匹配理由、置信度、源路径、原目标、当前映射记录与字幕记录；当前记录与历史快照分别标明，不冒充重新检查了物理文件。诊断信息移除凭据与 URL 查询参数。
+All file results paginate, with all/unprocessed filters rather than only the first 50 issues. Expand reasons, confidence, source/original target/current mapping/subtitle records. Distinguish historical snapshots from current records without implying a fresh filesystem check. Redact credentials and URL queries.
 
-## 轻量状态查询
+## Lightweight reads
 
-`library_tasks`、`library_task_status` 和 `library_task_details` 是拥有者受限的只读视图。进度查询不扫描文件、不探测视频、不取得媒体变更锁；SQL 在传输前移除全量文件快照和结果，逐项详情单独分页。旧 worker 创建的任务也能显示当前子任务的探测/检索进度、租约与历史匹配理由，不迁移或重写原任务。
+Owner-scoped `library_tasks`, `library_task_status` and `library_task_details` do not scan files, probe videos or acquire mutation locks. SQL removes full file snapshots/results before transport; details paginate separately. Old worker tasks expose probe/research progress, leases and historical reasons without rewriting/migrating the task.
 
-`library_auto_status`、`download_submission_status` 只核对本用户的原请求，不创建任务。重连器只重试查询，不重试变更。原有文件指纹、权限、租约、提交结果未知保护、硬链接恢复和字幕发布条件继续保留。
+`library_auto_status` and `download_submission_status` reconcile the current user's original request without creating work. Reconnection retries reads only. Fingerprints, permissions, leases, unknown outcomes, hardlink recovery and subtitle publication remain fenced.
 
-## 升级
+## Deployment
 
-网页在 cloud，任务执行在 NAS。两端需要同步代码，cloud 使用 `sh setup.sh cloud` 更新网页与转发接口。NAS 只变更控制 API 时可运行：
+Cloud runs the website; NAS executes tasks. Update cloud through `sh setup.sh cloud`. For control-only API changes:
 
 ```sh
 sh setup.sh local control
 ```
 
-此入口通过 `setup.sh` 构建并更新 `local-control`，保留运行中的 `local-worker` 与依赖服务；适用于本次只读状态/API 更新，避免中断正在运行的识别。需要更新 worker 算法时仍使用 `sh setup.sh local`。`setup.sh` 保持 Git 的 100755 执行权限，不需要每次 pull 后重新修改执行位。
+This rebuilds/recreates `local-control` while retaining workers/dependencies, avoiding interruption of active identification. Worker algorithm updates require `sh setup.sh local` after a safe checkpoint. `setup.sh` retains Git mode 100755.
 
-## 隔离复验
+## Disposable acceptance
 
 ```sh
 PYTHONPATH=src MEDIA_PREVIEW_EMPTY=true MEDIA_PREVIEW_COLLECTIONS=true \
   MEDIA_PREVIEW_EXTRAS=true MEDIA_PREVIEW_ANALYSIS=true MEDIA_PREVIEW_MANY_MOVIES=30 \
   MEDIA_PREVIEW_ANALYSIS_DELAY_SECONDS=1.5 MEDIA_PREVIEW_MANIFEST=/tmp/media-task-preview.json \
   nice -n 15 python3 tests/manual/preview_platform.py
-
-# 另一个终端；只能指向带一次性标记的预览：
+# Another terminal, targeting only the marked disposable preview:
 MEDIA_PREVIEW_MANIFEST=/tmp/media-task-preview.json \
   PLAYWRIGHT_MODULE=/path/to/playwright-core CHROME_EXECUTABLE=/path/to/chrome \
   nice -n 15 node tests/manual/acceptance_task_experience_browser.cjs
 ```
 
-此预览使用虚构媒体、Provider、AI 与字幕服务，不连接真实下载器。它验证真实 HTTP、SQLite、持久队列、硬链接和网页重连行为；不代表外部资源站或字幕质量验收，也不冒充实机 iOS 锁屏测试。
+Fictional media/providers/AI/subtitles exercise actual HTTP, SQLite, persistent queues, hardlinks and browser reconnect. This does not establish external source/subtitle quality or real iOS lockscreen acceptance.
 
+## Deletion and capacity
 
-两种任务页面统一先显示标题、再显示标签。下载的活动任务由服务端置顶，已完成、
-失败和已取消的记录保留在下方，服务端先按活动状态排序，再分页。
-下载任务支持删除预览和显式确认；同步移除归属匹配的 qBittorrent 任务，保留已下载
-文件。整理与字幕任务删除会取消后续处理并撤销对应租约，晚到结果不能重新写回；正在写文件时需等待变更锁检查点。
-任务以删除状态保留审计和请求幂等标识，不再进入列表或后台处理，不清除未知 AI
-请求的隔离证据。删除不冒称远端正在进行的 AI 请求已经停止。删除超时后保留当前窗口，沿用同一删除计划观察和恢复。
+Both task pages put headings before tabs. Server sorting places active downloads first before pagination; completed, failed and cancelled history remains below.
 
-管理页显示下载目录与媒体库文件系统的总量、已用和可用字节；网页显示剩余/总量。
-两个目录在同一设备时，不把同一磁盘容量相加。不可用挂载明确显示不可用，不回退
-成其他目录的剩余空间。容量信息仅对管理员提供。
+Explicit download deletion previews/confirms removal of precisely owned qBittorrent jobs while retaining files. Maintenance deletion cancels future work/revokes leases; late results cannot commit, and active writes must reach a mutation checkpoint. Deleted task records retain audit/idempotency and unknown-model evidence but leave lists/processing. Deletion cannot claim a remote model call stopped. After timeout, retain the window and reconcile/resume the same plan.
 
-已删除的下载/整理任务保留审计和幂等记录，但不占待处理任务额度。账号 10 项、
-全局 100 项的上限仍适用于真实待处理任务，下载提交结果未知的任务继续占位。
+Admin storage reports total/used/free bytes for download/library filesystems. Do not add capacity twice when both roots share a device. An unavailable mount reports unavailable rather than another directory's space. Capacity data is administrator-only.
+
+Deleted tasks retain audit but consume no pending admission. Account/global limits remain 10/100 actual pending tasks; unknown download submissions continue to occupy slots.

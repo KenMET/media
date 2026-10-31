@@ -33,10 +33,10 @@ class DependencyReadinessTests(unittest.TestCase):
         for error in errors:
             message=pairing_error_message(error)
             self.assertNotIn('private-token-value',message)
-            self.assertIn('已有密钥不会被覆盖',message)
+            self.assertIn('Existing keys will not be overwritten',message)
         self.assertIn('127.0.0.1',pairing_error_message(errors[0]))
         for status in (400,403,404):
             response=requests.Response();response.status_code=status
             message=pairing_error_message(requests.HTTPError('private-token-value',response=response))
             self.assertNotIn('private-token-value',message)
-            self.assertIn('控制端',message)
+            self.assertIn('control',message.lower())

@@ -18,7 +18,7 @@ Preserve line breaks only when they help readability.
 Never merge, split, omit, reorder, or invent entries.
 
 Success schema:
-{"success": true, "source_language": "en", "translations": [{"id": 1, "zh": "中文"}]}
+{"success": true, "source_language": "en", "translations": [{"id": 1, "zh": "Chinese translation"}]}
 
 Failure schema:
 {"success": false, "error": "..."}

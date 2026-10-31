@@ -19,8 +19,8 @@ from media_mcp.storage.media import _json_object
 MAX_FILES = 500
 READY_SUBTITLE_STATUSES = {'translated','linked','exists','completed','verified','extracted','converted','embedded_extracted','downloaded'}
 EPISODE = re.compile(r'(?i)(?<![a-z0-9])s(\d{1,2})[ ._-]*e(\d{1,3})(?!\d)')
-EXTRA_FOLDER = re.compile(r'(?i)^(?:extras?|bonus(?:[ ._-]+features?)?|featurettes?|behind[ ._-]+the[ ._-]+scenes|deleted[ ._-]+scenes|trailers?|samples?|特典|花絮|幕后|幕后花絮|预告片|附加内容)$')
-EXTRA_NAME = re.compile(r'(?i)(?:^|[\s._\[(-])(?:sample|trailer|featurette|NCOP|NCED|PV|CM)(?:$|[\s._\])\d-])|特典|花絮|幕后制作|删减片段|预告片')
+EXTRA_FOLDER = re.compile('(?i)^(?:extras?|bonus(?:[ ._-]+features?)?|featurettes?|behind[ ._-]+the[ ._-]+scenes|deleted[ ._-]+scenes|trailers?|samples?|\u7279\u5178|\u82b1\u7d6e|\u5e55\u540e|\u5e55\u540e\u82b1\u7d6e|\u9884\u544a\u7247|\u9644\u52a0\u5185\u5bb9)$')
+EXTRA_NAME = re.compile('(?i)(?:^|[\\s._\\[(-])(?:sample|trailer|featurette|NCOP|NCED|PV|CM)(?:$|[\\s._\\])\\d-])|\u7279\u5178|\u82b1\u7d6e|\u5e55\u540e\u5236\u4f5c|\u5220\u51cf\u7247\u6bb5|\u9884\u544a\u7247')
 
 
 def classify(file):
@@ -103,7 +103,7 @@ def guess(file):
         kind = 'tv' if match else ('movie' if parts and parts[0] == 'movie' else 'unknown')
         # Unconfirmed TV folders from different locations never merge just by name.
         parent=path.parent
-        if kind=='tv' and re.fullmatch(r'(?i)(?:season[ ._-]*\d+|s\d+|第\d+季)',parent.name):
+        if kind=='tv' and re.fullmatch('(?i)(?:season[ ._-]*\\d+|s\\d+|\u7b2c\\d+\u5b63)',parent.name):
             parent=parent.parent
         scope = str(parent)+':'+re.sub(r'[\W_]+','',title.casefold()) if kind == 'tv' else 'movie:'+title.casefold()+':'+(release[1] if release else '')
     return {'title':title or path.stem, 'kind':kind, 'scope':scope, 'season_hint':season,

@@ -1,39 +1,23 @@
-# 本地规则与 AI 识别验收 · 2026-10-28
+# Rules and AI identification acceptance: 2026-10-28
 
-## 交付
+NAS local-worker enumerates full paths, probes duration, routes rules/research and persists suggestions/confirmation. No NAS cloud callback, TMDB-key relocation or topology change. Cloud needs updated UI; manual TMDB search remains.
 
-NAS local-worker 负责枚举完整路径、探测视频时长、规则分流、AI 检索、建议保存和确认落库。智能识别不回调项目 cloud，不搬迁 TMDB key，也不更改现有单向部署配置。cloud 仅需同步新版网页入口；原有手动 TMDB 搜索仍可使用。
+Unknown/rule-ambiguous/abnormal-duration/long-extra files use the existing model connection. File/folder scope preserves complete relevant context without unrelated shared-root works. Tasks/previews persist after closing. At this historical stage AI proposed identity/classification/evidence for explicit confirmation, without automatic linking/subtitles. Existing leases/locks/recovery fenced later maintenance. Memory-only, low confidence, unknown, conflict and out-of-scope proposals could not save.
 
-规则无法确定、身份未确认、时长明显异常或附加视频偏长时，通过现有 AI 连接自主检索匹配。单文件和所属文件夹范围均支持；目录范围保留全路径上下文，公共下载/电影根目录中的单项不会携带无关作品列表。任务与预览持久化，关闭网页不取消。
+## Validation
 
-AI 仅提出身份、正片/附加/未知分类与依据，不能执行文件操作。结果先预览、勾选确认；识别不自动建链接或处理字幕。已有映射与字幕维护流程继续复用原有租约、操作锁与恢复日志。无实际检索活动的纯记忆结果、低置信度、真正未知、映射冲突和不符合范围的结果不能直接确认。
+Python 194/frontend nine passed. Coverage included rule-only routing, duration/reference anomalies, full paths/folder scope, changed source/directory, unknown submission no-retry, permissions/citations/conflicts/cache updates. Browser: two extras routed by rules and unknown feature by AI, refresh persistence, selected-only save, unchanged bytes/inodes, no unnecessary AI on normal rechecks, unknown rejection, empty-batch rejection, selected-only batch, open/citation distinction and bilingual 320–1440px without overflow/JS errors. Collection and compact-extra regressions passed.
 
-## 自动化与浏览器
+Fictional providers/AI/probes exercised real HTTP/SQLite/queues/confirmation in disposable roots. Artifacts `/tmp/media-ai-library-acceptance/`: `result.json`, `research-preview.png`, `research-en.png`, `legacy/`, `compact/`. This was not production whole-library/subtitle quality acceptance.
 
-- Python 全套 194 项通过；包含规则绕过 AI、时长异常、资料时长差异、完整路径、目录范围、源码/目录变化、未知提交不重试、权限、来源与索引引用、冲突文件及标题缓存更新。
-- 前端测试 9 项通过。
-- 智能识别浏览器验收通过：同一目录规则处理两个附加文件、AI 处理未知正片；刷新后后台任务与建议保留；只保存勾选项；视频字节与 inode 不变；再次识别正常文件不调用 AI；未知项不能确认；空批次不假报提交；批量只提交勾选作品；来源区分打开操作与索引引用；320–1440px 和英文无溢出、无页面 JS 错误。
-- 原合集浏览器回归通过：季集识别、补链保持源 inode、字幕任务保留已有字幕、刷新与浏览器返回/前进。
-- 紧凑列表/附加分类浏览器回归通过。
+## Live model/probe evidence
 
-浏览器使用虚构媒体、Provider、AI 和探测结果，真实 HTTP/SQLite/队列/确认保存链路在一次性目录内执行。证据位于 `/tmp/media-ai-library-acceptance/`：`result.json`、`research-preview.png`、`research-en.png`，原流程回归在 `legacy/`，紧凑列表回归在 `compact/`。浏览器模拟资料不代表真实字幕服务或真实全库识别验收。
+The installed NAS client researched fictional `Manchester by the Sea (2016)/film.mkv`, declared duration 8220 seconds and a separate deleted-scenes folder. Four searches/one page open returned feature `movie:334541`, localized Manchester by the Sea, eligible for confirmation. Sources included TMDB, AFI and Wikipedia. TMDB open attempts and two indexed citations were recorded separately; blocked bodies were not represented as read. AI assessed citations/fields for review rather than official API authentication.
 
-## 真实模型与探测验证
+Installed ffprobe measured an independently generated two-second video as 2.0 seconds. Live model testing sent fictional paths/metadata only, never production videos/SQLite or real maintenance jobs.
 
-安装后的 NAS 客户端使用现有模型连接，对虚构完整路径 `Manchester by the Sea (2016)/film.mkv`、声明的 8220 秒时长及独立删减片段目录进行检索。观察到 4 个检索项、1 个页面打开，模型返回正片及 `movie:334541`、中文片名《海边的曼彻斯特》，建议可进入待确认状态。
+## Deployment
 
-检索依据包括 TMDB 链接、AFI 和维基百科引用；程序将 TMDB 打开操作和两个索引引用分别记录，不宣称所有引用正文均已读取。TMDB 正文访问受限时，允许 AI 用索引摘要与可信资料交叉核对；真正未知仍保留未知。引用与字段的真实性由 AI 判断并供用户确认，不冒充官方 API 逐字段认证。
+`sh setup.sh local` updated healthy control/workers and library heartbeat, with installed/source hashes matching after private backup. Read-only counts retained 807 mappings, 2879 inventory, 816 videos and one existing identity; manual classification/maintenance stayed zero. Default list retained 73 feature works and 12 extras. No live bulk research/link/subtitle operation occurred.
 
-独立生成的 2 秒临时视频由安装后的 ffprobe 探测为 2.0 秒。真实模型验证仅发送虚构路径与元数据，未读取真实影片、未对生产 SQLite 运行验收或生成真实媒体维护任务。
-
-## NAS 更新与数据保全
-
-经 `sh setup.sh local` 更新 local-control / local-worker，均健康；library worker 心跳正常。最终安装模块 SHA256 与源码一致。更新前已保留私有 SQLite 备份与计数基线。
-
-只读核对：807 条映射、2879 条索引、816 个可见视频、更新前已有的 1 条身份确认完整保留；手动分类与维护任务均仍为 0。默认列表 73 个正片作品，12 个附加视频保留索引。没有对真实资源执行批量 AI 识别、补链或字幕处理。
-
-## 网页部署边界
-
-没有 cloud SSH 部署入口；公网界面未由本轮更新。云端项目拉取本次提交后执行 `sh setup.sh cloud` 并刷新浏览器，才能看到新的入口、任务进度和来源说明。这是网页资源更新，不是将分类任务迁到 cloud。
-
-`.env`、SQLite、状态目录、备份和私有凭据未提交；`setup.sh` 内容与执行权限本轮未修改。
+Cloud deployment access was unavailable. Pull and `sh setup.sh cloud` remained required for public UI. Private state/configuration/backups/credentials were excluded; setup content/mode were unchanged.
