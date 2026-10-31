@@ -49,7 +49,7 @@ class PlatformService:
         return row
 
     @limited('search')
-    def search_titles(self, query, kind, year=None):
+    def search_titles(self, query, kind='all', year=None):
         return self.service.search_titles(query, kind, year)
 
     @limited('search')
@@ -72,6 +72,9 @@ class PlatformService:
     def job(self, job_id):
         row = self._task(job_id)
         result = self.service.public_job(row)
+        result['can_delete']=(self.actor.can_download and row['state']!='deleted' and
+            (self.actor.admin or row['data'].get('_platform_owner')==self.actor.id or
+             self.accounts.allowed(self.actor,'task',job_id,manage=True)))
         result.update(owner_id=row['data'].get('_platform_owner'),
                       entry=row['data'].get('_platform_entry', 'legacy'),
                       created_at=str(row.get('created_at', '')), updated_at=str(row.get('updated_at', '')))
@@ -81,16 +84,20 @@ class PlatformService:
         if after and not re.fullmatch(r'[a-f0-9]{32}', after):
             raise ValueError('invalid_cursor')
         limit = min(max(int(limit), 1), 100)
-        if after:
-            self._task(after)
-        rows = self.records.db.execute('''SELECT r.id FROM media_mcp_record r
-            WHERE r.kind='acquisition' AND (:after='' OR
-                r.created_at<(SELECT created_at FROM media_mcp_record WHERE id=:after) OR
-                (r.created_at=(SELECT created_at FROM media_mcp_record WHERE id=:after) AND r.id<:after)) AND
+        cursor=self._task(after) if after else None
+        terminal=('completed','completed_with_warnings','failed','cancelled')
+        after_ended=int(cursor['state'] in terminal) if cursor else 0
+        rows = self.records.db.execute('''WITH visible AS (
+            SELECT r.id,r.created_at,CASE WHEN r.state IN
+                ('completed','completed_with_warnings','failed','cancelled') THEN 1 ELSE 0 END AS ended
+            FROM media_mcp_record r WHERE r.kind='acquisition' AND r.state!='deleted' AND
             (:admin=1 OR json_extract(r.data,'$._platform_owner')=:user OR EXISTS
-                (SELECT 1 FROM platform_access a WHERE a.kind='task' AND a.object_id=r.id AND a.user_id=:user))
-            ORDER BY r.created_at DESC,r.id DESC LIMIT :limit''', {'after':after, 'admin':int(self.actor.admin),
-                                          'user':self.actor.id, 'limit':limit}).mappings().all()
+                (SELECT 1 FROM platform_access a WHERE a.kind='task' AND a.object_id=r.id AND a.user_id=:user)))
+            SELECT id FROM visible WHERE :after='' OR ended>:ended OR (ended=:ended AND (
+                created_at<(SELECT created_at FROM media_mcp_record WHERE id=:after) OR
+                (created_at=(SELECT created_at FROM media_mcp_record WHERE id=:after) AND id<:after)))
+            ORDER BY ended,created_at DESC,id DESC LIMIT :limit''',
+            {'after':after,'ended':after_ended,'admin':int(self.actor.admin),'user':self.actor.id,'limit':limit}).mappings().all()
         return {'jobs':[self.job(row['id']) for row in rows],
                 'next_cursor':rows[-1]['id'] if len(rows) == limit else None}
 
@@ -264,3 +271,19 @@ class PlatformService:
         result = self.service.subtitles(media_id, self._key(idempotency_key))
         self.accounts.event(self.actor, 'subtitles_requested', 'task', result['job_id'])
         return result
+
+    def download_delete_preview(self,job_id):
+        from media_mcp.application.deletion import Deletions
+        return Deletions(self).download_preview(job_id)
+
+    def collection_delete_preview(self,collection_id,selection=None,season=None):
+        from media_mcp.application.deletion import Deletions
+        return Deletions(self).collection_preview(collection_id,selection,season)
+
+    def library_task_delete_preview(self,job_id):
+        from media_mcp.application.deletion import Deletions
+        return Deletions(self).task_preview(job_id)
+
+    def deletion_apply(self,plan_id,confirm):
+        from media_mcp.application.deletion import Deletions
+        return Deletions(self).apply(plan_id,confirm)

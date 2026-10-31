@@ -41,8 +41,12 @@ class TMDB:
                     if isinstance(poster, str) and re.fullmatch(r'/[A-Za-z0-9_.-]+', poster) else None,
                 'rating':row.get('vote_average'), 'rating_source':'TMDB'}
 
-    def search(self, query, kind, year=None):
+    def search(self, query, kind='all', year=None):
         params = {'query': query, 'include_adult': 'false'}
+        if kind == 'all':
+            return [self.identity(item['media_type'],item)
+                    for item in self.get('search/multi',**params).get('results',[])
+                    if item.get('media_type') in ('movie','tv')]
         if year:
             params['year' if kind == 'movie' else 'first_air_date_year'] = year
         return [self.identity(kind, item) for item in self.get('search/' + kind, **params).get('results', [])]

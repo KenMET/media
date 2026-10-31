@@ -63,7 +63,7 @@ class Command(Input):
 
 class Search(Input):
     query: str = Field(min_length=1, max_length=200)
-    kind: Literal['movie', 'tv']
+    kind: Literal['movie', 'tv', 'all'] = 'all'
     year: int | None = Field(default=None, ge=1880, le=2200)
 
 
@@ -230,7 +230,13 @@ class TokenName(Input):
     name: str = Field(min_length=1, max_length=80)
 
 
+class DeletionApply(LibraryPlan):
+    confirm: bool
+
+
 COMMANDS = {
+    'download_delete_preview':Job,'collection_delete_preview':CollectionScope,
+    'library_task_delete_preview':Job,'deletion_apply':DeletionApply,
     'search_titles':Search, 'library':Title, 'search_releases':Releases, 'plan':Plan,
     'start':Start, 'job':Job, 'jobs':Jobs, 'retry':Retry, 'subtitles':Subtitles, 'media':Media,
     'inventory_scan':Input, 'inventory_preview':InventoryPreview,
@@ -502,9 +508,10 @@ def create_app(accounts=None, records=None, service_factory=None):
         return {}
 
     async def status(request):
-        await run_in_threadpool(actor, request)
+        user=await run_in_threadpool(actor, request)
         from media_mcp.monitor.health import healthy
-        return {'service':'media-local-control', 'worker_ready':await run_in_threadpool(healthy),
+        from media_mcp.platform.storage_status import storage_status
+        return {**({'storage':await run_in_threadpool(storage_status)} if user.admin else {}), 'service':'media-local-control', 'worker_ready':await run_in_threadpool(healthy),
                 'tmdb_configured':bool(os.environ.get('TMDB_API_KEY') or os.environ.get('MEDIA_CATALOG_URL')), 'public':public}
 
     async def health(request):

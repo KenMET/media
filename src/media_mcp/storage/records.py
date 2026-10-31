@@ -63,7 +63,7 @@ class Records:
 
     def active(self, title_id=None):
         rows = self.db.execute("""SELECT * FROM media_mcp_record WHERE kind='acquisition'
-            AND state NOT IN ('completed','completed_with_warnings','needs_review','failed','cancelled')
+            AND state NOT IN ('completed','completed_with_warnings','needs_review','failed','cancelled','deleted')
             AND (:title_id IS NULL OR json_extract(data,'$.identity.title_id')=:title_id)
             ORDER BY updated_at,id LIMIT 100""", {'title_id':title_id}).mappings().all()
         return [self.decode(row) for row in rows]

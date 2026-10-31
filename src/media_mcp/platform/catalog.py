@@ -63,7 +63,7 @@ class Catalog:
             return result
 
     def discover(self, source='tmdb', kind='movie', window='week'):
-        if source not in ('tmdb', 'douban', 'simkl') or kind not in ('movie', 'tv') or window not in ('day', 'week'):
+        if source not in ('tmdb', 'douban', 'simkl') or kind not in ('movie', 'tv') or window not in ('day', 'week','top') or window=='top' and source!='tmdb':
             raise ValueError('invalid_catalog_request')
         key = f'{source}:{kind}:{window}'
         with self.lock:
@@ -78,7 +78,7 @@ class Catalog:
             updated = cached['source_updated_at'] if cached else None
             try:
                 if source == 'tmdb':
-                    raw = self.tmdb.get(f'trending/{kind}/{window}').get('results', [])
+                    raw = self.tmdb.get(f'{kind}/top_rated' if window=='top' else f'trending/{kind}/{window}').get('results', [])
                     items = [self.tmdb_item(kind, item) for item in raw[:40]]
                 elif source == 'simkl':
                     items, updated = self._simkl(kind, window, now)

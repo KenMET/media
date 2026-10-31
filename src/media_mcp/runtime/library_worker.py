@@ -124,7 +124,7 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
     if not row:
         raise ValueError('library_task_not_found')
     row=records.decode(row)
-    if row['state'] in ('completed','completed_with_warnings','needs_review','failed'):
+    if row['state'] in ('completed','completed_with_warnings','needs_review','failed','cancelled','deleted'):
         return
     accounts=Accounts(jobs.db);actor=accounts.actor_by_id(row['data']['owner'])
     if not actor.can_manage_media:
@@ -140,7 +140,7 @@ def process_task(jobs,job,subtitle_agent=None,analysis_client=None,analysis_prob
         if not accounts.actor_by_id(row['data']['owner']).can_manage_media:
             raise ValueError('media_management_permission_required')
     row=coordinate(records,row,library,analysis_client,analysis_probe,guard=recovery_guard)
-    if row['state'] in ('completed','completed_with_warnings','needs_review','failed'):return
+    if row['state'] in ('completed','completed_with_warnings','needs_review','failed','cancelled','deleted'):return
     lease()
     starting_data=dict(row['data'])
     if row['state']=='queued':starting_data.pop('error_code',None)
@@ -205,6 +205,7 @@ def record_failure(jobs, job, exc):
     records=Records(jobs.db)
     value=jobs.db.execute("SELECT * FROM media_mcp_record WHERE kind='library_task' AND json_extract(data,'$.processing_key')=:key",{'key':job['delivery_key']}).mappings().first()
     row=records.decode(value) if value else None
+    if row and row['state'] in ('deleted','cancelled'):return 'media_job_cancelled',False
     previous=row['data'] if row else {}
     session=exc.recovery if isinstance(exc,SessionWaiting) else None
     if session is None and getattr(exc,'outcome_unknown',False) and getattr(exc,'code',None)!='rate_limited':
@@ -333,6 +334,8 @@ def run_library_worker():
             error,retry_model=record_failure(jobs,job,exc)
         finally:
             done.set();thread.join(timeout=2)
+        if jobs.db.execute("SELECT id FROM media_processing_job WHERE id=:id AND state='cancelled' AND owner IS NULL",job).first():
+            heartbeat('library');continue
         jobs.finish(job,error=error,review_required=bool(error) and not retry_model,result=json.dumps({'error':error}),
             retry_delay_seconds=retry_delay(jobs,job,error) if retry_model else None)
         heartbeat('library')

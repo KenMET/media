@@ -272,7 +272,7 @@ class Collections:
         tasks=[]
         if self.actor.can_manage_media:
             tasks=[task_public(self.records.decode(row)) for row in self.db.execute("""SELECT * FROM media_mcp_record
-                WHERE kind='library_task' AND json_extract(data,'$.owner')=:owner AND json_extract(data,'$.action') IN ('analysis','auto')
+                WHERE kind='library_task' AND state!='deleted' AND json_extract(data,'$.owner')=:owner AND json_extract(data,'$.action') IN ('analysis','auto')
                 AND (json_extract(data,'$.action')!='auto' OR json_extract(data,'$.total')>0)
                 ORDER BY updated_at DESC,rowid DESC LIMIT 10""",{'owner':self.actor.id}).mappings()]
         return {'collections':page, 'total':len(items), 'can_manage':self.actor.can_manage_media, 'analysis_tasks':tasks,
@@ -326,7 +326,7 @@ class Collections:
                 episodes.setdefault(key,{'episode':number,'versions':[]})['versions'].append(file)
             buckets.append({'season':season,'provisional':any(not f['identified'] for f in values),'files':values,'episodes':list(episodes.values())})
         tasks=[task_public(self.records.decode(row)) for row in self.db.execute("""SELECT * FROM media_mcp_record
-            WHERE kind='library_task' AND json_extract(data,'$.owner')=:owner AND (json_extract(data,'$.collection_id')=:collection OR json_extract(data,'$.result_collection_id')=:collection)
+            WHERE kind='library_task' AND state!='deleted' AND json_extract(data,'$.owner')=:owner AND (json_extract(data,'$.collection_id')=:collection OR json_extract(data,'$.result_collection_id')=:collection)
             ORDER BY updated_at DESC,rowid DESC LIMIT 5""",{'owner':self.actor.id,'collection':collection_id}).mappings()]
         return {'collection_id':collection_id, 'title_id':group['title_id'], **self._title(group),
                 'summary':self.summary(files), 'can_manage':self.actor.can_manage_media,

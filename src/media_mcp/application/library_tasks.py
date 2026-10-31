@@ -111,13 +111,13 @@ class LibraryTasks:
     def list(self,after='',limit=10):
         self.manage()
         if after:self.owned(after)
-        rows=self.db.execute(STATUS_SELECT+""" WHERE r.kind='library_task'
+        rows=self.db.execute(STATUS_SELECT+""" WHERE r.kind='library_task' AND r.state!='deleted'
             AND json_extract(data,'$.owner')=:owner AND
             (:after='' OR rowid<(SELECT rowid FROM media_mcp_record WHERE id=:after))
             ORDER BY rowid DESC LIMIT :limit""",{'owner':self.actor.id,'after':after,'limit':limit+1}).mappings().all()
         page=rows[:limit]
         # Active tasks remain visible even when later completed tasks fill the history page.
-        active=self.db.execute(STATUS_SELECT+""" WHERE r.kind='library_task'
+        active=self.db.execute(STATUS_SELECT+""" WHERE r.kind='library_task' AND r.state!='deleted'
             AND json_extract(data,'$.owner')=:owner AND state IN ('queued','running') ORDER BY rowid LIMIT 10""",{'owner':self.actor.id}).mappings().all() if not after else []
         active_ids={row['id'] for row in active}
         tasks=[self.public(self.records.decode(row)) for row in [*active,*[item for item in page if item['id'] not in active_ids]]]

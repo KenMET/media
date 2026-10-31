@@ -26,7 +26,7 @@ class PreviewTMDB:
         item = {'id':1, 'title':'远山来信 · 测试作品', 'original_title':'Letters from the Mountain',
                 'release_date':'2025-01-01', 'overview':'仅用于界面验证的虚构作品，不会访问真实资源站或下载器。',
                 'original_language':'zh', 'vote_average':8.4, 'poster_path':f'/preview-{ident}.jpg', 'genres':[{'name':'剧情'}]}
-        if path.startswith('trending/') or path.startswith('search/'):
+        if path.startswith('trending/') or path.startswith('search/') or path.endswith('/top_rated'):
             return {'results':[{**item,'id':index+1,'title':title} for index,title in enumerate(
                 self.titles)]}
         item.update(id=ident, title=self.titles[(ident-1)%len(self.titles)])
@@ -49,7 +49,7 @@ class PreviewTMDB:
             time.sleep(delay)
             if query == 'fail-preview':
                 raise RuntimeError('tmdb_unavailable')
-        rows = [TMDB.identity(kind, row) for row in self.get('search/'+kind)['results']]
+        rows = [TMDB.identity(('movie' if index%2==0 else 'tv') if kind=='all' else kind,row) for index,row in enumerate(self.get('search/'+kind)['results'])]
         return [{**row,'title':'['+query+'] '+row['title']} for row in rows] if delay else rows
 
     def detail(self, title_id):
@@ -142,6 +142,12 @@ if __name__ == '__main__':
                     (parent/f'Preview.Movie.{ident}.mkv').write_bytes(b'preview-batch-movie')
                 from media_mcp.storage.inventory import Inventory
                 inventory=Inventory(records);scan=inventory.scan(admin.id);inventory.adopt(scan['scan_id'],admin.id)
+
+            if os.environ.get('MEDIA_PREVIEW_PRODUCT_GOAL')=='true':
+                for stage,ident in [('completed',1),('downloading',2),('needs_review',4)]:
+                    records.put('acquisition',{'_platform_owner':admin.id,'_platform_entry':'web',
+                        'identity':PreviewTMDB().detail('movie:'+str(ident)),
+                        'release':{'name':'Fixture '+stage},'progress':1 if stage=='completed' else .5},stage)
 
             # A fixture worker uses the real durable queue and hardlink repair, with a fake subtitle engine.
             import threading,time

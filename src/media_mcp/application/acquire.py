@@ -56,8 +56,8 @@ class MediaService:
         self.tmdb = tmdb or TMDB()
         self.indexer = indexer or Jackett()
 
-    def search_titles(self, query, kind, year=None):
-        if not query.strip() or len(query) > 200 or kind not in ('movie', 'tv'):
+    def search_titles(self, query, kind='all', year=None):
+        if not query.strip() or len(query) > 200 or kind not in ('movie', 'tv','all'):
             raise ValueError('invalid_title_search')
         return {'titles': self.tmdb.search(query, kind, year)}
 

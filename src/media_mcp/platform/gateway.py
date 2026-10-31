@@ -40,7 +40,7 @@ def provider_call(command, tmdb, jackett):
     if command.operation == 'tmdb':
         path, params = args.get('path', ''), args.get('params', {})
         if (set(args) != {'path','params'} or not isinstance(path, str) or not re.fullmatch(
-            r'(?:search/(?:movie|tv)|(?:movie|tv)/[1-9][0-9]{0,11}|tv/[1-9][0-9]{0,11}/season/[0-9]{1,2}|trending/(?:movie|tv)/(?:day|week))', path)
+            r'(?:search/(?:movie|tv|multi)|(?:movie|tv)/[1-9][0-9]{0,11}|tv/[1-9][0-9]{0,11}/season/[0-9]{1,2}|(?:movie|tv)/top_rated|trending/(?:movie|tv)/(?:day|week))', path)
             or not isinstance(params, dict) or set(params) - {'query','year','first_air_date_year','include_adult','language'}):
             raise ValueError('invalid_provider_request')
         for key, value in params.items():

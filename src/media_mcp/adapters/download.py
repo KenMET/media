@@ -31,7 +31,7 @@ class Downloader:
             return None
         row = rows[0]
         return {'hash': row.hash, 'progress': float(row.progress), 'state': str(row.state),
-                'content_path': str(row.content_path), 'category': row.category,
+                'added_on':getattr(row,'added_on',None), 'content_path': str(row.content_path), 'category': row.category,
                 'tags': str(row.tags), 'save_path': str(row.save_path),
                 'download_speed':getattr(row, 'dlspeed', None),
                 'eta':getattr(row, 'eta', None), 'total_bytes':getattr(row, 'total_size', None)}
@@ -49,3 +49,7 @@ class Downloader:
 
     def files(self, hash_value):
         return [dict(row) for row in self.client.torrents_files(torrent_hash=hash_value)]
+
+    def remove(self,hash_value):
+        # Payloads belong to the frozen application deletion plan, never qBittorrent.
+        self.client.torrents_delete(torrent_hashes=hash_value,delete_files=False)
