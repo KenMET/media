@@ -62,3 +62,14 @@ sh setup.sh cloud
 - [TMDB 历史评分榜](https://developer.themoviedb.org/reference/movie-top-rated-list)
 - [TMDB 混合搜索](https://developer.themoviedb.org/reference/search-multi)
 - [qBittorrent 删除接口](https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0)#delete-torrents)
+
+## NAS 部署结果
+
+提交 `126f2a1` 已推送并核对远端。队列空闲后通过唯一入口 `sh setup.sh local`
+重建 local-control、local-worker，两者 healthy、重启 0，安装文件哈希与提交源码一致。
+下载器 API 只读版本检查及 worker 初始化检查通过；下载/媒体库两处实际容量读取成功。
+其他既有服务容器的 ID、镜像与启动时间未变，未完成 FIFO 工作及原有文档/验收文件
+摘要保持。发布时使用已提交 runtime/state.py，之后恢复工作区原文件。
+
+本轮没有重建云端；云端新界面仍需执行上节两条命令。NAS 后端已经更新，无需用户
+再次重建本地。没有在真实媒体或生产 qBittorrent 上执行删除验收。
