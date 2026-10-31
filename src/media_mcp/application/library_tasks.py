@@ -55,6 +55,9 @@ class LibraryTasks:
                 progress['detail_updated_at']=str(child['updated_at'])
                 if progress.get('phase')=='identifying' and detail.get('analysis_progress'):
                     progress['phase']=detail['analysis_progress']['phase']
+                if progress.get('phase')=='subtitles' and 'auto_results' in detail:
+                    progress['detail']={'phase':'subtitles','done':len(detail['auto_results']),
+                        'total':detail.get('analysis_applied') or len(detail.get('files',[]))}
                 key=detail.get('subtitle_inflight')
                 if key:
                     file=next((f for f in detail.get('files',[]) if f['key']==key),None)

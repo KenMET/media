@@ -44,6 +44,20 @@ class TaskViewsTests(unittest.TestCase):
         self.assertEqual(status['succeeded'],60)
         self.assertEqual(self.service.library_tasks()['tasks'][0]['succeeded'],60)
 
+    def test_subtitle_progress_exposes_current_group_checkpoints_without_scanning_media(self):
+        self.fixture(2);job=self.service.library_auto('task-subtitle-progress1')
+        row=self.records.get(job['job_id']);data=row['data'];data['analysis_progress']['phase']='subtitles'
+        row=self.records.update(row,'running',data)
+        files=data['files'];outcome={'key':files[0]['key'],'state':'completed','subtitles':'ready'}
+        child=self.records.put('library_auto_item',{'files':files,'analysis_applied':2,'auto_results':[outcome]},
+            'running',key_hash=digest(['library-auto-item',row['id'],0]))
+        with patch('media_mcp.application.collections.Collections.files',side_effect=AssertionError('status must not scan media')):
+            status=self.service.library_task_status(row['id'])
+        self.assertEqual(status['analysis_progress']['detail'],{'phase':'subtitles','done':1,'total':2})
+        self.assertEqual(status['completed'],0)
+        self.records.update(child,'running',{**child['data'],'auto_results':[outcome,{'key':files[1]['key'],'state':'needs_review'}]})
+        self.assertEqual(self.service.library_task_status(row['id'])['analysis_progress']['detail']['done'],2)
+
     def test_resume_lookup_is_read_only_and_owned(self):
         self.fixture(1);job=self.service.library_auto('recover-request01')
         before=self.db.execute('SELECT COUNT(*) FROM media_processing_job').scalar()
