@@ -59,18 +59,18 @@ class Budget:
         with self.operation(user, operation):
             return function(*args, **kwargs)
 
-    def admit_job(self, user):
-        # Caller holds the existing global media mutation lock through insertion.
-        # Deleted rows retain audit/idempotency history, not pending queue slots.
-        rows = self.db.execute('''SELECT COALESCE(json_extract(data,'$._platform_owner'),json_extract(data,'$.owner')) AS owner,
-            COUNT(*) AS total FROM media_mcp_record WHERE kind IN ('acquisition','library_task')
+    def admit_job(self, user, group=None):
+        # A consented season is one account request, but each delivery still counts globally.
+        rows = self.db.execute("""SELECT COALESCE(json_extract(data,'$._platform_owner'),json_extract(data,'$.owner')) AS owner,
+            COALESCE(json_extract(data,'$.season_request_id'),id) AS slot FROM media_mcp_record
+            WHERE kind IN ('acquisition','library_task')
             AND state NOT IN ('completed','completed_with_warnings','failed','cancelled','deleted')
-            AND (kind!='library_task' OR state!='needs_review')
-            GROUP BY COALESCE(json_extract(data,'$._platform_owner'),json_extract(data,'$.owner'))''').mappings().all()
-        if sum(row['total'] for row in rows) >= 100 or sum(
-                row['total'] for row in rows if row['owner'] == user) >= 10:
+            AND (kind!='library_task' OR state!='needs_review')""").mappings().all()
+        slots={row['slot'] for row in rows if row['owner']==user}
+        if len(rows)>=100 or (group not in slots and len(slots)>=10):
             raise ValueError('account_queue_full')
-        self.charge(user, 'submission')
+        if group is None or group not in slots:
+            self.charge(user,'submission')
 
 
 def limited(operation):

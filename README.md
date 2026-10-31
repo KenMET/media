@@ -38,7 +38,7 @@ See [service naming](docs/service-names.md): NAS uses `local-control` / `local-w
 
 The [collection library](docs/collection-library.md) groups posters by work, with seasons, episodes and versions in each detail page. Automatic organization identifies, saves, repairs links and checks subtitles; advanced controls retain manual maintenance. Rule checks, duration probes and AI fallback run on NAS `local-worker`; see [identification](docs/library-ai-identification.md).
 
-Discovery, search, acquisition, automatic subtitles, progress and reconnect behavior are described in [task experience](docs/task-experience.md). Model session recovery, quota waiting and archival are covered by [session recovery](docs/session-recovery.md).
+Discovery, search, acquisition, automatic subtitles, progress and reconnect behavior are described in [task experience](docs/task-experience.md). Season packs, explicit six-hour subscriptions and reviewed duplicate cleanup are described in [season acquisition](docs/season-acquisition.md). Model session recovery, quota waiting and archival are covered by [session recovery](docs/session-recovery.md).
 
 ## Routine commands
 

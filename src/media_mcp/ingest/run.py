@@ -165,6 +165,10 @@ def restore_link_from_db(file_path: str, dry_run: bool = False, recheck_unlinked
     if link_record.get('status') == 'deleted':
         return (True,'unlinked') if same_recorded_source(link_record,file_path) else (False,'not_found')
     if link_record.get('status') == 'unlinked':
+        if link_record.get('reason')=='outside_requested_scope':
+            from media_mcp.application.identity import expected_identity, excluded_episode
+            if expected_identity.get() and not excluded_episode(link_record):
+                return False, 'not_found'
         unchanged = same_recorded_source(link_record,file_path)
         if unchanged and not recheck_unlinked:
             return True, 'unlinked'
@@ -213,7 +217,7 @@ def restore_link_from_db(file_path: str, dry_run: bool = False, recheck_unlinked
     if not flag:
         logger().warning('Mapped media restore requires review: %s', message)
         return False, 'not_found'
-    if message == 'Unlinked lower or uncertain quality':
+    if message in ('Unlinked lower or uncertain quality','Unlinked outside requested scope'):
         return True, 'unlinked'
     return True, 'exists' if message == 'Skip hardlink' else 'relinked'
 

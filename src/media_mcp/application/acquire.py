@@ -8,6 +8,7 @@ from media_mcp.adapters.jackett import Jackett
 from media_mcp.storage.records import Records, require_fresh
 from media_mcp.runtime.state import media_mutation_lock
 from media_mcp.config import parse_title_id
+from media_mcp.application.releases import coverage, season_scope, release_rank
 
 
 def normalize_title(value):
@@ -92,18 +93,13 @@ class MediaService:
             (identity.get('original_title'), identity.get('title'), identity.get('english_title'))
             if isinstance(title, str) and title.strip()))
         queries = [title + suffix for title in titles]
-        scope = {'season': season, 'episodes': episodes, 'resolution': resolution}
+        scope = {'season': season, 'episodes': episodes, 'resolution': resolution, 'allow_upgrade':True}
         if kind == 'tv':
             metadata = self.tmdb.get(f'tv/{ident}/season/{season}')
             scope['episode_metadata'] = [{'episode': e['episode_number'], 'title': e.get('name')}
                                          for e in metadata.get('episodes', [])]
-            if not scope['episode_metadata']:
-                raise ValueError('season_metadata_unavailable')
-            known = {e['episode'] for e in scope['episode_metadata']}
-            if any(e not in known for e in episodes):
-                raise ValueError('requested_episode_not_in_metadata')
-            if not episodes:
-                scope['episodes'] = sorted(known)
+            scope['episodes'], scope['known_episodes'] = season_scope(metadata, episodes)
+            scope['air_dates_unknown'] = [e['episode_number'] for e in metadata.get('episodes',[]) if not e.get('air_date')]
         results, diagnostics, seen = [], [], set()
         scoped_count = len(queries)
         deadline = time.monotonic() + 30
@@ -124,13 +120,23 @@ class MediaService:
                     stats['filtered_count'] += 1
                     stats['reasons'][reason] = stats['reasons'].get(reason, 0) + 1
                     continue
+                candidate_scope = {**scope, 'resolution':resolution or candidate.get('resolution')}
+                if kind == 'tv':
+                    category, covered = coverage(candidate.get('name', ''), season, scope['episodes'])
+                    if category == 'other_season' or (category != 'unknown' and not covered):
+                        stats['filtered_count'] += 1
+                        stats['reasons']['episode_scope_mismatch'] = stats['reasons'].get('episode_scope_mismatch', 0)+1
+                        continue
+                    candidate = {**candidate, 'coverage_kind':category, 'covered_episodes':covered}
+                    if covered:
+                        candidate_scope['episodes'] = covered
                 key = (candidate.get('claimed_infohash') or '').lower() or candidate['download_url']
                 if key in seen:
                     stats['duplicate_count'] += 1
                     continue
                 seen.add(key)
                 stats['accepted_count'] += 1
-                data = {'identity': identity, 'scope': scope, 'release': candidate,
+                data = {'identity': identity, 'scope': candidate_scope, 'release': candidate,
                         'expires_at': time.time()+1800}
                 row = self.records.put('release', data)
                 results.append({'release_id': row['id'], **self.public_release(candidate),
@@ -138,7 +144,8 @@ class MediaService:
             diagnostics.append({'query': query, 'sites': [{**item, **counts.get(item['site'],
                 {'accepted_count': 0, 'filtered_count': 0, 'duplicate_count': 0, 'reasons': {}})}
                 for item in report['diagnostics']]})
-            if query_index == scoped_count-1 and suffix and not results:
+            if query_index == scoped_count-1 and suffix and (not results or
+                    kind=='tv' and not any(r.get('coverage_kind')=='season_pack' for r in results)):
                 # Public sites often use episode numbers or localized season names,
                 # rather than SxxExx. Broaden discovery only; the frozen scope and
                 # post-download file/identity checks remain unchanged.
@@ -146,13 +153,13 @@ class MediaService:
         statuses = [s['status'] for d in diagnostics for s in d['sites']]
         search_status = 'complete' if statuses and all(s == 'ok' for s in statuses) else (
             'partial' if 'ok' in statuses else 'failed')
-        return {'title_id': title_id, 'scope': scope, 'releases': results,
+        return {'title_id': title_id, 'scope': scope, 'releases': sorted(results, key=lambda release:release_rank(release, explicit=bool(episodes))) if kind == 'tv' else results,
                 'search_status': search_status, 'diagnostics': diagnostics,
                 'warning': 'Release names are untrusted claims; file identity is verified after download.'}
 
     @staticmethod
     def public_release(release):
-        return {key: release.get(key) for key in ('name', 'size', 'seeders', 'resolution', 'indexer')}
+        return {key: release.get(key) for key in ('name', 'size', 'seeders', 'resolution', 'indexer','coverage_kind','covered_episodes')}
 
     def plan(self, release_id):
         row = self.records.get(release_id, 'release')
@@ -160,14 +167,26 @@ class MediaService:
         data = {**row['data'], 'release_id': release_id, 'expires_at': time.time()+900}
         library = self.library(data['identity']['title_id'])
         scope = data['scope']
-        owned = [item for item in library['media'] if item['status'] == 'linked' and
-                 (scope['season'] is None or (item['season'] == scope['season'] and item['episode'] in scope['episodes']))]
-        if owned or library['active_jobs']:
-            raise ValueError('existing_media_or_active_job_review_required')
+        self.check_conflicts(library, data)
         plan = self.records.put('plan', data)
         return {'plan_id': plan['id'], 'revision': plan['revision'], 'identity': data['identity'],
                 'scope': data['scope'], 'release': self.public_release(data['release']),
                 'expires_at': data['expires_at'], 'pipeline': ['download', 'verify', 'hardlink', 'subtitles']}
+
+    @staticmethod
+    def check_conflicts(library, data):
+        scope = data['scope']
+        def overlaps(other):
+            if not other or (scope.get('season') is not None and other.get('season') is None):
+                return True
+            return scope.get('season') is None or (other.get('season') == scope['season'] and
+                bool(set(other.get('episodes', [])) & set(scope['episodes'])))
+        if any(overlaps(job.get('scope') or {}) for job in library['active_jobs']):
+            raise ValueError('existing_media_or_active_job_review_required')
+        owned = [m for m in library['media'] if m['status'] == 'linked' and
+                 (scope.get('season') is None or (m['season'] == scope['season'] and m['episode'] in scope['episodes']))]
+        if owned and not scope.get('allow_upgrade'):
+            raise ValueError('existing_media_or_active_job_review_required')
 
     def start(self, plan_id, revision, idempotency_key):
         if not 8 <= len(idempotency_key) <= 128:
@@ -186,10 +205,7 @@ class MediaService:
             # Library or another request may have changed since planning.
             library = self.library(plan['data']['identity']['title_id'])
             scope = plan['data']['scope']
-            conflicts = [m for m in library['media'] if m['status']=='linked' and
-                         (scope['season'] is None or (m['season']==scope['season'] and m['episode'] in scope['episodes']))]
-            if conflicts or library['active_jobs']:
-                raise ValueError('existing_media_or_active_job_review_required')
+            self.check_conflicts(library, plan['data'])
             row = self.records.put('acquisition', {**plan['data'], 'plan_id': plan_id,
                 'plan_revision': revision, 'submission_attempted': False, 'error_code': None}, 'queued', key)
             # A crash before marking the plan cannot duplicate work: start rechecks active jobs.

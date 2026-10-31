@@ -15,7 +15,12 @@ class ScopedRecords(Records):
     def put(self, kind, data, *args, **kwargs):
         data = {**data, '_platform_owner':self.actor.id, '_platform_entry':self.entry}
         if kind == 'acquisition':
-            Budget(self.db,self.accounts.clock).admit_job(self.actor.id)
+            group=data.get('season_request_id')
+            if group:
+                consent=Records(self.db).get(group)
+                if consent['kind'] not in ('season_request','season_subscription') or consent['state']!='active' or consent['data']['owner']!=self.actor.id:
+                    raise ValueError('season_request_not_active')
+            Budget(self.db,self.accounts.clock).admit_job(self.actor.id,group=group)
         return super().put(kind, data, *args, **kwargs)
 
     def get(self, ident, kind=None):
@@ -62,12 +67,64 @@ class PlatformService:
         self._download_permission()
         return self.service.plan(release_id)
 
+    def plan_for_season(self,release_id,request_id):
+        from media_mcp.application.subscriptions import SeasonRequests
+        self._download_permission()
+        consent=SeasonRequests(self).owned(request_id)
+        data=consent['data']
+        release=self.service.records.get(release_id,'release')['data']
+        if (consent['state']!='active' or not data.get('plan_paid') or
+                release['identity']['title_id']!=data['title_id'] or release['scope']['season']!=data['season'] or
+                release['scope']['resolution']!=data['resolution'] or
+                not set(release['scope']['episodes']).issubset(data.get('requested_episodes') or [])):
+            raise ValueError('subscription_scope_mismatch')
+        return self.service.plan(release_id)
+
     def start(self, plan_id, revision, idempotency_key):
         self._download_permission()
         # All ownership is persisted in the acquisition record before worker visibility.
         result = self.service.start(plan_id, revision, self._key(idempotency_key))
         self.accounts.event(self.actor, 'download_requested', 'task', result['job_id'])
         return result
+
+    def duplicates(self):
+        from media_mcp.application.duplicates import Duplicates
+        return Duplicates(self).list()
+
+    def duplicate_preview(self, keep_id):
+        from media_mcp.application.duplicates import Duplicates
+        return Duplicates(self).preview(keep_id)
+
+    def duplicate_apply(self, plan_id, confirm):
+        from media_mcp.application.duplicates import Duplicates
+        return Duplicates(self).apply(plan_id,confirm)
+
+    def season_request(self, title_id, season, resolution, idempotency_key):
+        from media_mcp.application.subscriptions import SeasonRequests
+        return SeasonRequests(self).create(title_id,season,resolution,idempotency_key)
+
+    def season_acquire(self, title_id, season, resolution, idempotency_key):
+        from media_mcp.application.subscriptions import SeasonRequests
+        from media_mcp.runtime.subscription_worker import check_season
+        from media_mcp.platform.cloud import CloudRequest
+        claim=self.season_request(title_id,season,resolution,idempotency_key)
+        def call(payload):
+            request=payload.get('request')
+            if request:payload={**payload,'request':CloudRequest.model_validate(request)}
+            return SeasonRequests(self).execute(**payload)
+        return check_season(claim,call,self.records.db,self.service.tmdb,self.service.indexer)
+
+    def subscription_create(self, title_id, season, resolution, idempotency_key):
+        from media_mcp.application.subscriptions import SeasonRequests
+        return SeasonRequests(self).create(title_id,season,resolution,idempotency_key,subscribe=True)
+
+    def subscriptions(self):
+        from media_mcp.application.subscriptions import SeasonRequests
+        return SeasonRequests(self).list()
+
+    def subscription_change(self, request_id, revision, state):
+        from media_mcp.application.subscriptions import SeasonRequests
+        return SeasonRequests(self).change(request_id,revision,state)
 
     def job(self, job_id):
         row = self._task(job_id)

@@ -323,7 +323,7 @@ class TvBatchProcessor:
                 ensure_ascii=False,
             )
 
-        if msg == 'Unlinked lower or uncertain quality':
+        if msg in ('Unlinked lower or uncertain quality','Unlinked outside requested scope'):
             return 'unlinked'
 
         if msg == 'Skip hardlink':

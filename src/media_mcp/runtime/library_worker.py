@@ -1,5 +1,4 @@
 """Durable collection maintenance, with the existing lease and mutation fences."""
-import hashlib
 import json
 import os
 import re
@@ -17,7 +16,6 @@ from media_mcp.runtime.model_retry import ModelServiceDeferred, retryable_model_
 
 def repair_mapping(library,jobs,conn,file,operation):
     from media_mcp.runtime import version_changes
-    from media_mcp.storage.media import upsert_media_link
     from media_mcp.config import contained
     from media_mcp.application.collections import library_root,file_state
     target=operation['target_path'];source=file['source_path']
@@ -58,39 +56,19 @@ def repair_mapping(library,jobs,conn,file,operation):
     if jobs.db.execute('SELECT id FROM media_link WHERE target_path=:target AND id!=:id',{'target':target,'id':file['media_id'] or -1}).first():
         raise ValueError('collection_target_owned')
     current=next(f for f in library.files() if f['key']==file['key'])
-    Path(target).parent.mkdir(parents=True,exist_ok=True)
-    contained(target,library_root(),exists=False)
-    change,payload=version_changes.prepare(conn,source,target,[])
-    try:
-        assert_mutation_lock()
-        os.link(source,target)
-        metadata={key:current.get(key) for key in ('media_type','media_tmdb_id','media_name','base_title','alt_name','year','season','episode')}
-        annotation=current.get('identity')
-        if annotation:
-            identity=annotation['identity']
-            metadata.update(media_type=identity['kind'],media_tmdb_id=identity['tmdb_id'],media_name=identity['title'],
-                base_title=identity['title'],alt_name=identity.get('original_title'),original_language=identity.get('original_language'),
-                year=int(identity['date'][:4]) if identity.get('date') else None)
-        assert_mutation_lock()
-        if file['media_id']:
-            fingerprint=file_state(source,'source')
-            conn.execute(text('''UPDATE media_link SET target_path=:target,target_path_hash=:hash,
-                source_exists=1,target_exists=1,source_size=:size,target_size=:size,
-                source_inode=:inode,target_inode=:inode,status='linked',reason='library_mapping_repair',
-                updated_at=CURRENT_TIMESTAMP WHERE id=:id'''),
-                {'target':target,'hash':hashlib.sha256(target.encode()).hexdigest(),'size':fingerprint[2],
-                 'inode':fingerprint[1],'id':file['media_id']})
-        else:
-            upsert_media_link(None,source,target,**metadata,status='linked',reason='library_mapping_repair',_connection=conn)
-        conn.execute(text("UPDATE media_version_change SET state='committed',updated_at=CURRENT_TIMESTAMP WHERE id=:id"),{'id':change})
-        conn.commit()
-    except BaseException:
-        conn.rollback()
-        assert_mutation_lock()
-        version_changes.recover_one(conn,change,payload,False)
-        raise
-    version_changes.recover_one(conn,change,payload,True)
-    return {'key':file['key'],'state':'completed'}
+    metadata={key:current.get(key) for key in ('media_type','media_tmdb_id','media_name','base_title','alt_name','year','season','episode')}
+    annotation=current.get('identity')
+    if annotation:
+        identity=annotation['identity']
+        metadata.update(media_type=identity['kind'],media_tmdb_id=identity['tmdb_id'],media_name=identity['title'],
+            base_title=identity['title'],alt_name=identity.get('original_title'),original_language=identity.get('original_language'),
+            year=int(identity['date'][:4]) if identity.get('date') else None)
+    from media_mcp.ingest.services.linking import apply_preferred_media
+    ok,reason,actual=apply_preferred_media(source,target,metadata,None,connection=conn)
+    if not ok:
+        raise ValueError('library_version_requires_review')
+    return {'key':file['key'],'state':'completed','target_path':actual,'reason':reason,
+            'mapping_created':bool(actual)}
 
 
 def process_subtitle(library,jobs,file,subtitle_agent=None,*,task_id=None):

@@ -45,10 +45,15 @@ class Scope(Evidence):
     season: int | None = Field(default=None, ge=0, le=99)
     episodes: list[int] = Field(default_factory=list, max_length=200)
     resolution: Literal[480, 720, 1080, 2160] | None = None
+    air_dates_unknown: list[int] = Field(default_factory=list, max_length=999)
+    known_episodes: list[int] = Field(default_factory=list, max_length=999)
+    allow_upgrade: bool = False
     episode_metadata: list[Episode] = Field(default_factory=list, max_length=999)
 
 
 class Release(Evidence):
+    coverage_kind: Literal['season_pack','partial_pack','episode','unknown'] | None = None
+    covered_episodes: list[int] = Field(default_factory=list, max_length=200)
     name: str = Field(min_length=1, max_length=1000)
     size: int | None = Field(default=None, ge=0)
     seeders: int | None = Field(default=None, ge=0)
@@ -158,7 +163,7 @@ class CloudCommands:
                               'snapshot':snapshot, 'payload':payload})
 
 
-def accept_cloud(request, service):
+def accept_cloud(request, service, *, season_id=None):
     """Runs on NAS only after service and fresh user authorization."""
     if request.operation != 'search_titles':
         service._download_permission()
@@ -187,4 +192,4 @@ def accept_cloud(request, service):
                 raise ValueError('cloud_release_changed_search_again')
         else:
             row = service.service.records.put('release', data, key_hash=key)
-    return service.plan(row['id'])
+    return service.plan_for_season(row['id'],season_id) if season_id else service.plan(row['id'])

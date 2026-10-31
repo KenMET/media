@@ -22,9 +22,9 @@ def identity(path):
     return [int(value.st_dev),int(value.st_ino),int(value.st_size),int(value.st_mtime_ns)]
 
 
-def prepare(conn,source,target,previous):
+def prepare(conn,source,target,previous, *, preserve_target=False):
     change_id=uuid.uuid4().hex
-    payload={'source':source,'source_identity':identity(source),'target':target,'previous':[],'sidecars':[]}
+    payload={'source':source,'source_identity':identity(source),'target':target,'preserve_target':preserve_target,'previous':[],'sidecars':[]}
     for row in previous:
         old=row['target_path']
         payload['previous'].append({'path':old,'source':row['source_path'],'identity':identity(old),
@@ -73,7 +73,7 @@ def recover_one(conn,change_id,payload,committed):
                 if not matches(staged,old['identity']):raise RuntimeError('recovery_staging_conflict')
             else:os.link(recovery_source,staged)
             os.replace(staged,current)
-        if not any(row['path']==payload['target'] for row in payload['previous']) and matches(payload['target'],payload['source_identity']):
+        if not payload.get('preserve_target') and not any(row['path']==payload['target'] for row in payload['previous']) and matches(payload['target'],payload['source_identity']):
             os.unlink(payload['target'])
     for old in payload['previous']:
         if os.path.lexists(old['backup']):

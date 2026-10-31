@@ -77,6 +77,18 @@ class Releases(Title):
     resolution: Literal[480, 720, 1080, 2160] | None = None
 
 
+class SeasonCreate(Title):
+    season: int = Field(ge=0, le=99)
+    resolution: Literal[480,720,1080,2160] = 1080
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+
+class SubscriptionChange(Input):
+    request_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+    revision: int = Field(ge=1)
+    state: Literal['active','paused','cancelled']
+
+
 class Plan(Input):
     release_id: str = Field(pattern=r'^[a-f0-9]{32}$')
 
@@ -230,11 +242,18 @@ class TokenName(Input):
     name: str = Field(min_length=1, max_length=80)
 
 
+class DuplicateKeep(Input):
+    keep_id: int = Field(ge=1)
+
+
 class DeletionApply(LibraryPlan):
     confirm: bool
 
 
 COMMANDS = {
+    'season_acquire':SeasonCreate, 'season_request':SeasonCreate, 'subscription_create':SeasonCreate,
+    'subscriptions':Input, 'subscription_change':SubscriptionChange,
+    'duplicates':Input,'duplicate_preview':DuplicateKeep,'duplicate_apply':DeletionApply,
     'download_delete_preview':Job,'collection_delete_preview':CollectionScope,
     'library_task_delete_preview':Job,'deletion_apply':DeletionApply,
     'search_titles':Search, 'library':Title, 'search_releases':Releases, 'plan':Plan,
@@ -248,7 +267,7 @@ COMMANDS = {
     'collection_classify':CollectionClassify,'collection_identity_apply':LibraryPlan,'collection_mapping_plan':CollectionScope,
     'collection_mapping_apply':LibraryMappingApply,'collection_subtitles':LibrarySubtitles,'collection_task':Job,
 }
-READ_COMMANDS = {'search_titles', 'library', 'job', 'jobs', 'media'}
+READ_COMMANDS = {'subscriptions','search_titles','library','job','jobs','media'}
 
 
 async def read_input(request, model, limit=65536):
@@ -438,6 +457,31 @@ def create_app(accounts=None, records=None, service_factory=None):
         service = PlatformService(user, accounts, records, entry=entry)
         return await run_in_threadpool(accept_cloud, data, service)
 
+    async def season_due(request):
+        require_service(request)
+        await read_input(request,Input)
+        from media_mcp.application.subscriptions import SeasonRequests
+        return {'claims':await run_in_threadpool(SeasonRequests.due,accounts,records)}
+
+    async def season_run(request):
+        require_service(request)
+        from media_mcp.platform.cloud import CloudRequest
+        class Run(Input):
+            request_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+            run_key: str = Field(pattern=r'^[a-f0-9]{32}$')
+            request: CloudRequest | None = None
+            result: dict | None = None
+            episodes: list[int] | None = Field(default=None,max_length=200)
+        data=await read_input(request,Run,limit=12*1024*1024)
+        def execute():
+            from media_mcp.application.subscriptions import SeasonRequests
+            row=records.get(data.request_id)
+            if row['kind'] not in ('season_request','season_subscription'):
+                raise ValueError('record_not_found')
+            user=accounts.actor_by_id(row['data']['owner'])
+            return SeasonRequests(factory(user)).execute(**data.model_dump(exclude={'request'}),request=data.request)
+        return await run_in_threadpool(execute)
+
     async def collection_cloud(request):
         require_service(request)
         user=await run_in_threadpool(actor,request,True)
@@ -546,6 +590,7 @@ def create_app(accounts=None, records=None, service_factory=None):
         ('/internal/command',internal_command,['POST']), ('/internal/token-info',token_info,['POST']),
         ('/internal/status',internal_status,['POST']),
         ('/internal/cloud',cloud_command,['POST']),
+        ('/internal/season-due',season_due,['POST']),('/internal/season-run',season_run,['POST']),
         ('/internal/collection',collection_cloud,['POST']),
         ('/internal/pairing',pair,['GET','POST']),
         ('/api/allocations',allocation,['POST']), ('/api/events',events,['GET']),
@@ -565,7 +610,21 @@ def create_app(accounts=None, records=None, service_factory=None):
         middleware = [Middleware(TrustedHostMiddleware, allowed_hosts=list(set(hosts+['127.0.0.1','localhost'])))]
     else:
         middleware = lan_middleware()
-    return Starlette(routes=routes, middleware=middleware)
+    lifespan=None
+    if os.environ.get('MEDIA_EXECUTION_ONLY')!='true':
+        from media_mcp.application.subscriptions import SeasonRequests
+        from media_mcp.runtime.subscription_worker import season_lifespan
+        from media_mcp.platform.cloud import CloudRequest
+        def local_run(payload):
+            row=records.get(payload['request_id'])
+            user=accounts.actor_by_id(row['data']['owner'])
+            request=payload.get('request')
+            return SeasonRequests(factory(user)).execute(**{k:v for k,v in payload.items() if k!='request'},
+                request=CloudRequest.model_validate(request) if request else None)
+        from media_mcp.adapters.tmdb import TMDB
+        from media_mcp.adapters.jackett import Jackett
+        lifespan=season_lifespan(lambda:SeasonRequests.due(accounts,records),local_run,records.db,TMDB(),Jackett())
+    return Starlette(routes=routes, middleware=middleware,lifespan=lifespan)
 
 
 def main():

@@ -133,12 +133,17 @@ class Controller:
                 identity, scope = data['identity'], data['scope']
                 links = self.records.db.execute("""SELECT source_path,target_path,season,episode FROM media_link
                     WHERE status='linked' AND media_type=:kind AND media_tmdb_id=:tmdb
-                    AND (source_path=:path OR substr(source_path,1,LENGTH(:prefix))=:prefix)""",
-                    {'kind':identity['kind'],'tmdb':identity['tmdb_id'], 'path':data['source_path'],
+                    AND (:upgrade=1 OR source_path=:path OR substr(source_path,1,LENGTH(:prefix))=:prefix)""",
+                    {'kind':identity['kind'],'tmdb':identity['tmdb_id'], 'upgrade':int(scope.get('allow_upgrade',False)), 'path':data['source_path'],
                      'prefix':data['source_path'].rstrip('/')+'/'}).mappings().all()
                 try:
                     if not links:
                         raise ValueError('no_linked_media')
+                    if identity['kind']=='tv':
+                        links=[item for item in links if item['season']==scope['season'] and item['episode'] in scope['episodes']]
+                    keys=[(item['season'],item['episode']) for item in links]
+                    if len(keys)!=len(set(keys)):
+                        raise ValueError('duplicate_library_targets')
                     for item in links:
                         contained(item['source_path'])
                         if not __import__('os').path.samefile(item['source_path'],item['target_path']):
@@ -149,6 +154,8 @@ class Controller:
                 except (OSError,ValueError):
                     self.records.update(row,'needs_review',{**data,'error_code':'library_postcondition_requires_review'})
                     return
-                self.records.update(row, 'completed', {**data, 'result': 'media_and_subtitles_processed', 'error_code': None})
+                self.records.update(row, 'completed', {**data, 'result': 'media_and_subtitles_processed' if any(
+                    item['source_path']==data['source_path'] or item['source_path'].startswith(data['source_path'].rstrip('/')+'/') for item in links)
+                    else 'existing_preferred_version_retained', 'error_code': None})
             else:
                 self.records.update(row, 'processing', data)

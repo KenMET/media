@@ -223,7 +223,7 @@ class LibraryAuto:
                     if operation['action'] in ('create_link','refresh_record'):
                         with media_job_guard(guard),media_mutation_lock(self.db) as conn:
                             value=repair_mapping(lib,jobs,conn,files[key],operation)
-                        data['auto_mappings'][key]={'state':value['state'],'created':operation['action']=='create_link'}
+                        data['auto_mappings'][key]={'state':value['state'],'created':value.get('mapping_created',operation['action']=='create_link')}
                     else:
                         lib.validate([files[key]])
                         data['auto_mappings'][key]={'state':'completed','created':False}

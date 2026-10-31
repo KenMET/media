@@ -170,6 +170,17 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
             body = json.dumps(model.payload).encode()
             if path == 'command':
                 command = Command.model_validate(model.payload)
+                if command.operation=='season_acquire':
+                    from media_mcp.platform.api import SeasonCreate
+                    args=SeasonCreate.model_validate(command.arguments).model_dump()
+                    def acquire_season():
+                        response=relay(request,'/api/command',json.dumps({'operation':'season_request','arguments':args}).encode())
+                        envelope=json.loads(response.body)
+                        if not envelope.get('success'):
+                            raise ValueError(envelope.get('error_code','local_service_unavailable'))
+                        from media_mcp.runtime.subscription_worker import check_season
+                        return check_season(envelope['data'],lambda payload:remote.call('/internal/season-run',payload),budget.db,tmdb,jackett)
+                    return await run_in_threadpool(acquire_season)
                 if command.operation=='collection_identify':
                     from media_mcp.platform.api import CollectionIdentify
                     from media_mcp.application.collections import prepare_identity
@@ -232,7 +243,10 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
     from media_mcp.lan import lan_middleware
     middleware = ([Middleware(LoopbackProxyMiddleware,allow_authenticated_web=True),Middleware(SameOriginMiddleware)] if proxied else
                   [Middleware(TrustedHostMiddleware,allowed_hosts=hosts)] if public else lan_middleware())
-    return Starlette(routes=routes, middleware=middleware)
+    from media_mcp.runtime.subscription_worker import season_lifespan
+    lifespan=season_lifespan(lambda:remote.call('/internal/season-due',{})['claims'],
+        lambda payload:remote.call('/internal/season-run',payload),budget.db,tmdb,jackett)
+    return Starlette(routes=routes, middleware=middleware, lifespan=lifespan)
 
 
 # RootModel accepts only JSON objects, preserving the original endpoint payload.

@@ -2,8 +2,9 @@
 from __future__ import annotations
 import json
 import os
+import re
 from pathlib import Path
-import uuid
+from contextlib import nullcontext
 from sqlalchemy import text
 from media_mcp.storage.media import _client, upsert_media_link
 from media_mcp.ingest.domain.file_utils import create_hardlink_with_target
@@ -12,11 +13,18 @@ from media_mcp.runtime.state import media_mutation_lock, assert_mutation_lock
 from media_mcp.runtime import version_changes
 
 
-def apply_preferred_media(source: str, target: str, metadata: dict, db_name: str):
-    from media_mcp.application.identity import validate_identity
+def apply_preferred_media(source: str, target: str, metadata: dict, db_name: str, *, connection=None):
+    from media_mcp.application.identity import validate_identity, excluded_episode
     from media_mcp.config import contained
     contained(source)
-    validate_identity(metadata)
+    contained(target,Path(os.environ.get('MEDIA_LIBRARY_ROOT','/data/media_hub')),exists=False)
+    excluded=excluded_episode(metadata)
+    if not excluded:validate_identity(metadata)
+    if metadata.get('media_type') in ('movie','tv') and not metadata.get('media_tmdb_id'):
+        return False, 'Confirmed media identity is required before library publication', None
+    if metadata.get('media_type')=='tv' and (metadata.get('season') is None or metadata.get('episode') is None or
+            re.search(r'(?i)s\d{1,2}e\d{1,3}(?:e\d{1,3}|[-~]e?\d{1,3})',os.path.basename(source))):
+        return False, 'A single confirmed episode is required before library publication', None
     if os.path.islink(source) or not os.path.isfile(source):
         return False, 'Source must be a regular file', None
     parents = (Path(target).parent,Path(source).parent)
@@ -24,18 +32,39 @@ def apply_preferred_media(source: str, target: str, metadata: dict, db_name: str
         return False, 'Target parent symlink is not allowed', None
     db = _client(db_name)
     version_changes.initialize(db)
-    with media_mutation_lock(db,timeout=5) as conn:
+    if connection is not None:
+        assert_mutation_lock()
+    with (nullcontext(connection) if connection is not None else media_mutation_lock(db,timeout=5)) as conn:
         conn.commit()
         version_changes.recover_pending(conn)
+        if excluded:
+            previous=conn.execute(text("SELECT status FROM media_link WHERE source_path=:source"),{'source':source}).scalar()
+            assert_mutation_lock()
+            if previous!='linked':
+                conn.commit()
+                with conn.begin():
+                    upsert_media_link(db_name,source,'',**metadata,status='unlinked',
+                        reason='outside_requested_scope',_connection=conn)
+            return True, 'Unlinked outside requested scope', ''
         params = {'source': source, 'target': target, 'kind': metadata['media_type'],
                   'tmdb':metadata.get('media_tmdb_id'), 'season':metadata.get('season'),
                   'episode':metadata.get('episode'), 'extra_type':metadata.get('extra_type'),
                   'extra_index':metadata.get('extra_index')}
         rows = conn.execute(text('''SELECT * FROM media_link WHERE status='linked' AND
-            (target_path=:target OR (:tmdb IS NOT NULL AND media_type=:kind AND media_tmdb_id=:tmdb
-             AND season IS :season AND episode IS :episode AND extra_type IS :extra_type AND extra_index IS :extra_index))'''), params).mappings().all()
+            (source_path=:source OR target_path=:target OR (:tmdb IS NOT NULL AND media_type=:kind AND media_tmdb_id=:tmdb
+             AND (:kind='movie' OR (:kind='tv' AND season IS :season AND episode IS :episode)
+                  OR (:kind NOT IN ('movie','tv') AND season IS :season AND episode IS :episode
+                      AND extra_type IS :extra_type AND extra_index IS :extra_index))))'''), params).mappings().all()
         conn.commit()
         previous = [dict(row) for row in rows if row['source_path'] != source and os.path.isfile(row['target_path'])]
+        existing=[row for row in rows if row['source_path']==source and os.path.isfile(row['target_path'])]
+        if existing:
+            row=existing[0]
+            if not os.path.samefile(source,row['target_path']) or any(row.get(k)!=metadata.get(k) for k in ('media_type','media_tmdb_id','season','episode','extra_type','extra_index')):
+                return False, 'Existing source identity requires review', None
+            return True, 'Existing preferred hardlink retained', row['target_path']
+        if len({row['target_path'] for row in previous})>1:
+            return False, 'Legacy duplicate versions require an explicit cleanup plan', None
         # Resolve by actual inode; stale mappings may not establish a version's provenance.
         for row in previous:
             if not os.path.isfile(row['source_path']) or not os.path.samefile(row['source_path'],row['target_path']):
@@ -43,15 +72,38 @@ def apply_preferred_media(source: str, target: str, metadata: dict, db_name: str
         if os.path.lexists(target) and not any(row['target_path']==target for row in previous):
             if os.path.islink(target) or not os.path.samefile(source,target):
                 return False, 'Untracked target conflict requires review', None
+        candidate_identity = version_changes.identity(source)
+        from media_mcp.application.identity import expected_identity
+        context = expected_identity.get()
+        ceiling = context['scope'].get('resolution') if context else None
+        candidate = probe_quality(source) if previous or ceiling else None
+        if ceiling and (candidate.get('height') is None or candidate['height'] > ceiling):
+            return False, 'Candidate exceeds the requested resolution or cannot be measured', None
         if not previous:
+            if version_changes.identity(source)!=candidate_identity:
+                return False, 'Source changed during quality probe', None
             assert_mutation_lock()
             conn.commit()
-            ok,reason,actual=create_hardlink_with_target(source,target)
-            if ok:
-                upsert_media_link(db_name,source,actual,**metadata,status='linked',reason=reason)
-            return ok,reason,actual
-        candidate_identity = version_changes.identity(source)
-        candidate = probe_quality(source)
+            change_id,payload=version_changes.prepare(conn,source,target,[],preserve_target=os.path.lexists(target))
+            committed=False
+            try:
+                ok,reason,actual=create_hardlink_with_target(source,target)
+                if not ok:
+                    version_changes.recover_one(conn,change_id,payload,False)
+                    return ok,reason,actual
+                if actual!=target:
+                    payload['target']=actual
+                    conn.execute(text('UPDATE media_version_change SET payload_json=:payload WHERE id=:id'),
+                        {'payload':json.dumps(payload),'id':change_id});conn.commit()
+                assert_mutation_lock()
+                with conn.begin():
+                    upsert_media_link(db_name,source,actual,**metadata,status='linked',reason=reason,_connection=conn)
+                    conn.execute(text("UPDATE media_version_change SET state='committed' WHERE id=:id"),{'id':change_id})
+                committed=True
+                version_changes.recover_one(conn,change_id,payload,True)
+                return ok,reason,actual
+            except BaseException:
+                conn.rollback();version_changes.recover_one(conn,change_id,payload,committed);raise
         for row in previous:
             old_tmdb,new_tmdb=row.get('media_tmdb_id'),metadata.get('media_tmdb_id')
             if old_tmdb != new_tmdb or (row.get('media_type') and row['media_type']!=metadata['media_type']) or any(row.get(field)!=metadata.get(field) for field in ('season','episode','extra_type','extra_index')):

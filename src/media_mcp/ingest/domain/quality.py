@@ -6,13 +6,18 @@ import re
 import subprocess
 
 
-def probe_quality(path: str, release_path: str | None = None) -> dict:
-    name = os.path.basename(release_path or path).lower()
+def release_quality_claim(name: str) -> dict:
+    name = os.path.basename(name).lower()
     source = next((rank for pattern, rank in (
         (r'\bremux\b', 4), (r'blu[ ._-]?ray|bdrip', 3),
         (r'web[ ._-]?dl', 2), (r'webrip|hdtv', 1)) if re.search(pattern,name)), None)
+    return {'source_rank':source,'revision':1 if re.search(r'\b(proper|repack)\b',name) else 0}
+
+
+def probe_quality(path: str, release_path: str | None = None) -> dict:
+    claim = release_quality_claim(release_path or path)
     result = {'height': None, 'width': None, 'duration': None, 'codec': None, 'bitrate': None,
-              'source_rank': source, 'revision': 1 if re.search(r'\b(proper|repack)\b',name) else 0}
+              **claim}
     try:
         response = subprocess.run(['ffprobe','-v','error','-select_streams','v:0',
             '-show_entries','stream=width,height,codec_name,bit_rate:format=duration','-of','json',path],
