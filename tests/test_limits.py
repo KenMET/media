@@ -72,6 +72,22 @@ class LimitsTests(unittest.TestCase):
         records.update(row,'completed')
         self.budget.admit_job('new-user')
 
+    def test_deleted_download_and_library_history_does_not_consume_queue(self):
+        records=Records(self.db);records.initialize()
+        for index in range(100):
+            records.put('acquisition',{'_platform_owner':'owner'},'deleted')
+            records.put('library_task',{'owner':'owner'},'deleted')
+        self.budget.admit_job('owner')
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM media_mcp_record WHERE state='deleted'").scalar(),200)
+
+    def test_deleted_history_does_not_hide_real_per_user_limit(self):
+        records=Records(self.db);records.initialize()
+        for index in range(17):records.put('library_task',{'owner':'owner'},'deleted')
+        for index in range(9):records.put('acquisition',{'_platform_owner':'owner'},'queued')
+        self.budget.admit_job('owner')
+        records.put('acquisition',{'_platform_owner':'owner'},'submission_unknown')
+        with self.assertRaisesRegex(ValueError,'account_queue_full'):self.budget.admit_job('owner')
+
     def test_queue_limit_preserves_idempotent_unknown_submission_lookup(self):
         accounts=Accounts(self.db,clock=lambda:self.now)
         accounts.initialize()
