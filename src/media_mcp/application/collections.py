@@ -17,7 +17,7 @@ from media_mcp.storage.records import require_fresh
 from media_mcp.storage.media import _json_object
 
 MAX_FILES = 500
-READY_SUBTITLE_STATUSES = {'translated','linked','exists','completed','verified','extracted','converted','embedded_extracted'}
+READY_SUBTITLE_STATUSES = {'translated','linked','exists','completed','verified','extracted','converted','embedded_extracted','downloaded'}
 EPISODE = re.compile(r'(?i)(?<![a-z0-9])s(\d{1,2})[ ._-]*e(\d{1,3})(?!\d)')
 EXTRA_FOLDER = re.compile(r'(?i)^(?:extras?|bonus(?:[ ._-]+features?)?|featurettes?|behind[ ._-]+the[ ._-]+scenes|deleted[ ._-]+scenes|trailers?|samples?|特典|花絮|幕后|幕后花絮|预告片|附加内容)$')
 EXTRA_NAME = re.compile(r'(?i)(?:^|[\s._\[(-])(?:sample|trailer|featurette|NCOP|NCED|PV|CM)(?:$|[\s._\])\d-])|特典|花絮|幕后制作|删减片段|预告片')

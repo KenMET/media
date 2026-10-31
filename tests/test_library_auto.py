@@ -107,17 +107,23 @@ class AutoTests(unittest.TestCase):
         self.assertEqual(result['succeeded'],1)
 
     def test_extracted_chinese_subtitle_is_ready_and_not_processed_again(self):
-        class EmbeddedSubtitles(AutoSubtitles):
+        self.assert_ready_subtitle_status('embedded_extracted')
+
+    def test_downloaded_chinese_subtitle_is_ready_and_not_processed_again(self):
+        self.assert_ready_subtitle_status('downloaded')
+
+    def assert_ready_subtitle_status(self,status):
+        class ReadySubtitles(AutoSubtitles):
             def _run_path_summary_locked(self,path,send_notify=False):
                 result=super()._run_path_summary_locked(path,send_notify)
-                _client(None).execute("UPDATE media_subtitle SET status='embedded_extracted'")
+                _client(None).execute("UPDATE media_subtitle SET status=:status",{'status':status})
                 return result
-        self.fixture(1);agent=EmbeddedSubtitles()
-        result=self.run_auto(self.service.library_auto('extracted-chinese-001'),agent=agent)
+        self.fixture(1);agent=ReadySubtitles()
+        result=self.run_auto(self.service.library_auto('ready-chinese-001'),agent=agent)
         self.assertEqual(result['state'],'completed',result)
         self.assertEqual(result['summary']['subtitles'],1)
         self.assertEqual(self.service.collections()['collections'][0]['summary']['subtitle_verified'],1)
-        again=self.service.library_auto('extracted-chinese-002')
+        again=self.service.library_auto('ready-chinese-002')
         self.assertEqual(again['total'],0)
         self.assertEqual(agent.calls,1)
 

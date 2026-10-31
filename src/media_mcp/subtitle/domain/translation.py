@@ -104,6 +104,19 @@ def _parse_srt_or_vtt(content: str) -> list[SubtitleEvent]:
     return events
 
 
+def _ass_dialogue_text(value: str) -> str:
+    # Drawing mode applies to following payload in this event only.
+    drawing = False
+    text: list[str] = []
+    for part in re.split(r'(\{[^}]*\})', value):
+        if part.startswith('{') and part.endswith('}'):
+            for tag in re.finditer(r'\\(?:p([0-9]+)(?=[\\}\s]|$)|r[^\\}]*)', part):
+                drawing = bool(int(tag.group(1))) if tag.group(1) is not None else False
+        elif not drawing:
+            text.append(part)
+    return _clean_text(''.join(text))
+
+
 def _parse_ass(content: str) -> list[SubtitleEvent]:
     parsed: list[tuple[float, float, str]] = []
     in_events = False
@@ -144,7 +157,7 @@ def _parse_ass(content: str) -> list[SubtitleEvent]:
             continue
         if effect and any(marker in effect for marker in ('karaoke', 'scroll', 'banner')):
             continue
-        text = _clean_text(row.get('text', ''))
+        text = _ass_dialogue_text(row.get('text', ''))
         if text:
             parsed.append((start, end, text))
 
