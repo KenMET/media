@@ -8,7 +8,7 @@ import json
 import os
 import shutil
 import subprocess
-import uuid
+import tempfile
 from dataclasses import dataclass
 
 from media_mcp.subtitle.domain.subtitle_file import detect_language, detect_subtitle_type, LANGUAGE_PRIORITY
@@ -240,27 +240,24 @@ def set_mkv_default_subtitle(video_path: str, selected: EmbeddedSubtitleStream) 
 
 def extract_embedded_subtitle(video_path: str, stream: EmbeddedSubtitleStream, target_path: str) -> tuple[bool, str]:
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
-    stem, extension = os.path.splitext(target_path)
-    temporary = f'{stem}.{uuid.uuid4().hex}.part'
+    extension = os.path.splitext(target_path)[1]
     output_format = {'.srt':'srt','.ass':'ass','.ssa':'ass','.vtt':'webvtt','.sup':'sup'}.get(extension.lower())
     if not output_format:
         return False, 'unsupported_subtitle_output_format'
-    cmd = ['ffmpeg','-y','-i',video_path,'-map',f'0:{stream.stream_index}','-c:s','copy','-f',output_format,temporary]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
-        if not os.path.isfile(temporary) or os.path.getsize(temporary)==0:
-            return False, 'ffmpeg_extract_missing_or_empty_target'
-        # Publish only a complete extraction, and never overwrite a sidecar
-        # created while ffmpeg was running.
-        from media_mcp.runtime.state import assert_mutation_lock
-        assert_mutation_lock()
-        os.link(temporary,target_path)
-        return True, 'embedded_extracted'
+        with tempfile.TemporaryDirectory(prefix='.subtitle-',dir=os.path.dirname(target_path)) as staging:
+            temporary = os.path.join(staging,'output.part')
+            cmd = ['ffmpeg','-y','-i',video_path,'-map',f'0:{stream.stream_index}','-c:s','copy','-f',output_format,temporary]
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+            if not os.path.isfile(temporary) or os.path.getsize(temporary)==0:
+                return False, 'ffmpeg_extract_missing_or_empty_target'
+            # Publish only complete output without overwriting an existing sidecar.
+            from media_mcp.runtime.state import assert_mutation_lock
+            assert_mutation_lock()
+            os.link(temporary,target_path)
+            return True, 'embedded_extracted'
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f'ffmpeg_extract_failed:{type(exc).__name__}'
-    finally:
-        if os.path.lexists(temporary):
-            os.unlink(temporary)
 
 
 def sample_embedded_subtitle(video_path: str, stream: EmbeddedSubtitleStream, limit: int = 40) -> list[str]:

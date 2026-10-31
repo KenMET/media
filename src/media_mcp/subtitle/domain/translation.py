@@ -8,6 +8,7 @@ import html
 import logging
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -596,17 +597,12 @@ def restyle_bilingual_ass(
 
 
 def write_text_atomic(path: str, content: str) -> None:
-    import uuid
-    temporary_path = f'{path}.{uuid.uuid4().hex}.part'
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
-        with open(temporary_path, 'x', encoding='utf-8', newline='\n') as handle:
-            handle.write(content)
-        os.replace(temporary_path, path)
+        with tempfile.TemporaryDirectory(prefix='.subtitle-',dir=os.path.dirname(path)) as staging:
+            temporary_path = os.path.join(staging,'output.part')
+            with open(temporary_path, 'x', encoding='utf-8', newline='\n') as handle:
+                handle.write(content)
+            os.replace(temporary_path, path)
     except OSError as exc:
-        try:
-            if os.path.exists(temporary_path):
-                os.remove(temporary_path)
-        except OSError:
-            pass
         raise SubtitleTranslationError(f'failed to write translated subtitle: {exc}') from exc

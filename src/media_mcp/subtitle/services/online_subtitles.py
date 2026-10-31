@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import annotations
+import tempfile
+
 from media_mcp.subtitle.services import dependencies
 
 
@@ -438,21 +440,17 @@ def _process_online_subtitle(
                 if dependencies.os.path.exists(target_path):
                     status = "exists"
                 else:
-                    temporary_path = f"{target_path}.{dependencies.uuid.uuid4().hex}.part"
                     try:
                         dependencies.os.makedirs(
                             dependencies.os.path.dirname(target_path), exist_ok=True
                         )
-                        with open(temporary_path, "xb") as handle:
-                            handle.write(validated.content)
-                        self._replace_file(temporary_path, target_path)
+                        with tempfile.TemporaryDirectory(prefix='.subtitle-',dir=dependencies.os.path.dirname(target_path)) as staging:
+                            temporary_path=dependencies.os.path.join(staging,'download.part')
+                            with open(temporary_path, "xb") as handle:
+                                handle.write(validated.content)
+                            self._replace_file(temporary_path, target_path)
                         status = "downloaded"
                     except OSError as exc:
-                        try:
-                            if dependencies.os.path.exists(temporary_path):
-                                self._remove_file(temporary_path)
-                        except OSError:
-                            pass
                         dependencies.logger.warning(
                             "Online candidate write failed: %s:%s (%s)",
                             candidate.provider,

@@ -46,7 +46,7 @@ class SubtitleSafetyTests(unittest.TestCase):
         agent._remove_mislinked_generated_subtitle=Mock()
         agent._parse_subtitle_candidate=Mock(return_value=Mock(generated_by_agent=True))
         with patch.object(dependencies.os.path,'exists',return_value=True):
-            self.assertEqual(agent._process_media_link({'source_path':'/fake/source.mkv','target_path':'/fake/video.mkv'},[],test_mode=True),'exists')
+            self.assertEqual(agent._process_media_link({'source_path':'/fake/source.mkv','target_path':'/fake/video.mkv'},[],test_mode=True),'needs_review')
         agent._remove_mislinked_generated_subtitle.assert_not_called()
 
     def test_quota_error_defers_without_sleep(self):
