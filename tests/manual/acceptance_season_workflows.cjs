@@ -15,16 +15,19 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
     if(url.pathname==='/api/auth/setup-status')data={initialized:true};
     else if(url.pathname==='/api/auth/me')data={user:{id:'a'.repeat(32),username:'preview',role:'user',can_download:true,can_manage_media:true}};
     else if(url.pathname==='/api/status')data={worker_ready:true};
-    else if(url.pathname==='/api/detail')data={title_id:'tv:1',title:'Example Show',kind:'tv',seasons:[{season:1,episodes:12}]};
+    else if(url.pathname==='/api/detail')data={title_id:'tv:1',title:'Example Show',kind:'tv',overview:'An overview that should stay collapsed so resources remain visible. '.repeat(30),seasons:[{season:1,episodes:12},{season:2,episodes:12},{season:3,episodes:12}]};
     else if(url.pathname==='/api/discover')data={items:[],page:1,total_pages:1};
     else if(url.pathname==='/api/command'){
      const command=request.postDataJSON();calls.push(command);
-     if(command.operation==='search_releases')data={search_status:'complete',scope:{episodes:[1,2],known_episodes:[1,2,3]},releases:[
-      {release_id:'c'.repeat(32),name:'Example S01 Complete',seeders:2,size:200,coverage_kind:'season_pack',covered_episodes:[1,2]},
-      {release_id:'b'.repeat(32),name:'Example S01E01',seeders:100,size:100,coverage_kind:'episode',covered_episodes:[1]}]};
+     if(command.operation==='search_releases'){
+      const season=command.arguments.season;
+      data={search_status:'partial',scope:{episodes:[1,2],known_episodes:[1,2,3]},releases:[
+       {release_id:String(season).repeat(32),name:`Example S0${season} Complete 1080p WEB-DL English Multi Subtitle Long Release Name`,seeders:2,size:200,resolution:1080,indexer:'Fixture',coverage_kind:'season_pack',covered_episodes:[1,2]},
+       {release_id:String(season+3).repeat(32),name:`Example S0${season}E01 1080p WEB-DL English Long Release Name`,seeders:100,size:100,resolution:1080,indexer:'Fixture',coverage_kind:'episode',covered_episodes:[1]}]};
+     }
      else if(command.operation==='season_acquire')data={job_ids:['d'.repeat(32)],missing_episodes:[]};
      else if(command.operation==='jobs')data={jobs:[],next_cursor:null};
-     else if(command.operation==='subscription_create')data=subscription={request_id:'e'.repeat(32),revision:1,state:'active',title_id:'tv:1',season:1,resolution:1080,next_check_at:2000000000};
+     else if(command.operation==='subscription_create')data=subscription={request_id:'e'.repeat(32),revision:1,state:'active',title_id:'tv:1',season:command.arguments.season,resolution:1080,next_check_at:2000000000};
      else if(command.operation==='subscriptions')data={subscriptions:subscription?[subscription]:[]};
      else if(command.operation==='subscription_change')data=subscription={...subscription,state:command.arguments.state,revision:subscription.revision+1};
      else if(command.operation==='collections')data={collections:[],total:0,next_cursor:null,can_manage:true};
@@ -42,10 +45,38 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
   });
   await page.goto('http://media.test/#title/tv:1');
   await page.locator('[data-action=season-once]').waitFor();
-  assert.match(await page.locator('#release-table tbody tr').first().innerText(),/Complete/);
+  await page.waitForFunction(()=>document.querySelectorAll('.release-row').length===6);
+  assert.match(await page.locator('.release-row').first().innerText(),/S03 Complete/);
+  assert.deepEqual(await page.locator('.release-row .release-name').allTextContents(),[3,2,1].map(n=>`Example S0${n} Complete 1080p WEB-DL English Multi Subtitle Long Release Name`).concat([3,2,1].map(n=>`Example S0${n}E01 1080p WEB-DL English Long Release Name`)));
+  assert.equal(await page.locator('#release-filter,#release-sort,#releases').count(),0);
+  assert.equal(await page.locator('#release-diagnostics').getAttribute('open'),null);
+  const callsBefore=calls.filter(c=>c.operation==='search_releases').map(c=>c.arguments.season);
+  assert.deepEqual(callsBefore,[3,2,1]);
+  for(const width of [320,390,768,1440]){
+   await page.setViewportSize({width,height:640});
+   const metrics=await page.locator('.release-row').evaluateAll(rows=>rows.map(row=>({height:row.getBoundingClientRect().height,bottom:row.getBoundingClientRect().bottom})));
+   assert(metrics.every(row=>row.height<=96),JSON.stringify({width,metrics}));
+   assert(metrics.filter(row=>row.bottom<=550).length>=2,'At least two complete resources must fit in a short phone viewport');
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  }
+  await page.setViewportSize({width:390,height:640});
+  await page.screenshot({path:process.env.RESOURCE_SCREENSHOT||'/tmp/media-compact-resources.png'});
+  await page.locator('[data-action=language]').click();await page.waitForFunction(()=>document.querySelectorAll('.release-row').length===6);
+  for(const width of [320,390,768,1440]){
+   await page.setViewportSize({width,height:640});
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'English resource layout must not overflow');
+   assert(await page.locator('.release-row').evaluateAll(rows=>rows.every(row=>row.getBoundingClientRect().height<=96)));
+   assert(await page.locator('.release-row').evaluateAll(rows=>rows.filter(row=>row.getBoundingClientRect().bottom<=550).length>=2));
+  }
+  await page.setViewportSize({width:390,height:640});
+  await page.screenshot({path:'/tmp/media-compact-resources-en.png'});
+  await page.locator('[data-action=language]').click();await page.waitForFunction(()=>document.querySelectorAll('.release-row').length===6);
+
   await page.locator('[data-action=season-once]').click();await page.locator('#jobs-table').waitFor();
-  assert.equal(calls.filter(c=>c.operation==='season_acquire').length,1);assert.equal(calls.filter(c=>c.operation==='subscription_create').length,0);
-  await page.goto('http://media.test/#title/tv:1');await page.locator('[data-action=season-subscribe]').click();
+  assert.equal(calls.find(c=>c.operation==='season_acquire').arguments.season,3);assert.equal(calls.filter(c=>c.operation==='season_acquire').length,1);assert.equal(calls.filter(c=>c.operation==='subscription_create').length,0);
+  await page.goto('http://media.test/#title/tv:1');await page.locator('[data-action=season-subscribe]').click();await page.locator('#season-subscribe select[name=season]').selectOption('2');await page.locator('#season-subscribe button[type=submit]').click();
+  await page.locator('[data-action=subscription-state][data-state=paused]').waitFor();
+  assert.equal(calls.find(c=>c.operation==='subscription_create').arguments.season,2);
   await page.locator('[data-action=subscription-state][data-state=paused]').click();
   await page.locator('[data-action=subscription-state][data-state=active]').waitFor();
   await page.locator('[data-action=subscription-state][data-state=cancelled]').click();

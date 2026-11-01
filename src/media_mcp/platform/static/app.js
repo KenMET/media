@@ -1,5 +1,6 @@
 import {lang, t, html, switchLanguage} from './i18n.js';
 import {Requests} from './ux.js';
+import {seriesSeasons,discoverReleases} from './releases.js';
 import {createLibraryUI} from './library.js';
 import {createTaskUI} from './tasks.js';
 const languageButton=()=>html`<button class="quiet language-switch" data-action="language" aria-label="${lang==='en'?'切换为中文':'Switch to English'}">${lang==='en'?'中文':'English'}</button>`;
@@ -36,7 +37,7 @@ async function api(path, body, method='POST',requestOptions={}) {
 }
 const busyUI=new Map(),lockedButtons=new Map(),readControllers=new Map();
 const requests=new Requests(syncBusyControls);
-function newView(){const revision=requests.nextView();for(const [controller,owner] of readControllers){if(owner!==revision)controller.abort();}return revision;}
+function newView(){state.releaseController?.abort();const revision=requests.nextView();for(const [controller,owner] of readControllers){if(owner!==revision)controller.abort();}return revision;}
 function syncBusyControls(){
   for(const [button,saved] of lockedButtons){
     if(!button.isConnected){lockedButtons.delete(button);continue;}
@@ -135,11 +136,10 @@ async function title(index,{historyMode='push'}={}) {
   newView();state.page='detail';shell();
   const selected=await loadData('#content',t('正在加载作品详情…'),()=>api('/api/detail?title_id='+encodeURIComponent(item.title_id)));
   if(!selected)return;state.selected=selected;
-  const defaultSeason=selected.seasons?.find(season=>season.season>0)?.season??selected.seasons?.[0]?.season;
-  $('#content').innerHTML=html`<div class="details"><div class="poster">${selected.poster_url?html`<img src="${escape(selected.poster_url)}" alt="${escape(selected.title)}海报">`:'◈'}</div><div><div class="eyebrow">${selected.kind==='movie'?'MOVIE':'TV SERIES'}</div><h1>${escape(selected.title)}</h1><div class="meta"><span>${escape(selected.original_title)}</span><span>${escape(selected.date)}</span><span>${escape(selected.genres?.join(' / '))}</span></div><p>${escape(selected.overview||t('暂无简介。'))}</p></div></div><section class="panel"><h2>搜索可下载资源</h2><form id="releases" class="form-grid">${selected.kind==='tv'?html`<label>季<select name="season" required>${(selected.seasons||[]).map(s=>html`<option value="${s.season}" ${s.season===defaultSeason?"selected":""}>${escape(s.name||t('第 ')+s.season+t(' 季'))} · ${s.episodes??'?'} 集</option>`).join('')}</select></label>`:''}<details class="core-options"><summary>资源筛选选项</summary>${selected.kind==='tv'?html`<label>集数（留空为全季）<input name="episodes" placeholder="例如：1,2,3"></label>`:''}<label>清晰度<select name="resolution"><option value="">不限</option><option>1080</option><option>2160</option><option>720</option><option>480</option></select></label></details><button type="submit">更新资源</button></form></section><div id="release-results">${empty(t('准备好后搜索资源'),t('资源标题是来源声明，实际文件身份会在下载后校验。'))}</div>`;
-  if(!state.user.can_download){$('#releases').closest('section').innerHTML=html`<h2>浏览作品</h2><p class="muted">下载功能尚未开通，请联系管理员。</p>`;$('#release-results').remove();}
+  $('#content').innerHTML=html`<section class="resource-detail"><div class="resource-title">${selected.poster_url?html`<img src="${escape(selected.poster_url)}" alt="">`:''}<div><h1>${escape(selected.title)}</h1><p class="muted">${escape(selected.date)}${selected.original_title&&selected.original_title!==selected.title?html` · ${escape(selected.original_title)}`:''}</p></div></div>${selected.overview?html`<details class="title-overview"><summary>${t('简介')}</summary><p>${escape(selected.overview)}</p></details>`:''}<div id="release-results"></div></section>`;
+  if(!state.user.can_download){$('#release-results').innerHTML=html`<p class="muted">下载功能尚未开通，请联系管理员。</p>`;return;}
   syncBusyControls();
-  if(state.user.can_download)await searchReleases($('#releases'));
+  await searchReleases();
 }
 async function duplicates(){
   const data=await loadData('#content',t('正在检查重复版本…'),()=>command('duplicates',{}));if(!data)return;
@@ -155,8 +155,15 @@ async function subscriptions(){
   state.subscriptions=data.subscriptions;
   paint('#content',html`<button class="quiet" data-action="navigate" data-page="jobs">← ${t('下载任务')}</button>`+heading(t('订阅'),t('只有明确订阅才会自动追更；每六小时检查一次。'))+html`<div class="stack">${data.subscriptions.map(row=>html`<article class="panel"><h2>${escape(row.title_id)} · ${t('季')} ${row.season}</h2><p>${row.resolution}p · ${t(({active:'追更中',paused:'已暂停',cancelled:'已取消'})[row.state])}</p><p>${t('下次检查：')}${row.next_check_at?escape(date(row.next_check_at)):t('等待检查')}</p>${row.error_code?html`<p class="notice">${t('本次检查未完成；保留现有媒体，下次检查时重试。')} ${escape(row.error_code)}</p>`:''}${row.last_result?.air_dates_unknown?.length?html`<p>${t('播出日期未确认，暂不自动下载：')}${escape(row.last_result.air_dates_unknown.join(', '))}</p>`:''}${row.last_result&&!row.error_code?html`<p>${t('本次尚未找到的集数：')}${escape(row.last_result.missing_episodes?.join(', ')||t('无'))}</p>`:''}${row.state!=='cancelled'?html`<button data-action="subscription-state" data-id="${row.request_id}" data-revision="${row.revision}" data-state="${row.state==='active'?'paused':'active'}">${row.state==='active'?t('暂停订阅'):t('恢复订阅')}</button> <button class="secondary" data-action="subscription-state" data-id="${row.request_id}" data-revision="${row.revision}" data-state="cancelled">${t('取消订阅')}</button>`:''}</article>`).join('')||empty(t('暂无订阅'),t('在剧集详情中选择一季并明确订阅。'))}</div>`);
 }
-async function seasonAction(subscribe){
-  const values=Object.fromEntries(new FormData($('#releases'))),args={title_id:state.selected.title_id,season:Number(values.season),resolution:Number(values.resolution)||1080};
+function subscriptionDialog(){
+  const seasons=seriesSeasons(state.selected);
+  $('#modal').innerHTML=html`<h2>${t('订阅')}</h2><form id="season-subscribe" class="stack"><label>${t('季')}<select name="season">${seasons.map(season=>html`<option value="${season}">${t('第 ')}${season}${t(' 季')}</option>`).join('')}</select></label><label>${t('清晰度')}<select name="resolution"><option value="1080">1080p</option><option value="2160">2160p</option><option value="720">720p</option></select></label><p class="muted">${t('每六小时检查新集数，可随时暂停。')}</p><button type="submit">${t('确认订阅')}</button></form>`;
+  $('#modal').showModal();
+}
+async function seasonAction(subscribe,values=null){
+  const season=values?Number(values.season):seriesSeasons(state.selected)[0];
+  if(season==null)return;
+  const args={title_id:state.selected.title_id,season,resolution:Number(values?.resolution)||1080};
   const storageKey='media-season:'+state.user.id+':'+JSON.stringify(args)+':'+subscribe;
   const idempotency_key=sessionStorage.getItem(storageKey)||requestKey();sessionStorage.setItem(storageKey,idempotency_key);
   const result=await command(subscribe?'subscription_create':'season_acquire',{...args,idempotency_key});
@@ -165,25 +172,33 @@ async function seasonAction(subscribe){
   toast(result.missing_episodes?.length?t('部分集数尚无可用资源，可稍后重试或明确订阅。'):t('本次下载任务已创建，不会自动追更。'));
   return navigate('jobs');
 }
-async function searchReleases(form){
-  if(!form)return;const values=Object.fromEntries(new FormData(form));
-  const episodes=values.episodes?.trim()?values.episodes.split(/[,，\s]+/).map(Number):null;
-  if(episodes?.some(n=>!Number.isInteger(n)||n<1||n>999))throw new Error(t('集数需为 1–999 的整数，以逗号分隔。'));
-  const report=await loadData('#release-results',t('正在搜索资源…'),()=>command('search_releases',{title_id:state.selected.title_id,season:values.season==null?null:Number(values.season),episodes,resolution:values.resolution?Number(values.resolution):null}),{cards:true});
-  if(report){renderReleases(report,Boolean(episodes?.length));syncBusyControls();}
+async function searchReleases(){
+  const selected=state.selected,revision=requests.revision;
+  state.releaseController?.abort();const controller=new AbortController();state.releaseController=controller;
+  const seasons=seriesSeasons(selected);
+  $('#release-results').innerHTML=html`<div class="resource-toolbar"><h2>${t('资源')}</h2><span id="release-progress" class="muted" role="status"></span><button class="quiet" data-action="retry-releases" aria-label="${t('刷新资源')}">↻</button>${selected.kind==='tv'&&seasons.length?html`<button class="secondary" data-action="season-once">${t('下载第 ')}${seasons[0]}${t(' 季')}</button><button class="secondary" data-action="season-subscribe">${t('订阅…')}</button>`:''}</div><div id="release-table"></div><details id="release-diagnostics" class="resource-diagnostics" hidden><summary>${t('部分来源未响应')}</summary><div></div></details>`;
+  syncBusyControls();
+  await discoverReleases(selected,(season,signal)=>api('/api/command',{operation:'search_releases',arguments:{title_id:selected.title_id,season,episodes:null,resolution:null}},'POST',{signal}),report=>{
+    if(!requests.current(revision)||state.releaseController!==controller||controller.signal.aborted||!$('#release-progress'))return;
+    state.releases=report.releases;
+    $('#release-progress').textContent=report.loading?t('搜索中 ')+report.finished+'/'+report.total:report.releases.length+t(' 个资源');
+    const issues=report.reports.filter(row=>row.search_status!=='complete');
+    $('#release-diagnostics').hidden=!issues.length;
+    $('#release-diagnostics div').textContent=issues.map(row=>(row.season==null?'':('S'+String(row.season).padStart(2,'0')+' · '))+(row.error_code||row.search_status)).join(' / ');
+    releaseTable(report.loading);
+  },controller.signal);
 }
-function renderReleases(report,explicit=false) {
-  state.releases=report.releases;
-  const seasonActions=state.selected.kind==='tv'?html`<div class="tabs"><button data-action="season-once">${t('下载本季已播集数')}</button><button class="secondary" data-action="season-subscribe">${t('订阅本季')}</button><span class="muted">${t('整季优先，缺少整季时按集补齐；只有点击订阅才追更。')} ${t('批量下载和订阅默认 1080p，可在高级选项调整。')}</span></div>`:'';
-  const diagnostics=report.search_status!=='complete'?html`<div class="notice">部分站点未返回完整结果。状态：${escape(report.search_status)}。可用资源仍可查看。</div>`:'';
-  $('#release-results').innerHTML=seasonActions+diagnostics+html`<div class="section-title"><h2>资源列表</h2><span class="muted">${report.releases.length} 个候选</span></div><div class="filters"><input id="release-filter" placeholder="按资源名、站点筛选" aria-label="筛选资源"><select id="release-sort" aria-label="资源排序">${state.selected.kind==='tv'?html`<option value="coverage">${explicit?t('匹配集数优先'):t('整季优先')}</option>`:''}<option value="seeders">做种数优先</option><option value="size">体积从小到大</option></select></div><div id="release-table"></div>`;
-  releaseTable();
+function releaseTable(loading=false) {
+  const rows=state.releases;let previous=null;
+  $('#release-table').innerHTML=rows.length?html`<div class="release-list">${rows.map((row,index)=>{
+    const pack=['season_pack','partial_pack'].includes(row.coverage_kind);
+    const group=state.selected.kind!=='tv'?'':pack?t('第 ')+row.season+t(' 季'):row.coverage_kind==='episode'?t('单集资源'):t('集数范围待核验');
+    const heading=group&&group!==previous?html`<h3 class="release-group">${escape(group)}</h3>`:'';previous=group;
+    return heading+html`<article class="release-row"><div class="release-copy"><div class="release-name" title="${escape(row.name)}">${escape(row.name)}</div><div class="release-meta"><span>${escape(row.indexer||t('未知'))}</span>${row.resolution?html`<span>${row.resolution}p</span>`:''}<span>${bytes(row.size)}</span><span title="${t('做种数')}">↑ ${row.seeders??'–'}</span></div></div><button data-action="plan" data-index="${index}">${lang==='en'?'Download':t('下载')}</button></article>`;
+  }).join('')}</div>`:html`<p class="resource-empty muted">${loading?t('正在自动搜索各季资源…'):t('暂未找到可用资源，稍后刷新重试。')}</p>`;
+  syncBusyControls();
 }
-function releaseTable() {
-  const query=$('#release-filter')?.value.toLowerCase()||'';const sort=$('#release-sort')?.value||'seeders';
-  const rows=state.releases.map((item,index)=>({...item,index})).filter(item=>(item.name+' '+item.indexer).toLowerCase().includes(query)).sort((a,b)=>sort==='coverage'?a.index-b.index:sort==='size'?(a.size??Infinity)-(b.size??Infinity):(b.seeders??-1)-(a.seeders??-1));
-  $('#release-table').innerHTML=rows.length?html`<div class="table-wrap"><table><thead><tr><th>资源名称</th><th>来源</th><th>大小</th><th>做种</th><th>清晰度</th><th></th></tr></thead><tbody>${rows.map(row=>html`<tr><td class="title-cell">${escape(row.name)}${row.coverage_kind?html`<small class="muted"> · ${t(({season_pack:'整季资源',partial_pack:'部分合集',episode:'单集资源',unknown:'集数范围待核验'})[row.coverage_kind])}</small>`:''}</td><td data-label="来源">${escape(row.indexer||t('未知'))}</td><td data-label="大小">${bytes(row.size)}</td><td data-label="做种">${row.seeders??t('未知')}</td><td data-label="清晰度">${row.resolution?row.resolution+'p':t('未知')}</td><td><button data-action="plan" data-index="${row.index}">下载</button></td></tr>`).join('')}</tbody></table></div>`:empty(t('没有匹配的资源'),t('尝试调整筛选条件或稍后重新搜索。'));
-}
+
 async function plan(index) {
   const row=state.releases[index];if(!row)return;const requestRevision=requests.revision;
   const intent='release:'+row.release_id,previous=tasksUI.pending().find(item=>item.operation==='download'&&item.intent===intent);
@@ -336,7 +351,7 @@ document.addEventListener('click',event=>{
   const action=button.dataset.action;
   if(action==='language'){switchLanguage();return;}
   if(action==='close-modal'){$('#modal').close();return;}
-  if(action==='retry-search'){submitForm('search');return;}if(action==='retry-releases'){submitForm('releases');return;}
+  if(action==='retry-search'){submitForm('search');return;}if(action==='retry-releases'){act('release-refresh',searchReleases,{button});return;}
   const selectors={catalog:'[data-action="source"],[data-action="kind"],[data-action="window"]',plan:'[data-action="plan"]',start:'#modal button'};
   const key=['source','kind','window'].includes(action)?'catalog':action==='navigate'?'navigate:'+button.dataset.page:action==='job'?'open-job':action==='subtitles'?'subtitles:'+button.dataset.id:action;
   const revision=requests.revision;
@@ -344,7 +359,7 @@ document.addEventListener('click',event=>{
     if(action==='duplicate-preview')return duplicatePreview(Number(button.dataset.index));
     if(action==='duplicate-confirm'){await command('duplicate_apply',{plan_id:state.duplicatePlan,confirm:true});$('#modal').close();return duplicates();}
     if(action==='season-once')return seasonAction(false);
-    if(action==='season-subscribe')return seasonAction(true);
+    if(action==='season-subscribe')return subscriptionDialog();
     if(action==='subscription-state'){await command('subscription_change',{request_id:button.dataset.id,revision:Number(button.dataset.revision),state:button.dataset.state});return subscriptions();}
     if(action==='auth-login')auth();else if(action==='auth-bootstrap')auth('bootstrap');
     else if(action==='navigate')await navigate(button.dataset.page);
@@ -377,9 +392,8 @@ document.addEventListener('submit',event=>{
     else if(form.id.startsWith('library-'))await libraryUI.submit(form,values);
     else if(form.id==='bootstrap'){await api('/api/auth/bootstrap',values);state.canBootstrap=false;auth();toast(t('管理员已创建，请登录。'));}
     else if(isSearch)await search(values.query);
-    else if(form.id==='releases'){
-      await searchReleases(form);
-    } else if(form.id==='users'){
+    else if(form.id==='season-subscribe')await seasonAction(true,values);
+    else if(form.id==='users'){
       await api('/api/users',{...values,can_download:values.role==='admin'||form.elements.can_download.checked,can_manage_media:values.role==='admin'||form.elements.can_manage_media.checked});if(requests.current(revision))await users();toast(t('用户已创建。'));
     } else if(form.dataset.userId){
       await api('/api/users/'+form.dataset.userId,{role:values.role,enabled:form.elements.enabled.checked,can_download:values.role==='admin'||form.elements.can_download.checked,can_manage_media:values.role==='admin'||form.elements.can_manage_media.checked},'PATCH');
@@ -388,11 +402,11 @@ document.addEventListener('submit',event=>{
       await api('/api/settings/model',{model:values.model,effort:values.effort,revision:Number(form.dataset.revision)});
       toast(t('模型设置已保存，下一次模型调用生效。'));if(requests.current(revision))await modelSettings();
     } else if(form.id==='password'){await api('/api/auth/password',values);state.user=null;state.csrf='';tasksUI.clear();state.diskScanId=null;state.diskPreview=null;sessionStorage.removeItem('media-inventory-scan');sessionStorage.removeItem('media-csrf');auth();toast(t('密码已修改，请重新登录。'));}
-  },{selector,label:isSearch?t('正在搜索…'):form.id==='releases'?t('正在搜索…'):t('正在保存…')});
+  },{selector,label:isSearch?t('正在搜索…'):t('正在保存…')});
 });
-document.addEventListener('input',event=>{if(event.target.id==='release-filter')releaseTable();if(event.target.id==='jobs-filter'){state.jobQuery=event.target.value;filterJobs();}});
+document.addEventListener('input',event=>{if(event.target.id==='jobs-filter'){state.jobQuery=event.target.value;filterJobs();}});
 document.addEventListener('change',event=>{
-  if(event.target.id==='release-sort')releaseTable();if(event.target.id==='jobs-stage'){state.jobStage=event.target.value;filterJobs();}
+  if(event.target.id==='jobs-stage'){state.jobStage=event.target.value;filterJobs();}
   if(event.target.matches('[data-permission-role]')){const form=event.target.closest('form'),admin=event.target.value==='admin';for(const name of ['can_download','can_manage_media']){form.elements[name].disabled=admin;if(admin)form.elements[name].checked=true;}const help=form.querySelector('.permission-help');if(help)help.textContent=admin?t('管理员拥有全部权限。'):t('按需开启权限，无需逐个分配任务或媒体。');}
 });
 $('#modal').addEventListener('cancel',event=>{if(requests.busy('start')||requests.busy('create-token'))event.preventDefault();});

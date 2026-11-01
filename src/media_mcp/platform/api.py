@@ -578,7 +578,7 @@ def create_app(accounts=None, records=None, service_factory=None):
     static = Path(__file__).parent/'static'
     async def asset(request):
         name = request.path_params.get('name', 'index.html')
-        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','library.js','tasks.js') or not (static/name).is_file():
+        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','releases.js','library.js','tasks.js') or not (static/name).is_file():
             raise ValueError('page_not_found')
         return FileResponse(static/name)
 

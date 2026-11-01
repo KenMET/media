@@ -2,6 +2,20 @@
 // server data never pass through this dictionary or through HTML translation.
 export const lang = localStorage.getItem('media-language') === 'en' ? 'en' : 'zh-CN';
 const english = {
+  '简介':'Overview',
+  '订阅…':'Subscribe',
+  '资源':'Releases',
+  '刷新资源':'Refresh releases',
+  '下载第 ':'Download S',
+  '每六小时检查新集数，可随时暂停。':'Check for new episodes every six hours. Pause anytime.',
+  '确认订阅':'Confirm subscription',
+  '搜索中 ':'Searching ',
+  ' 个资源':' releases',
+  '部分来源未响应':'Some sources did not respond',
+  '正在自动搜索各季资源…':'Searching all seasons automatically…',
+  '暂未找到可用资源，稍后刷新重试。':'No available releases yet. Refresh later to try again.',
+  '做种数':'Seeders',
+
   '播出日期未确认，暂不自动下载：':'Air dates unconfirmed; excluded from automatic downloads: ',
   '匹配集数优先':'Requested episodes first',
   '本次检查未完成；保留现有媒体，下次检查时重试。':'This check did not complete. Existing media are preserved; the next check will retry.',

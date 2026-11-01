@@ -40,3 +40,11 @@ class SeasonHTTPTests(unittest.TestCase):
             response=client.post('/internal/season-due',json={},headers={'x-media-service-token':os.environ['MEDIA_CONTROL_TOKEN']})
             self.assertEqual(response.status_code,200,response.text)
             self.assertEqual(response.json()['data']['claims'],[])
+
+    def test_compact_release_module_is_served_by_local_and_cloud_routes(self):
+        apps=[self.local_app,create_gateway(self.remote,catalog=Mock(),tmdb=Mock(),jackett=Mock(),http_request=self.transport.request)]
+        for app in apps:
+            with TestClient(app,base_url='http://127.0.0.1',client=('127.0.0.1',1234)) as client:
+                response=client.get('/assets/releases.js')
+                self.assertEqual(response.status_code,200,response.text)
+                self.assertIn('export async function discoverReleases',response.text)

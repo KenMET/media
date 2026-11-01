@@ -1,0 +1,15 @@
+# Automatic, compact resource browsing
+
+A TV title starts searching all known regular, nonempty seasons automatically, latest first. There is no required season selector, refresh form, episode filter, source filter, sort selector or more-results button. Two existing scoped search requests can run concurrently; completed seasons appear without waiting for the slowest provider. All returned resources are displayed automatically.
+
+Season and partial packs are grouped by descending season (for example S03, S02, S01), followed by single-episode resources, also latest season first. Unknown coverage stays last. Provider order within a season retains the existing quality/availability ranking. A zero-seeder candidate sorts after other candidates within that season. Identical release entries are deduplicated for display; frozen server-owned release IDs and identity checks still authorize downloads.
+
+The title page uses a small poster, compact title and collapsed overview. Each release uses at most two name lines plus one metadata line for site, resolution, size and seeders. Download targets stay at least 44 pixels high. Optional source diagnostics are collapsed below the list. There is no large warning panel above available results.
+
+Download season N uses the latest known regular season and the existing one-time automatic season acquisition, defaulting to 1080p. Selecting one release uses its existing frozen download plan. Search never submits a download by itself. Subscribe opens a season/resolution dialog, with the latest season selected; confirmation uses the existing six-hour consent flow. Download originals, seeding, Chinese media names, preferred-version selection and publication safety remain unchanged.
+
+Searches retain the account/server budgets. A rate/concurrency rejection gets one delayed read retry; downloads are never retried by the discovery helper. Failed seasons do not hide other results. Navigating away or refreshing aborts prior discovery and prevents late responses from replacing another page. Special season zero is used only if the title has no regular seasons. Titles without season metadata do not silently invent season one.
+
+`tests/test_release_browser.mjs` covers ordering, coverage groups, concurrency, partial results, cancellation and read throttling. `tests/manual/acceptance_season_workflows.cjs` verifies automatic three-season discovery, compact rows and localized phone/desktop layouts with mocked APIs. `tests/test_season_http.py` verifies that both server roles actually serve the browser module. Run JavaScript tests serially with `node --test --test-concurrency=1`; Python tests use disposable state/media and low CPU priority.
+
+Deploy through `sh setup.sh cloud` for the cloud website. If using the local control server's built-in website, update that role with `sh setup.sh local` at a safe worker checkpoint. Preserve existing environment files, state, ports and service topology. A source commit or browser mock does not prove that the public website has loaded the new image.
