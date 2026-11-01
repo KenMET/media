@@ -6,7 +6,7 @@ import {createTaskUI} from './tasks.js';
 const languageButton=()=>html`<button class="quiet language-switch" data-action="language" aria-label="${lang==='en'?'切换为中文':'Switch to English'}">${lang==='en'?'中文':'English'}</button>`;
 const $ = (selector) => document.querySelector(selector);
 const escape = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-const state = {user:null, csrf:sessionStorage.getItem('media-csrf') || '', page:'discover', source:'tmdb', kind:'movie', window:'week', discoverPage:1, items:[], selected:null, releases:[], plan:null, job:null, filter:'', jobs:[], cursor:'', busy:false};
+const state = {user:null, csrf:sessionStorage.getItem('media-csrf') || '', page:'discover', source:'tmdb', kind:'movie', window:'week', discoverPage:1, items:[], selected:null, releases:[], job:null, filter:'', jobs:[], cursor:'', busy:false};
 const stages = {queued:t('等待提交'), submitting:t('正在提交'), submission_unknown:t('正在核对下载'), downloading:t('下载中'), enqueue_processing:t('等待处理'), processing:t('入库与字幕处理中'), completed:t('已完成'), completed_with_warnings:t('完成 · 有待处理项'), needs_review:t('需要复核'), failed:t('失败'), cancelled:t('已取消')};
 function requestKey() {
   // getRandomValues is available on ordinary LAN HTTP; randomUUID requires HTTPS.
@@ -17,6 +17,7 @@ const errors = {deletion_media_missing:t('文件不存在，请先检查媒体�
 function toast(message) { const node=$('#toast'); node.textContent=message; node.style.display='block'; clearTimeout(toast.timer); toast.timer=setTimeout(()=>node.style.display='none',5500); }
 async function api(path, body, method='POST',requestOptions={}) {
   const sessionAtStart=state.csrf, controller=new AbortController(),revision=requests.revision;
+  const downloadSubmission=path==='/api/command'&&body?.operation==='start';
   const read=body===undefined||(path==='/api/command'&&['search_titles','search_releases','jobs','job','media','library','collections','collection','collection_task','collection_analysis_plan','library_tasks','library_task_status','library_task_details','library_auto_status','download_submission_status'].includes(body.operation));
   if(read)readControllers.set(controller,revision);
   const abort=()=>controller.abort();if(requestOptions.signal?.aborted)abort();else requestOptions.signal?.addEventListener('abort',abort,{once:true});
@@ -26,8 +27,8 @@ async function api(path, body, method='POST',requestOptions={}) {
   try {
     const response=await fetch(path,options);
     if(sessionAtStart!==state.csrf)throw new Error(t('会话已改变，请重新操作。'));
-    let result;try{result=await response.json();}catch{throw new Error(t('服务返回了无法识别的响应'));}
-    if(!response.ok||!result.success){if(response.status===401){state.user=null;auth();}const error=new Error(errors[result.error_code]||t('操作未完成，请稍后重试。'));error.code=result.error_code;throw error;}
+    let result;try{result=await response.json();}catch{const error=new Error(t('服务返回了无法识别的响应'));error.connectionFailure=downloadSubmission;throw error;}
+    if(!response.ok||!result.success){if(response.status===401){state.user=null;auth();}const error=new Error(errors[result.error_code]||t('操作未完成，请稍后重试。'));error.code=result.error_code;error.connectionFailure=downloadSubmission&&(response.status>=500||response.ok&&result.success!==false);throw error;}
     return result.data;
   } catch(error) {
     if(error.name==='AbortError'&&!requests.current(revision)){const changed=new Error('view_changed');changed.name='ViewChanged';throw changed;}
@@ -37,7 +38,7 @@ async function api(path, body, method='POST',requestOptions={}) {
 }
 const busyUI=new Map(),lockedButtons=new Map(),readControllers=new Map();
 const requests=new Requests(syncBusyControls);
-function newView(){state.releaseController?.abort();const revision=requests.nextView();for(const [controller,owner] of readControllers){if(owner!==revision)controller.abort();}return revision;}
+function newView(){if($('#modal')?.open)$('#modal').close();state.releaseChoice=null;state.releaseController?.abort();const revision=requests.nextView();for(const [controller,owner] of readControllers){if(owner!==revision)controller.abort();}return revision;}
 function syncBusyControls(){
   for(const [button,saved] of lockedButtons){
     if(!button.isConnected){lockedButtons.delete(button);continue;}
@@ -157,26 +158,23 @@ async function subscriptions(){
 }
 function subscriptionDialog(){
   const seasons=seriesSeasons(state.selected);
-  $('#modal').innerHTML=html`<h2>${t('订阅')}</h2><form id="season-subscribe" class="stack"><label>${t('季')}<select name="season">${seasons.map(season=>html`<option value="${season}">${t('第 ')}${season}${t(' 季')}</option>`).join('')}</select></label><label>${t('清晰度')}<select name="resolution"><option value="1080">1080p</option><option value="2160">2160p</option><option value="720">720p</option></select></label><p class="muted">${t('每六小时检查新集数，可随时暂停。')}</p><button type="submit">${t('确认订阅')}</button></form>`;
+  $('#modal').classList.add('consent-dialog');$('#modal').setAttribute('aria-labelledby','subscription-dialog-title');
+  $('#modal').innerHTML=html`<h2 id="subscription-dialog-title">${t('订阅')}</h2><form id="season-subscribe" class="stack"><div class="consent-dialog-scroll stack"><label>${t('季')}<select name="season">${seasons.map(season=>html`<option value="${season}">${t('第 ')}${season}${t(' 季')}</option>`).join('')}</select></label><label>${t('清晰度')}<select name="resolution"><option value="1080">1080p</option><option value="2160">2160p</option><option value="720">720p</option></select></label><p class="muted">${t('每六小时检查新集数，可随时暂停。')}</p></div><div class="dialog-actions"><button type="button" class="secondary" data-action="close-modal">${t('取消')}</button><button type="submit">${t('确认订阅')}</button></div></form>`;
   $('#modal').showModal();
 }
-async function seasonAction(subscribe,values=null){
-  const season=values?Number(values.season):seriesSeasons(state.selected)[0];
-  if(season==null)return;
-  const args={title_id:state.selected.title_id,season,resolution:Number(values?.resolution)||1080};
-  const storageKey='media-season:'+state.user.id+':'+JSON.stringify(args)+':'+subscribe;
+async function subscribeSeason(values){
+  const args={title_id:state.selected.title_id,season:Number(values.season),resolution:Number(values.resolution)||1080};
+  const storageKey='media-season:'+state.user.id+':'+JSON.stringify(args)+':true';
   const idempotency_key=sessionStorage.getItem(storageKey)||requestKey();sessionStorage.setItem(storageKey,idempotency_key);
-  const result=await command(subscribe?'subscription_create':'season_acquire',{...args,idempotency_key});
+  await command('subscription_create',{...args,idempotency_key});
   sessionStorage.removeItem(storageKey);
-  if(subscribe){toast(t('订阅已保存，每六小时检查一次。'));return navigate('subscriptions');}
-  toast(result.missing_episodes?.length?t('部分集数尚无可用资源，可稍后重试或明确订阅。'):t('本次下载任务已创建，不会自动追更。'));
-  return navigate('jobs');
+  toast(t('订阅已保存，每六小时检查一次。'));return navigate('subscriptions');
 }
 async function searchReleases(){
   const selected=state.selected,revision=requests.revision;
   state.releaseController?.abort();const controller=new AbortController();state.releaseController=controller;
   const seasons=seriesSeasons(selected);
-  $('#release-results').innerHTML=html`<div class="resource-toolbar"><h2>${t('资源')}</h2><span id="release-progress" class="muted" role="status"></span><button class="quiet" data-action="retry-releases" aria-label="${t('刷新资源')}">↻</button>${selected.kind==='tv'&&seasons.length?html`<button class="secondary" data-action="season-once">${t('下载第 ')}${seasons[0]}${t(' 季')}</button><button class="secondary" data-action="season-subscribe">${t('订阅…')}</button>`:''}</div><div id="release-table"></div><details id="release-diagnostics" class="resource-diagnostics" hidden><summary>${t('部分来源未响应')}</summary><div></div></details>`;
+  $('#release-results').innerHTML=html`<div class="resource-toolbar"><h2>${t('资源')}</h2><span id="release-progress" class="muted" role="status"></span><button class="quiet" data-action="retry-releases" aria-label="${t('刷新资源')}">↻</button>${selected.kind==='tv'&&seasons.length?html`<button class="secondary" data-action="season-subscribe">${lang==='en'?'Subscribe':t('订阅')}</button>`:''}</div><div id="release-table"></div><details id="release-diagnostics" class="resource-diagnostics" hidden><summary>${t('部分来源未响应')}</summary><div></div></details>`;
   syncBusyControls();
   await discoverReleases(selected,(season,signal)=>api('/api/command',{operation:'search_releases',arguments:{title_id:selected.title_id,season,episodes:null,resolution:null}},'POST',{signal}),report=>{
     if(!requests.current(revision)||state.releaseController!==controller||controller.signal.aborted||!$('#release-progress'))return;
@@ -190,34 +188,44 @@ async function searchReleases(){
 }
 function releaseTable(loading=false) {
   const rows=state.releases;let previous=null;
-  $('#release-table').innerHTML=rows.length?html`<div class="release-list">${rows.map((row,index)=>{
+  $('#release-table').innerHTML=rows.length?html`<div class="release-list">${rows.map(row=>{
     const pack=['season_pack','partial_pack'].includes(row.coverage_kind);
     const group=state.selected.kind!=='tv'?'':pack?t('第 ')+row.season+t(' 季'):row.coverage_kind==='episode'?t('单集资源'):t('集数范围待核验');
     const heading=group&&group!==previous?html`<h3 class="release-group">${escape(group)}</h3>`:'';previous=group;
-    return heading+html`<article class="release-row"><div class="release-copy"><div class="release-name" title="${escape(row.name)}">${escape(row.name)}</div><div class="release-meta"><span>${escape(row.indexer||t('未知'))}</span>${row.resolution?html`<span>${row.resolution}p</span>`:''}<span>${bytes(row.size)}</span><span title="${t('做种数')}">↑ ${row.seeders??'–'}</span></div></div><button data-action="plan" data-index="${index}">${lang==='en'?'Download':t('下载')}</button></article>`;
+    return heading+html`<button type="button" class="release-row" data-action="release-details" data-release-id="${row.release_id}" aria-haspopup="dialog"><span class="release-copy"><span class="release-name" title="${escape(row.name)}">${escape(row.name)}</span><span class="release-meta"><span>${escape(row.indexer||t('未知'))}</span>${row.resolution?html`<span>${row.resolution}p</span>`:''}<span>${bytes(row.size)}</span><span title="${t('做种数')}">↑ ${row.seeders??'–'}</span></span></span></button>`;
   }).join('')}</div>`:html`<p class="resource-empty muted">${loading?t('正在自动搜索各季资源…'):t('暂未找到可用资源，稍后刷新重试。')}</p>`;
   syncBusyControls();
 }
 
-async function plan(index) {
-  const row=state.releases[index];if(!row)return;const requestRevision=requests.revision;
+function releaseDetails(id){
+  if(requests.busy('confirm-release')||$('#modal').open)return;
+  const row=state.releases.find(item=>item.release_id===id);if(!row)return;
+  state.releaseChoice={...row,title:state.selected.title,kind:state.selected.kind};
+  $('#modal').classList.add('consent-dialog');$('#modal').setAttribute('aria-labelledby','release-dialog-title');
+  $('#modal').innerHTML=html`<h2 id="release-dialog-title">${t('资源详情')}</h2><div class="consent-dialog-scroll"><p class="release-dialog-name">${escape(row.name)}</p><dl class="release-details"><dt>${t('作品')}</dt><dd>${escape(state.selected.title)}</dd>${state.selected.kind==='tv'?html`<dt>${t('季')}</dt><dd>${row.season}</dd><dt>${t('集数')}</dt><dd>${escape(row.covered_episodes?.join(', ')||t('集数范围待核验'))}</dd>`:''}<dt>${t('来源')}</dt><dd>${escape(row.indexer||t('未知'))}</dd><dt>${t('清晰度')}</dt><dd>${row.resolution?row.resolution+'p':t('未知')}</dd><dt>${t('大小')}</dt><dd>${bytes(row.size)}</dd><dt>${t('做种数')}</dt><dd>${row.seeders??t('未知')}</dd></dl></div><div class="dialog-actions"><button class="secondary" data-action="close-modal">${t('取消')}</button><button data-action="confirm-release">${t('确认下载')}</button></div>`;
+  $('#modal').showModal();
+}
+async function confirmRelease(){
+  const row=state.releaseChoice;if(!row)return;const requestRevision=requests.revision;
   const intent='release:'+row.release_id,previous=tasksUI.pending().find(item=>item.operation==='download'&&item.intent===intent);
   const key=tasksUI.remember('download',intent,requestKey());
   let result;
   try{result=previous?.plan||await command('plan',{release_id:row.release_id});}
   catch(error){tasksUI.forget(key);throw error;}
-  state.plan={...result,key};tasksUI.attach(key,{plan:state.plan});
-  await start(requestRevision);
+  const frozenPlan={...result,key};tasksUI.attach(key,{plan:frozenPlan});
+  await submitReleasePlan(requestRevision,frozenPlan);
+  if(state.releaseChoice===row&&$('#modal').open)$('#modal').close();
 }
-async function start(revision=requests.revision) {
-  const p=state.plan;if(!p)return;
+async function submitReleasePlan(revision,p) {
+  if(!p)return;
   try {
     const result=await command('start',{plan_id:p.plan_id,revision:p.revision,idempotency_key:p.key});
-    tasksUI.forget(p.key);tasksUI.trackDownload(result);state.plan=null;toast(t('下载任务已提交，后台自动整理并处理字幕。'));
+    if(!result||!/^([a-f0-9]{32})$/.test(result.job_id||'')){const error=new Error(t('服务返回了无法识别的响应'));error.connectionFailure=true;throw error;}
+    tasksUI.forget(p.key);tasksUI.trackDownload(result);toast(t('下载任务已提交，后台自动整理并处理字幕。'));
     if(requests.current(revision))await showJob(result.job_id);
   } catch(error) {
     if(!error.connectionFailure){tasksUI.forget(p.key);throw error;}
-    try{const found=await command('download_submission_status',{idempotency_key:p.key});if(found.found){tasksUI.forget(p.key);tasksUI.trackDownload(found.task);state.plan=null;if(requests.current(revision))await showJob(found.task.job_id);return;}}catch{}
+    try{const found=await command('download_submission_status',{idempotency_key:p.key});if(found.found){tasksUI.forget(p.key);tasksUI.trackDownload(found.task);if(requests.current(revision))await showJob(found.task.job_id);return;}}catch{}
     tasksUI.wake();toast(t('提交回执暂未收到，正在自动核对后台任务。'));
   }
 }
@@ -264,9 +272,9 @@ async function restoreRoute(){
   const searchHash=location.hash.match(/^#search\?(.*)$/);if(searchHash){const params=new URLSearchParams(searchHash[1]);return search(params.get('q')||'');}
   const page=location.hash.slice(1);return navigate(['discover','search','jobs','history','tasks','library','settings','admin','users','events','inventory','subscriptions','duplicates'].includes(page)?page:'discover',{historyMode:'none'});
 }
-async function showTask(id,{historyMode='push'}={}){if(historyMode!=='none')recordRoute('#tasks/'+id);newView();state.page='task';state.taskId=id;state.plan=null;window.scrollTo(0,0);if($('#modal').open)$('#modal').close();shell();await tasksUI.show(id);}
+async function showTask(id,{historyMode='push'}={}){if(historyMode!=='none')recordRoute('#tasks/'+id);newView();state.page='task';state.taskId=id;window.scrollTo(0,0);shell();await tasksUI.show(id);}
 window.addEventListener('popstate',()=>{if(state.user)act('history-navigation',restoreRoute);});
-async function showCollection(id,{replace=false,historyMode='push'}={}){if(historyMode!=='none')recordRoute('#library/'+id,replace);newView();state.page='collection';state.collectionId=id;state.plan=null;window.scrollTo(0,0);if($('#modal').open)$('#modal').close();shell();await libraryUI.detail(id);}
+async function showCollection(id,{replace=false,historyMode='push'}={}){if(historyMode!=='none')recordRoute('#library/'+id,replace);newView();state.page='collection';state.collectionId=id;window.scrollTo(0,0);shell();await libraryUI.detail(id);}
 
 const diskLabels={paired:t('已确认硬链接'),linked:t('已有映射'),unorganized:t('待整理'),library_only:t('仅有整理文件'),source_missing:t('源文件缺失'),target_missing:t('整理文件缺失'),missing_both:t('两端均缺失'),conflict:t('文件关系冲突'),ambiguous:t('多个关联待核对'),subtitle_matched:t('字幕已匹配'),subtitle_unmatched:t('字幕待匹配'),needs_review:t('需要复核'),outside_roots:t('路径不在当前目录范围'),excluded_mapping:t('映射包含跳过的文件')};
 function diskCards(items){return items.map(item=>html`<article class="disk-card panel"><div class="disk-icon" aria-hidden="true">${item.kind==='subtitle'?'CC':item.kind==='record'?'!':'▶'}</div><div class="disk-info"><div class="eyebrow">${item.role==='download'?t('下载目录'):item.role==='library'?t('整理目录'):t('历史记录')}</div><h2>${escape(item.name)}</h2><span class="badge ${['linked','paired','subtitle_matched'].includes(item.status)?'':'warn'}">${escape(diskLabels[item.status]||item.status)}</span>${item.subtitles?.length?html`<span class="file-meta">${item.subtitles.length} 个外挂字幕 · 内容未校验</span>`:''}<details><summary>文件与关联</summary><p class="file-path">${escape(item.path)}</p>${(item.peers||[]).map(path=>html`<p class="file-path">↔ ${escape(path)}</p>`).join('')}${item.target_path?html`<p class="file-path">↔ ${escape(item.target_path)}</p>`:''}${item.video_path?html`<p class="file-path">${escape(item.video_path)}</p>`:''}${(item.subtitles||[]).map(path=>html`<p class="file-path">${escape(path)}</p>`).join('')}</details></div></article>`).join('');}
@@ -342,7 +350,7 @@ async function navigate(page,{historyMode='push'}={}){
   if(['admin','users','events','inventory'].includes(page)&&state.user.role!=='admin')page='settings';
   if(page==='duplicates'&&!state.user.can_manage_media)page='library';
   if(historyMode!=='none')recordRoute('#'+page);
-  newView();state.page=page;state.plan=null;window.scrollTo(0,0);if($('#modal').open)$('#modal').close();shell();await render();
+  newView();state.page=page;window.scrollTo(0,0);shell();await render();
 }
 async function render(){if(state.page==='duplicates')return duplicates();if(state.page==='subscriptions')return subscriptions();if(state.page==='discover')return discover();if(state.page==='search'){searchPage();syncBusyControls();return;}if(['jobs','history'].includes(state.page))return jobs();if(state.page==='tasks')return tasksUI.list();if(state.page==='task')return tasksUI.show(state.taskId);if(state.page==='job')return jobDetail();if(state.page==='detail')return title(state.requestedTitle);if(state.page==='library')return library();if(state.page==='collection')return libraryUI.detail(state.collectionId);if(state.page==='inventory')return inventory();if(state.page==='users')return users();if(state.page==='events')return events();if(state.page==='settings')return settings();if(state.page==='admin')return adminPage();}
 function submitForm(id){const form=document.getElementById(id);if(form)form.requestSubmit();}
@@ -350,15 +358,15 @@ document.addEventListener('click',event=>{
   const button=event.target.closest('button[data-action]');if(!button||button.disabled)return;
   const action=button.dataset.action;
   if(action==='language'){switchLanguage();return;}
-  if(action==='close-modal'){$('#modal').close();return;}
+  if(action==='close-modal'){if(requests.busy('confirm-release')||requests.busy('season-subscribe'))return;state.releaseChoice=null;$('#modal').close();return;}
+  if(action==='release-details'){releaseDetails(button.dataset.releaseId);return;}
   if(action==='retry-search'){submitForm('search');return;}if(action==='retry-releases'){act('release-refresh',searchReleases,{button});return;}
-  const selectors={catalog:'[data-action="source"],[data-action="kind"],[data-action="window"]',plan:'[data-action="plan"]',start:'#modal button'};
+  const selectors={catalog:'[data-action="source"],[data-action="kind"],[data-action="window"]','confirm-release':'#modal button'};
   const key=['source','kind','window'].includes(action)?'catalog':action==='navigate'?'navigate:'+button.dataset.page:action==='job'?'open-job':action==='subtitles'?'subtitles:'+button.dataset.id:action;
   const revision=requests.revision;
   act(key,async()=>{
     if(action==='duplicate-preview')return duplicatePreview(Number(button.dataset.index));
     if(action==='duplicate-confirm'){await command('duplicate_apply',{plan_id:state.duplicatePlan,confirm:true});$('#modal').close();return duplicates();}
-    if(action==='season-once')return seasonAction(false);
     if(action==='season-subscribe')return subscriptionDialog();
     if(action==='subscription-state'){await command('subscription_change',{request_id:button.dataset.id,revision:Number(button.dataset.revision),state:button.dataset.state});return subscriptions();}
     if(action==='auth-login')auth();else if(action==='auth-bootstrap')auth('bootstrap');
@@ -370,7 +378,7 @@ document.addEventListener('click',event=>{
     else if(action==='discover-page'){newView();state.discoverPage=Number(button.dataset.value);await discover();window.scrollTo(0,0);}
     else if(['source','kind','window'].includes(action)){newView();state.discoverPage=1;state[action]=button.dataset.value;if(state.source!=='tmdb'&&state.window==='top')state.window='day';await discover();}
     else if(action==='title')await title(Number(button.dataset.index));else if(action==='retry-detail')await title(state.requestedTitle);
-    else if(action==='plan')await plan(Number(button.dataset.index));else if(action==='start')await start();
+    else if(action==='confirm-release')await confirmRelease();
     else if(action==='job')await showJob(button.dataset.id);else if(action==='more-jobs')await jobs(true);
     else if(action==='scan-disk')await scanDisk();else if(action==='import-disk')await importDisk();else if(action==='more-inventory')await inventory(true);else if(action==='new-scan'){state.diskPreview=null;state.diskScanId=null;sessionStorage.removeItem('media-inventory-scan');await inventory();}
     else if(action.startsWith('task-')||action==='tasks-more')await tasksUI.action(action,button);
@@ -379,20 +387,20 @@ document.addEventListener('click',event=>{
     else if(action==='open-ai-settings')await tokenSettings();else if(['create-token','revoke-token'].includes(action))await tokenAction(action,button);
     else if(action==='retry'){if(confirm(t('确认已检查失败原因，并重试处理阶段？'))){await command('retry',{job_id:button.dataset.id,revision:Number(button.dataset.revision)});if(requests.current(revision))await jobDetail();}}
     else if(action==='subtitles'){const job=await command('subtitles',{media_id:Number(button.dataset.id),idempotency_key:requestKey()});toast(t('字幕任务已提交。'));if(requests.current(revision))await showJob(job.job_id);}
-  },{button,selector:selectors[key]||'',label:action==='start'?t('正在提交…'):t('请稍候…')});
+  },{button,selector:selectors[key]||'',label:action==='confirm-release'?t('正在提交…'):t('请稍候…')});
 });
 document.addEventListener('submit',event=>{
   const form=event.target;if(!form.matches('form'))return;event.preventDefault();
   const values=Object.fromEntries(new FormData(form)),isSearch=form.id==='search';
   const key=isSearch?'title-search':form.id;
-  const selector=isSearch?'#search button[type="submit"]':'#'+form.id+' button[type="submit"]';
+  const selector=isSearch?'#search button[type="submit"]':'#'+form.id+(form.id==='season-subscribe'?' button':' button[type="submit"]');
   const revision=requests.revision;
   act(key,async()=>{
     if(form.id==='login'){const data=await api('/api/auth/login',values);state.user=data.user;state.csrf=data.csrf;sessionStorage.setItem('media-csrf',state.csrf);await restoreRoute();}
     else if(form.id.startsWith('library-'))await libraryUI.submit(form,values);
     else if(form.id==='bootstrap'){await api('/api/auth/bootstrap',values);state.canBootstrap=false;auth();toast(t('管理员已创建，请登录。'));}
     else if(isSearch)await search(values.query);
-    else if(form.id==='season-subscribe')await seasonAction(true,values);
+    else if(form.id==='season-subscribe')await subscribeSeason(values);
     else if(form.id==='users'){
       await api('/api/users',{...values,can_download:values.role==='admin'||form.elements.can_download.checked,can_manage_media:values.role==='admin'||form.elements.can_manage_media.checked});if(requests.current(revision))await users();toast(t('用户已创建。'));
     } else if(form.dataset.userId){
@@ -409,7 +417,7 @@ document.addEventListener('change',event=>{
   if(event.target.id==='jobs-stage'){state.jobStage=event.target.value;filterJobs();}
   if(event.target.matches('[data-permission-role]')){const form=event.target.closest('form'),admin=event.target.value==='admin';for(const name of ['can_download','can_manage_media']){form.elements[name].disabled=admin;if(admin)form.elements[name].checked=true;}const help=form.querySelector('.permission-help');if(help)help.textContent=admin?t('管理员拥有全部权限。'):t('按需开启权限，无需逐个分配任务或媒体。');}
 });
-$('#modal').addEventListener('cancel',event=>{if(requests.busy('start')||requests.busy('create-token'))event.preventDefault();});
+$('#modal').addEventListener('cancel',event=>{if(requests.busy('confirm-release')||requests.busy('season-subscribe')||requests.busy('create-token'))event.preventDefault();});
 $('#modal').addEventListener('close',()=>{if(!requests.busy('start'))$('#modal').innerHTML='';});
 async function refreshDownloads(){if(!state.user||!['jobs','job','history'].includes(state.page))return;try{if(state.page==='job')await jobDetail(true);else await jobs(false,true);await refreshStatus();}catch{if($('#worker-state'))$('#worker-state').textContent=t('连接中断 · 状态可能过期');}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshDownloads();});window.addEventListener('online',refreshDownloads);window.addEventListener('pageshow',refreshDownloads);
@@ -420,3 +428,5 @@ setInterval(async()=>{
 },5000);
 try{const setup=await api('/api/auth/setup-status');state.canBootstrap=!setup.initialized;}catch{state.canBootstrap=false;}
 try{const data=await api('/api/auth/me');state.user=data.user;if(state.csrf)await act('initial-view',restoreRoute);else auth();}catch{auth();}
+
+$('#modal').addEventListener('close',()=>{if(!$('#modal').open){state.releaseChoice=null;$('#modal').classList.remove('consent-dialog');$('#modal').removeAttribute('aria-labelledby');}});

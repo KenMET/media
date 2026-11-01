@@ -1,0 +1,13 @@
+# Resource details and explicit consent: 2026-11-01
+
+Scope: the screenshot's per-row download buttons, fixed latest-season shortcut, ellipsis subscription label and missing dialog cancellation. Implementation is complete. Staged-source regression and cloud rollout evidence are recorded below after verification.
+
+Resource rows are now complete native buttons, without a nested download action. Pointer/Enter interaction opens complete release metadata locally. There is no plan/start request until Confirm download; Cancel/Escape close the preview. Capturing the immutable release ID prevents late automatic season results from changing the resource under review. The latest-season shortcut was removed; any season is selected through its own resource row. Existing one-time season APIs remain supported.
+
+The subscription label is complete, and its dialog has explicit Cancel and Confirm actions. Confirmed operations disable their controls while in flight. Resource details and subscription fields scroll independently of confirmation controls on short screens. View transitions consistently close their modal. Self-review centralized modal closure across view transitions, removed the obsolete global plan state, kept an explicitly captured plan for submission, and corrected unknown receipt handling: unreadable/malformed acknowledgements and 5xx start replies retain the existing idempotency key and use read-only reconciliation rather than another submission. No download identity, API consent, media naming, provider sorting or deployment configuration was changed.
+
+Browser acceptance uses mocked APIs, not real downloads. It checks zero plan/start calls on preview/cancel, keyboard/Escape behavior, a second-season selection surviving a late third-season result, repeated confirmation taps, in-flight close fencing, lost/unreadable/malformed/5xx receipt recovery, definite plan rejection without a start, subscription cancellation and explicit second-season subscription. Movie details and Chinese/English 320/390/768/1440 layouts remain covered. No test sends a push or creates production downloads. Unrelated FIFO work and private connection contents remain excluded from the release.
+
+Current guidance: [resource browsing](../resource-browsing.md). Cloud deployment remains a separate verification step until the rollout evidence is recorded.
+
+Staged-source validation: 31 focused Python API/acquisition/language checks and 19 serial JavaScript checks passed, along with the expanded responsive browser workflow. Browser acceptance uses injected responses; it does not submit a real download.

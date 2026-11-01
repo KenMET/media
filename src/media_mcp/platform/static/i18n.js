@@ -2,11 +2,11 @@
 // server data never pass through this dictionary or through HTML translation.
 export const lang = localStorage.getItem('media-language') === 'en' ? 'en' : 'zh-CN';
 const english = {
+  '资源详情':'Release details',
+  '集数':'Episodes',
   '简介':'Overview',
-  '订阅…':'Subscribe',
   '资源':'Releases',
   '刷新资源':'Refresh releases',
-  '下载第 ':'Download S',
   '每六小时检查新集数，可随时暂停。':'Check for new episodes every six hours. Pause anytime.',
   '确认订阅':'Confirm subscription',
   '搜索中 ':'Searching ',

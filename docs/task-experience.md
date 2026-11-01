@@ -6,7 +6,7 @@ Search controls stay on the dedicated search page. The shared header contains na
 | --- | --- | --- | --- |
 | Discovery | Day/week trends and all-time TMDB top rated | Select a work; optionally switch type/source | Poster/title/year/rating/source/update time |
 | Release search | Name-only input; mixed movie/TV relevance; automatic releases after title selection; all regular seasons automatically, latest packs first and singles afterward | Confirm identity; explicit subscription chooses season | Compact release rows; progressive results; source diagnostics collapsed below results |
-| Acquisition | A release download action creates persistent processing without duplicate confirmation | Select release | Open job details with queue/download/speed/ingestion/subtitle stages |
+| Acquisition | Resource rows open complete details; only confirmation creates persistent processing | Select a resource, then confirm or cancel | Open job details with queue/download/speed/ingestion/subtitle stages |
 | Organization | Pending identification, mapping problems and unready subtitles across all pages | Start once; leaving is safe | Dedicated task link, file/work progress, probe/research/save/link/subtitle substeps and results |
 | Subtitles | Existing engine used automatically by acquisition/organization, preserving valid results | Advanced review only when needed | Ready/missing/failed/review counts and redacted reasons; discovery is not verification |
 
