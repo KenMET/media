@@ -1,6 +1,7 @@
 """Small direct TMDB adapter. All credentials are deployment inputs."""
 import os
 import re
+import unicodedata
 import requests
 
 
@@ -25,9 +26,49 @@ class TMDB:
                 params={'api_key': key, 'language': 'zh-CN', **params}, timeout=20,
                 allow_redirects=False)
             response.raise_for_status()
-            return response.json()
+            return self.clean_titles(path, params, response.json())
         except (requests.RequestException, ValueError):
             raise RuntimeError('tmdb_unavailable') from None
+
+    @staticmethod
+    def polluted_title(value):
+        if not isinstance(value, str):
+            return False
+        text = unicodedata.normalize('NFKC', value).lower()
+        text = re.sub(r'[\u200b-\u200d\ufeff]', '', text)
+        domains = re.findall(r'(?:[a-z0-9-]+\.)+(?:com|net|org|cc|tv|xyz|top|vip)(?![a-z])', text)
+        return bool(domains and (any(re.search(r'\d{5,}', domain) for domain in domains)
+                    or re.search(r'\u6deb\u7247|\u9ec4\u6f2b|\u514d\u8d39\u89c2\u770b|\u5907\u7528\u7f51\u5740|\u52a0\u7fa4', text)))
+
+    def clean_titles(self, path, params, payload):
+        """Repair only obvious advertising; match fallback records by exact provider ID."""
+        fields = ('title', 'name', 'original_title', 'original_name')
+        rows = payload.get('results', []) if isinstance(payload.get('results'), list) else [payload]
+        damaged = [row for row in rows if any(self.polluted_title(row.get(field)) for field in fields)]
+        if not damaged:
+            return payload
+        english = {}
+        if params.get('language') != 'en-US':
+            try:
+                translated = self.get(path, **{**params, 'language': 'en-US'})
+                candidates = translated.get('results', []) if isinstance(translated.get('results'), list) else [translated]
+                english = {row['id']: row for row in candidates if row.get('id') is not None}
+            except RuntimeError:
+                pass
+        for row in damaged:
+            fallback = english.get(row.get('id'), {})
+            for field in fields:
+                if not self.polluted_title(row.get(field)):
+                    continue
+                candidates = [fallback.get(field), fallback.get('title'), fallback.get('name'),
+                              row.get('original_title'), row.get('original_name')]
+                row[field] = next((value for value in candidates if isinstance(value, str)
+                                   and value.strip() and not self.polluted_title(value)), None)
+        if isinstance(payload.get('results'), list):
+            payload['results'] = [row for row in rows if row.get('title') or row.get('name')]
+        elif not (payload.get('title') or payload.get('name')):
+            raise RuntimeError('tmdb_unavailable')
+        return payload
 
     @staticmethod
     def identity(kind, row):
