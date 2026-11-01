@@ -1,6 +1,6 @@
 import {lang, t, html, switchLanguage} from './i18n.js';
 import {Requests} from './ux.js';
-import {seriesSeasons,discoverReleases} from './releases.js';
+import {seriesSeasons,discoverReleases,readSearchResponse} from './releases.js';
 import {createLibraryUI} from './library.js';
 import {createTaskUI} from './tasks.js';
 const languageButton=()=>html`<button class="quiet language-switch" data-action="language" aria-label="${lang==='en'?'切换为中文':'Switch to English'}">${lang==='en'?'中文':'English'}</button>`;
@@ -25,10 +25,11 @@ async function api(path, body, method='POST',requestOptions={}) {
   const options={method:body===undefined?'GET':method,credentials:'same-origin',headers:{},signal:controller.signal};
   if(body!==undefined){options.headers={'content-type':'application/json','x-csrf-token':state.csrf};options.body=JSON.stringify(body);}
   try {
+    if(requestOptions.onProgress)options.headers.accept='application/x-ndjson';
     const response=await fetch(path,options);
     if(sessionAtStart!==state.csrf)throw new Error(t('会话已改变，请重新操作。'));
-    let result;try{result=await response.json();}catch{const error=new Error(t('服务返回了无法识别的响应'));error.connectionFailure=downloadSubmission;throw error;}
-    if(!response.ok||!result.success){if(response.status===401){state.user=null;auth();}const error=new Error(errors[result.error_code]||t('操作未完成，请稍后重试。'));error.code=result.error_code;error.connectionFailure=downloadSubmission&&(response.status>=500||response.ok&&result.success!==false);throw error;}
+    let result;try{result=await readSearchResponse(response,requestOptions.onProgress||(()=>{}));}catch{const error=new Error(t('服务返回了无法识别的响应'));error.connectionFailure=downloadSubmission;throw error;}
+    if(!response.ok||!result.success){if(response.status===401||result.error_code==='authentication_required'){state.user=null;auth();}const error=new Error(errors[result.error_code]||t('操作未完成，请稍后重试。'));error.code=result.error_code;error.connectionFailure=downloadSubmission&&(response.status>=500||response.ok&&result.success!==false);throw error;}
     return result.data;
   } catch(error) {
     if(error.name==='AbortError'&&!requests.current(revision)){const changed=new Error('view_changed');changed.name='ViewChanged';throw changed;}
@@ -177,19 +178,22 @@ async function searchReleases(){
   const selected=state.selected,revision=requests.revision;
   state.releaseController?.abort();const controller=new AbortController();state.releaseController=controller;
   const seasons=seriesSeasons(selected);
-  $('#release-results').innerHTML=html`<div class="resource-toolbar"><h2>${t('资源')}</h2><span id="release-progress" class="muted" role="status"></span><button class="quiet" data-action="retry-releases" aria-label="${t('刷新资源')}">↻</button>${selected.kind==='tv'&&seasons.length?html`<button class="secondary" data-action="season-subscribe">${lang==='en'?'Subscribe':t('订阅')}</button>`:''}</div><div id="release-loading" class="release-loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><span></span></div><div id="release-table"></div><details id="release-diagnostics" class="resource-diagnostics" hidden><summary>${t('部分来源未响应')}</summary><div></div></details>`;
+  $('#release-results').innerHTML=html`<div class="resource-toolbar"><h2>${t('资源')}</h2><span id="release-progress" class="muted" role="status"></span><button class="quiet" data-action="retry-releases" aria-label="${t('刷新资源')}">↻</button>${selected.kind==='tv'&&seasons.length?html`<button class="secondary" data-action="season-subscribe">${lang==='en'?'Subscribe':t('订阅')}</button>`:''}</div><div id="release-loading" class="release-loading" role="status" hidden><div class="release-loading-heading"><span class="spinner" aria-hidden="true"></span><span>${t('正在搜索资源站…')}</span></div><div class="release-site-status"></div></div><div id="release-table"></div><details id="release-diagnostics" class="resource-diagnostics" hidden><summary>${t('部分来源未响应')}</summary><div></div></details>`;
   syncBusyControls();
-  await discoverReleases(selected,(season,signal)=>api('/api/command',{operation:'search_releases',arguments:{title_id:selected.title_id,season,episodes:null,resolution:null}},'POST',{signal}),report=>{
+  await discoverReleases(selected,(season,signal,onProgress)=>api('/api/command',{operation:'search_releases',arguments:{title_id:selected.title_id,season,episodes:null,resolution:null}},'POST',{signal,onProgress}),report=>{
     if(!requests.current(revision)||state.releaseController!==controller||controller.signal.aborted||!$('#release-progress'))return;
     state.releases=report.releases;
-    $('#release-progress').textContent=report.loading?t('搜索中 ')+report.finished+'/'+report.total:report.releases.length+t(' 个资源');
+    $('#release-progress').textContent=report.loading?t('搜索中'):report.releases.length+t(' 个资源');
     $('#release-loading').hidden=!report.loading;
-    $('#release-loading > span:last-child').textContent=t('搜索中 ')+report.finished+'/'+report.total;
+    $('#release-loading .release-site-status').innerHTML=report.sites.map(({site,statuses})=>{
+      const status=statuses.includes('searching')?t('搜索中'):statuses.includes('jackett_timeout')?t('请求超时'):statuses.some(s=>!['ok','waiting'].includes(s))?t('部分请求失败'):statuses.includes('waiting')?t('等待搜索'):t('已响应');
+      return html`<span class="release-site"><span>${escape(site)}</span><span class="muted">${status}</span></span>`;
+    }).join('');
     $('#release-table').setAttribute('aria-busy',String(report.loading));
     const issues=report.reports.filter(row=>row.search_status!=='complete');
     $('#release-diagnostics').hidden=!issues.length;
     $('#release-diagnostics div').textContent=issues.map(row=>(row.season==null?'':('S'+String(row.season).padStart(2,'0')+' · '))+(row.error_code||row.search_status)).join(' / ');
-    releaseTable(report.loading);
+    if(!report.progressOnly)releaseTable(report.loading);
   },controller.signal);
 }
 function releaseTable(loading=false) {

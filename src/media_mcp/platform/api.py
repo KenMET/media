@@ -11,7 +11,7 @@ from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.routing import Route
 
 from media_mcp.lan import lan_middleware
@@ -316,7 +316,7 @@ def create_app(accounts=None, records=None, service_factory=None):
                 return JSONResponse({'success':False, 'error_code':'cross_origin_request_denied'}, status_code=403)
             try:
                 result = await fn(request)
-                if isinstance(result, (JSONResponse, FileResponse)):
+                if isinstance(result, (JSONResponse, FileResponse, StreamingResponse)):
                     response = result
                 else:
                     response = JSONResponse({'success':True, 'data':result})
@@ -420,6 +420,9 @@ def create_app(accounts=None, records=None, service_factory=None):
             arguments = schema.model_validate(data.arguments).model_dump()
         except ValidationError:
             raise ValueError('invalid_request') from None
+        if data.operation == 'search_releases' and request.headers.get('accept') == 'application/x-ndjson':
+            from media_mcp.platform.search_progress import stream_search
+            return stream_search(lambda: factory(user).search_releases(**arguments))
         return await run_in_threadpool(getattr(factory(user), data.operation), **arguments)
 
     async def internal_command(request):

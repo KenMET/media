@@ -154,5 +154,7 @@ dialog.consent-dialog[open]{display:flex;flex-direction:column;overflow:hidden;m
 
 #season-subscribe{display:flex;flex-direction:column;min-height:0}.consent-dialog #season-subscribe>.dialog-actions{margin-top:6px}
 
-.release-loading{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--accent)}
+.release-loading{display:grid;gap:10px;margin:0 0 12px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--accent)}
 .release-loading[hidden]{display:none}
+
+.release-loading-heading{display:flex;align-items:center;gap:10px}.release-site-status{display:flex;flex-wrap:wrap;gap:6px 12px}.release-site{display:inline-flex;flex-wrap:wrap;gap:6px;font-size:12px;overflow-wrap:anywhere;max-width:100%}

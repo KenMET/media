@@ -9,6 +9,8 @@ from defusedxml import ElementTree
 from defusedxml.common import DefusedXmlException
 import requests
 
+from media_mcp.platform.search_progress import report_progress
+
 
 class Jackett:
     def __init__(self, session=None, *, remote=True):
@@ -42,20 +44,25 @@ class Jackett:
         config = Path(os.environ.get('JACKETT_CONFIG_FILE', '/services/jackett/Jackett/ServerConfig.json'))
         sites = sorted(p.stem for p in (config.parent / 'Indexers').glob('*.json')
                        if re.fullmatch(r'[a-zA-Z0-9_-]+', p.stem))
+        report_progress(sites=sites)
         if not sites:
             return {'releases': [], 'diagnostics': [{'site': None, 'status': 'no_configured_sites', 'raw_count': 0}]}
         rows, diagnostics = [], []
         deadline = time.monotonic() + 20
         for site in sites:
+            report_progress(site=site, status='searching')
             remaining = deadline - time.monotonic()
             if remaining <= 0:
+                report_progress(site=site, status='budget_exhausted')
                 diagnostics.append({'site': site, 'status': 'budget_exhausted', 'raw_count': 0})
                 continue
             try:
                 found = self._search_site(query, site, kind, min(5, remaining))
             except RuntimeError as exc:
+                report_progress(site=site, status=str(exc))
                 diagnostics.append({'site': site, 'status': str(exc), 'raw_count': 0})
                 continue
+            report_progress(site=site, status='ok')
             rows.extend(found)
             diagnostics.append({'site': site, 'status': 'ok', 'raw_count': len(found)})
         return {'releases': rows, 'diagnostics': diagnostics}

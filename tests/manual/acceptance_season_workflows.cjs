@@ -60,6 +60,10 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
      else if(command.operation==='duplicate_apply')data={retired_versions:1};
      else data={items:[],tasks:[],jobs:[]};
     }
+    if(url.pathname==='/api/command'&&request.postDataJSON().operation==='search_releases'&&request.headers().accept==='application/x-ndjson'){
+     const events=[{progress:{sites:['Fixture','SlowFixture']}},{progress:{site:'Fixture',status:'ok'}},{progress:{site:'SlowFixture',status:'jackett_timeout'}},{success:true,data}];
+     return route.fulfill({contentType:'application/x-ndjson',body:events.map(event=>JSON.stringify(event)).join('\n')+'\n'});
+    }
     return route.fulfill({contentType:'application/json',body:JSON.stringify({success:true,data})});
    }
    const name=url.pathname==='/'?'index.html':url.pathname.replace(/^\/assets\//,'');const file=path.resolve(root,name);
@@ -124,11 +128,20 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
 
   // A late latest-season response must not change the resource already being reviewed.
   holdLatest=true;releaseLatest=null;await page.reload();
+  await page.locator('.release-site').first().waitFor();
+  for(const width of [320,390]){
+   await page.setViewportSize({width,height:640});
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Site status must fit a phone');
+  }
+  await page.screenshot({path:'/tmp/media-site-loading.png'});
   await page.locator('.release-row[data-release-id="'+ '2'.repeat(32)+'"]').click();
   assert.match(await page.locator('.release-dialog-name').innerText(),/S02 Complete/);
   assert(await page.locator('#release-loading').isVisible());
   assert.equal(await page.locator('#release-loading .spinner').evaluate(el=>getComputedStyle(el).animationName),'media-spin');
   assert.equal(await page.locator('#release-table').getAttribute('aria-busy'),'true');
+  assert.match(await page.locator('.release-site-status').innerText(),/Fixture/);
+  assert.match(await page.locator('.release-site-status').innerText(),/SlowFixture/);
+  assert(!/\d+\/\d+/.test(await page.locator('#release-loading').innerText()));
   assert(releaseLatest);holdLatest=false;releaseLatest();
   await page.waitForFunction(()=>document.querySelectorAll('.release-row').length===6);
   assert(!await page.locator('#release-loading').isVisible());

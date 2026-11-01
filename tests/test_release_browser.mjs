@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 const source=readFileSync(new URL('../src/media_mcp/platform/static/releases.js',import.meta.url),'utf8');
-const {seriesSeasons,orderedReleases,discoverReleases}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const {seriesSeasons,orderedReleases,discoverReleases,readSearchResponse}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const item=(name,kind='season_pack')=>({name,coverage_kind:kind,seeders:1,indexer:'Fixture',size:100});
 
 test('season discovery starts with latest regular season and skips empty/special seasons',()=>{
@@ -53,4 +53,28 @@ test('movie resources retain the existing descending-seeder default',()=>{
   const rows=orderedReleases([{season:null,releases:[{...item('Unknown'),seeders:null},
     {...item('Low'),seeders:1},{...item('High'),seeders:100}]}]);
   assert.deepEqual(rows.map(row=>row.name),['High','Low','Unknown']);
+});
+
+test('site progress is independent of movie or season counts and stops after navigation',async()=>{
+  const updates=[],controller=new AbortController();
+  await discoverReleases({kind:'movie'},async(season,signal,progress)=>{
+    progress({sites:['slow','fast']});progress({site:'fast',status:'ok'});
+    progress({site:'slow',status:'searching'});
+    controller.abort();progress({site:'late',status:'ok'});
+    return {releases:[]};
+  },report=>updates.push(report),controller.signal);
+  assert.deepEqual(updates.at(-1).sites.map(row=>row.site),['fast','slow']);
+  assert.equal(updates.at(-1).loading,true);
+});
+test('stream parser handles fragmented unicode, progress and a final response',async()=>{
+  const events=[],payload=new TextEncoder().encode(JSON.stringify({progress:{sites:['Fixture']}})+'\n'+JSON.stringify({success:true,data:{title:'\u6d4b\u8bd5'}})+'\n');
+  const body=new ReadableStream({start(controller){for(const byte of payload)controller.enqueue(Uint8Array.of(byte));controller.close();}});
+  const result=await readSearchResponse(new Response(body,{headers:{'content-type':'application/x-ndjson'}}),event=>events.push(event));
+  assert.deepEqual(events,[{sites:['Fixture']}]);assert.equal(result.data.title,'\u6d4b\u8bd5');
+});
+test('stream parser preserves error codes, supports JSON and rejects a missing receipt',async()=>{
+  const headers={'content-type':'application/x-ndjson'};
+  assert.equal((await readSearchResponse(new Response('{"success":false,"error_code":"account_rate_limited"}\n',{headers}),()=>{})).error_code,'account_rate_limited');
+  assert.deepEqual(await readSearchResponse(new Response('{"success":true,"data":{}}'),()=>{}),{success:true,data:{}});
+  await assert.rejects(readSearchResponse(new Response('{"progress":{"sites":[]}}\n',{headers}),()=>{}),/search_response_incomplete/);
 });

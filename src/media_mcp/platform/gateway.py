@@ -11,7 +11,7 @@ from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.routing import Route
 
 from media_mcp.adapters.jackett import Jackett
@@ -102,7 +102,7 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
                 return JSONResponse({'success':False,'error_code':'cross_origin_request_denied'}, status_code=403)
             try:
                 response = await fn(request)
-                if not isinstance(response, (JSONResponse, FileResponse)):
+                if not isinstance(response, (JSONResponse, FileResponse, StreamingResponse)):
                     response = JSONResponse({'success':True,'data':response})
             except ValueError as exc:
                 code = str(exc)
@@ -199,6 +199,9 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
                     return await run_in_threadpool(identify)
                 if command.operation in CloudCommands.operations:
                     commands = CloudCommands(lambda payload:cloud_call(request,payload), budget.db, tmdb, jackett)
+                    if command.operation == 'search_releases' and request.headers.get('accept') == 'application/x-ndjson':
+                        from media_mcp.platform.search_progress import stream_search
+                        return stream_search(lambda: commands.invoke(command.operation, command.arguments))
                     return await run_in_threadpool(commands.invoke, command.operation, command.arguments)
         return await run_in_threadpool(relay, request, '/api/'+path, body)
 
