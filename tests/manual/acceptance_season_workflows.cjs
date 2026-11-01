@@ -7,7 +7,7 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
  try{
   const page=await browser.newPage({viewport:{width:390,height:844}});page.setDefaultTimeout(10000);
   const errors=[],calls=[],jobs=new Map();let subscription=null,receiptMode='normal',holdStart=false,releaseStart=null,holdLatest=false,releaseLatest=null,currentKey=null,currentJob=null,plannedRelease=null;
-  page.on('pageerror',error=>errors.push(error.message));
+  page.on('pageerror',error=>{errors.push(error.message);process.stderr.write(error.stack+'\n');});
   await page.addInitScript(()=>sessionStorage.setItem('media-csrf','disposable-season-preview'));
   await page.route('http://media.test/**',async route=>{
    const request=route.request(),url=new URL(request.url());let data={};

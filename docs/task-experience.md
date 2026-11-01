@@ -14,7 +14,7 @@ Do not pick an arbitrary first identity for ambiguous titles. Preserve unknown s
 
 ## Routes and reconnection
 
-Tasks include downloads, organization and subtitles. Download history appears beneath active downloads; the library exposes organization history. Other pages show recent/active summaries linking to detail. Download routes use `#jobs/<id>` and maintenance uses `#tasks/<id>`; refresh/back/forward preserve identity, with restorable search/title routes.
+Tasks include downloads, organization and subtitles. Download history appears beneath active downloads; the library exposes organization history. Task status stays in the task center; discovery, search, library and account pages do not show a global download/maintenance banner. Unknown submission receipts remain durable and reconcile silently outside Tasks, with the pending notice shown only inside the task center. Download routes use `#jobs/<id>` and maintenance uses `#tasks/<id>`; refresh/back/forward preserve identity, with restorable search/title routes.
 
 Submission opens progress immediately. SQLite and independent workers persist work without a connected browser. Read failures retain last observations with explicit stale state and backoff; foreground/network/page restoration triggers immediate reads. A single timeout neither cancels the task nor ends monitoring.
 
@@ -62,3 +62,7 @@ Explicit download deletion previews/confirms removal of precisely owned qBittorr
 Admin storage reports total/used/free bytes for download/library filesystems. Do not add capacity twice when both roots share a device. An unavailable mount reports unavailable rather than another directory's space. Capacity data is administrator-only.
 
 Deleted tasks retain audit but consume no pending admission. Account/global limits remain 10/100 actual pending tasks; unknown download submissions continue to occupy slots.
+
+## Stable navigation and scoped loading
+
+The application shell and task-category navigation persist across page transitions. Discovery source/type/period controls and library categories/search stay mounted while their result region loads. Download refreshes preserve the search and status controls. File-result filters load only file results. Rapid filter changes abort obsolete reads and fence late responses; confirmation and mutation controls retain their existing locks. Compact grouped selectors share mobile/desktop styling and full labels in both languages.

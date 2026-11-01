@@ -39,6 +39,7 @@ async function api(path, body, method='POST',requestOptions={}) {
 }
 const busyUI=new Map(),lockedButtons=new Map(),readControllers=new Map();
 const requests=new Requests(syncBusyControls);
+const loads=new Map();
 function newView(){if($('#modal')?.open)$('#modal').close();state.releaseChoice=null;state.releaseController?.abort();const revision=requests.nextView();for(const [controller,owner] of readControllers){if(owner!==revision)controller.abort();}return revision;}
 function syncBusyControls(){
   for(const [button,saved] of lockedButtons){
@@ -61,17 +62,18 @@ async function act(key,operation,{button=null,selector='',label=t('处理中…'
 function paint(selector,markup){const node=$(selector);if(node){node.innerHTML=markup;syncBusyControls();}}
 function loading(message,cards=false){return html`<div class="loading-state" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span><span>${escape(message)}</span><p>请稍候，正在获取最新内容。</p></div>${cards?html`<div class="poster-grid skeleton-grid" aria-hidden="true">${Array.from({length:6},()=>'<div class="skeleton-card"><div class="skeleton-poster"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>').join('')}</div>`:''}`;}
 async function loadData(selector,message,operation,{cards=false,quiet=false}={}){
-  const revision=requests.revision;
+  const revision=requests.revision,owner={};loads.set(selector,owner);
+  $(selector)?.setAttribute('aria-busy','true');
   if(!quiet)paint(selector,loading(message,cards));
-  try{const data=await operation();return requests.current(revision)?data:null;}
-  catch(error){if(!requests.current(revision))return null;
+  try{const data=await operation();return requests.current(revision)&&loads.get(selector)===owner?data:null;}
+  catch(error){if(!requests.current(revision)||loads.get(selector)!==owner)return null;
     if(!quiet){const retry=state.page==='inventory'?'scan-disk':selector==='#search-results'?'retry-search':selector==='#release-results'?'retry-releases':state.page==='detail'?'retry-detail':'refresh';
       paint(selector,html`<div class="empty error-state" role="alert"><h2>暂时没有加载成功</h2><p>${escape(error.message)}</p><button data-action="${retry}">重试</button></div>`);}
     throw error;
-  }
+  }finally{if(loads.get(selector)===owner)$(selector)?.removeAttribute('aria-busy');}
 }
 const command=(operation,arguments_={},options={})=>api('/api/command',{operation,arguments:arguments_},'POST',options);
-const tasksUI=createTaskUI({state,command,previewDeletion,paint,escape,heading,showTask,showJob,current:rev=>requests.current(rev),revision:()=>requests.revision});
+const tasksUI=createTaskUI({state,command,previewDeletion,loadData,paint,escape,heading,showTask,showJob,current:rev=>requests.current(rev),revision:()=>requests.revision});
 const libraryUI=createLibraryUI({state,api,command,previewDeletion,loadData,paint,heading,escape,toast,showCollection,navigateLibrary:()=>navigate('library'),showTask,trackTask:job=>tasksUI.track(job),rememberTask:(...args)=>tasksUI.remember(...args),forgetTask:key=>tasksUI.forget(key),syncBusyControls,current:rev=>requests.current(rev),revision:()=>requests.revision});
 const bytes=(value)=>value == null ? '—' : value>=1073741824 ? (value/1073741824).toFixed(1)+' GB' : value>=1048576 ? (value/1048576).toFixed(1)+' MB' : value>=1024 ? (value/1024).toFixed(0)+' KB' : value+' B';
 const date=(value)=>value ? new Date(typeof value==='number'?value*1000:value.replace(' ','T')+'Z').toLocaleString(lang === 'en' ? 'en-US' : 'zh-CN',{hour12:false}) : t('尚无记录');
@@ -88,8 +90,17 @@ function auth(mode='login') {
 function shell() {
   const navPage=['job','history','tasks','task','subscriptions'].includes(state.page)?'jobs':['inventory','collection','duplicates'].includes(state.page)?'library':state.page==='detail'?'search':['users','events'].includes(state.page)?'admin':state.page;
   const links=[['discover','◈',t('发现')],['search','⌕',t('搜索')],['jobs','↓',t('任务')],['library','▤',t('媒体库')],['settings','◉',t('我的账号')],...(state.user.role==='admin'?[['admin','⚙',t('管理')]]:[])];
-  $('#app').innerHTML=html`<div class="layout"><aside class="sidebar"><div class="brand">MEDIA<span>·</span></div><div class="brand-caption">COLLECT THE STORIES YOU LOVE</div><nav class="nav" aria-label="主导航">${links.map(([id,icon,label])=>html`<button class="${navPage===id?'active':''}" aria-current="${navPage===id?'page':'false'}" data-action="navigate" data-page="${id}"><span aria-hidden="true">${icon}</span><span class="nav-label">${label}</span></button>`).join('')}</nav><div class="sidebar-bottom"><div class="connection"><i class="dot" id="worker-dot"></i><span id="worker-state">连接中…</span></div><span>你的片库，你来决定。</span></div></aside><section class="workspace"><header class="topbar"><button class="mobile-wordmark quiet" data-action="navigate" data-page="discover">MEDIA<span>·</span></button>${languageButton()}<div class="user-chip"><button class="avatar account-button" data-action="navigate" data-page="settings" aria-label="我的账号">${escape(state.user.username[0].toUpperCase())}</button><span class="username">${escape(state.user.username)}</span><button class="quiet" data-action="logout">退出</button></div></header><div id="background-work" aria-live="polite"></div><main class="content" id="content"><div class="loading">正在加载…</div></main></section></div>`;
+  if(!$('.layout'))$('#app').innerHTML=html`<div class="layout"><aside class="sidebar"><div class="brand">MEDIA<span>·</span></div><div class="brand-caption">COLLECT THE STORIES YOU LOVE</div><nav class="nav" aria-label="主导航">${links.map(([id,icon,label])=>html`<button class="${navPage===id?'active':''}" aria-current="${navPage===id?'page':'false'}" data-action="navigate" data-page="${id}"><span aria-hidden="true">${icon}</span><span class="nav-label">${label}</span></button>`).join('')}</nav><div class="sidebar-bottom"><div class="connection"><i class="dot" id="worker-dot"></i><span id="worker-state">连接中…</span></div><span>你的片库，你来决定。</span></div></aside><section class="workspace"><header class="topbar"><button class="mobile-wordmark quiet" data-action="navigate" data-page="discover">MEDIA<span>·</span></button>${languageButton()}<div class="user-chip"><button class="avatar account-button" data-action="navigate" data-page="settings" aria-label="我的账号">${escape(state.user.username[0].toUpperCase())}</button><span class="username">${escape(state.user.username)}</span><button class="quiet" data-action="logout">退出</button></div></header><main class="content"><div id="section-navigation"></div><div id="content"></div></main></section></div>`;
   syncBusyControls();refreshStatus();tasksUI.wake();
+  for(const button of document.querySelectorAll('.nav [data-page]')){
+    const active=button.dataset.page===navPage;button.classList.toggle('active',active);button.setAttribute('aria-current',active?'page':'false');
+  }
+  const group=['jobs','history','subscriptions','tasks','job','task'].includes(state.page),navigation=$('#section-navigation');
+  if(group){
+    if(!navigation.children.length)navigation.innerHTML=html`<nav class="view-tabs" aria-label="任务分类"><button data-action="navigate" data-page="jobs">下载</button><button data-action="navigate" data-page="subscriptions">订阅</button>${state.user.can_manage_media?html`<button data-action="navigate" data-page="tasks">整理与字幕</button>`:''}</nav><div id="task-submission-status" aria-live="polite"></div>`;
+    const page=['jobs','history','job'].includes(state.page)?'jobs':state.page==='task'?'tasks':state.page;
+    for(const button of navigation.querySelectorAll('[data-page]')){const active=button.dataset.page===page;button.classList.toggle('active',active);button.setAttribute('aria-current',active?'page':'false');}
+  }else navigation.replaceChildren();
 }
 async function refreshStatus() {const revision=requests.revision;try {const status=await api('/api/status');if(!requests.current(revision))return;if($('#worker-state')) {$('#worker-state').textContent=status.worker_ready?t('服务正常'):t('后台暂不可用');$('#worker-dot').classList.toggle('offline',!status.worker_ready);} state.status=status;} catch(error) {if(!requests.current(revision)||error.name==='ViewChanged')return;if($('#worker-state')) $('#worker-state').textContent=t('服务连接中断');}}
 function posters(items) {return html`<div class="poster-grid">${items.map((item,index)=>html`<article class="poster-card"><button class="poster-button" data-action="title" data-index="${index}" aria-label="查看 ${escape(item.title)}"><div class="poster">${item.poster_url?html`<img src="${escape(item.poster_url)}" alt="${escape(item.title)}海报" loading="lazy" referrerpolicy="no-referrer">`:'◈'}${item.rating?html`<span class="score">★ ${escape(item.rating)}</span>`:''}</div><h3>${escape(item.title)}</h3><p>${escape(item.date?.slice(0,4)||'')} ${item.kind==='tv'?t('剧集'):t('电影')}${item.rating_source?' · '+escape(item.rating_source):''}</p></button></article>`).join('')}</div>`;}
@@ -114,11 +125,16 @@ async function applyDeletion(){
 }
 
 async function discover() {
-  const data=await loadData('#content',t('正在加载榜单…'),()=>api(html`/api/discover?source=${state.source}&kind=${state.kind}&window=${state.window}&page=${state.discoverPage}`),{cards:true});
-  if(!data)return;
-  if(state.page!=='discover') return;
+  if(!$('#discover-results'))$('#content').innerHTML=heading(t('发现值得看的故事'),t('从热门榜单出发，找到下一部想收藏的作品。'))+html`<p class="flow-note">挑选作品后会自动搜索资源；点击下载，后台继续整理并处理字幕。</p><div class="filter-toolbar"><div class="filter-group" role="group" aria-label="数据来源">${[['tmdb','TMDB'],['simkl','SIMKL'],['douban',t('豆瓣热门')]].map(([id,label])=>html`<button data-action="source" data-value="${id}" class="${state.source===id?'active':''}" ${id==='douban'?'disabled title="'+t('豆瓣榜单暂不可用')+'"':''}>${label}</button>`).join('')}</div><div class="filter-group" role="group" aria-label="作品类型"><button data-action="kind" data-value="movie" class="${state.kind==='movie'?'active':''}">电影</button><button data-action="kind" data-value="tv" class="${state.kind==='tv'?'active':''}">剧集</button></div><div class="filter-group" role="group" aria-label="榜单类型">${[['day',t('今日趋势')],['week',t('本周趋势')],['top',t('历史高分')]].map(([value,label])=>html`<button data-action="window" data-value="${value}" class="${state.window===value?'active':''}">${label}</button>`).join('')}</div></div><div id="discover-results"></div>`;
+  for(const button of document.querySelectorAll('[data-action=source],[data-action=kind],[data-action=window]')){
+    button.classList.toggle('active',state[button.dataset.action]===button.dataset.value);
+    button.setAttribute('aria-pressed',String(state[button.dataset.action]===button.dataset.value));
+    if(button.dataset.action==='window'&&button.dataset.value==='top')button.hidden=state.source!=='tmdb';
+  }
+  const data=await loadData('#discover-results',t('正在加载榜单…'),()=>api(html`/api/discover?source=${state.source}&kind=${state.kind}&window=${state.window}&page=${state.discoverPage}`),{cards:true});
+  if(!data||state.page!=='discover')return;
   state.items=data.items;
-  $('#content').innerHTML=heading(t('发现值得看的故事'),t('从热门榜单出发，找到下一部想收藏的作品。'))+html`<p class="flow-note">挑选作品后会自动搜索资源；点击下载，后台继续整理并处理字幕。</p><div class="tabs">${[['tmdb',t('TMDB 趋势')],['simkl',t('SIMKL 热门')],['douban',t('豆瓣热门')]].map(([id,label])=>html`<button data-action="source" data-value="${id}" class="${state.source===id?'active':''}" ${id==='douban'?'disabled title="'+t('豆瓣榜单暂不可用')+'"':''}>${label}${id==='douban'?t('（暂不可用）'):''}</button>`).join('')}<button data-action="kind" data-value="movie" class="${state.kind==='movie'?'active':''}">电影</button><button data-action="kind" data-value="tv" class="${state.kind==='tv'?'active':''}">剧集</button>${(state.source==='tmdb'?[['day',t('今日趋势')],['week',t('本周趋势')],['top',t('历史高分')]]:state.source==='simkl'?[['day',t('今日趋势')],['week',t('本周趋势')]]:[]).map(([value,label])=>html`<button data-action="window" data-value="${value}" class="${state.window===value?'active':''}">${label}</button>`).join('')}</div>${data.error_code?html`<div class="notice">${escape(errors[data.error_code]||data.error_code)}。${data.fetched_at?t('当前显示历史缓存，更新于 ')+escape(date(data.fetched_at)):t('尚无可用缓存；可以切换数据来源或直接搜索作品。')}</div>`:''}<div class="section-title"><h2>${state.source==='douban'?t('豆瓣热门'):state.source==='simkl'?t('SIMKL 热门'):state.window==='top'?t('TMDB 历史高分'):t('TMDB 趋势')} · ${state.kind==='tv'?t('剧集'):t('电影')}</h2><span class="muted">${data.fetched_at?escape(date(data.fetched_at))+t(' 抓取'):''}</span></div>${data.source_updated_at?t('<p class="muted">来源更新时间：')+escape(date(data.source_updated_at))+t(' · 榜单按 SIMKL 观看人数排序</p>'):''}${data.items.length?posters(data.items):empty(t('榜单暂时不可用'),t('配置或检查对应数据源后再试，媒体搜索和已有任务仍可独立使用。'),t('<button data-action="refresh">重新检查</button>'))}<nav class="tabs" aria-label="榜单分页"><button data-action="discover-page" data-value="${data.page-1}" ${data.page<=1?'disabled':''}>${t('上一页')}</button><span class="muted">${data.page} / ${data.total_pages}</span><button data-action="discover-page" data-value="${data.page+1}" ${!data.has_next?'disabled':''}>${t('下一页')}</button></nav><footer class="source-footer">TMDB 数据与海报来源：The Movie Database。This product uses the TMDB API but is not endorsed or certified by TMDB.<br><a href="https://simkl.com/movies/best-movies/most-watched/" target="_blank" rel="noopener noreferrer">SIMKL 电影榜单</a> · <a href="https://simkl.com/tv/best-shows/most-watched/" target="_blank" rel="noopener noreferrer">SIMKL 剧集榜单</a>：SIMKL 榜单与评分单独标注来源。<br>外部条目缺少 TMDB 标识时，点击后需先确认匹配的作品。</footer>`;
+  $('#discover-results').innerHTML=html`${data.error_code?html`<div class="notice">${escape(errors[data.error_code]||data.error_code)}。${data.fetched_at?t('当前显示历史缓存，更新于 ')+escape(date(data.fetched_at)):t('尚无可用缓存；可以切换数据来源或直接搜索作品。')}</div>`:''}<div class="section-title"><h2>${state.source==='douban'?t('豆瓣热门'):state.source==='simkl'?t('SIMKL 热门'):state.window==='top'?t('TMDB 历史高分'):t('TMDB 趋势')} · ${state.kind==='tv'?t('剧集'):t('电影')}</h2><span class="muted">${data.fetched_at?escape(date(data.fetched_at))+t(' 抓取'):''}</span></div>${data.source_updated_at?t('<p class="muted">来源更新时间：')+escape(date(data.source_updated_at))+t(' · 榜单按 SIMKL 观看人数排序</p>'):''}${data.items.length?posters(data.items):empty(t('榜单暂时不可用'),t('配置或检查对应数据源后再试，媒体搜索和已有任务仍可独立使用。'),t('<button data-action="refresh">重新检查</button>'))}<nav class="tabs" aria-label="榜单分页"><button data-action="discover-page" data-value="${data.page-1}" ${data.page<=1?'disabled':''}>${t('上一页')}</button><span class="muted">${data.page} / ${data.total_pages}</span><button data-action="discover-page" data-value="${data.page+1}" ${!data.has_next?'disabled':''}>${t('下一页')}</button></nav><footer class="source-footer">TMDB 数据与海报来源：The Movie Database。This product uses the TMDB API but is not endorsed or certified by TMDB.<br><a href="https://simkl.com/movies/best-movies/most-watched/" target="_blank" rel="noopener noreferrer">SIMKL 电影榜单</a> · <a href="https://simkl.com/tv/best-shows/most-watched/" target="_blank" rel="noopener noreferrer">SIMKL 剧集榜单</a>：SIMKL 榜单与评分单独标注来源。<br>外部条目缺少 TMDB 标识时，点击后需先确认匹配的作品。</footer>`;
 }
 function searchPage() {$('#content').innerHTML=heading(t('找到你想看的作品'),t('先确认作品，再搜索资源站。'))+html`<form id="search" class="panel form-grid"><label>名称或原名<input name="query" placeholder="例如：星际穿越 / Interstellar" maxlength="200" required></label><button type="submit">搜索作品</button></form><div id="search-results">${empty(t('从一个片名开始'),t('中文名、原名都可以，电影与剧集一起按相关性展示。'))}</div>`;}
 async function search(query) {
@@ -155,7 +171,7 @@ async function duplicatePreview(index){
 async function subscriptions(){
   const data=await loadData('#content',t('正在加载订阅…'),()=>command('subscriptions',{}));if(!data)return;
   state.subscriptions=data.subscriptions;
-  paint('#content',html`<button class="quiet" data-action="navigate" data-page="jobs">← ${t('下载任务')}</button>`+heading(t('订阅'),t('只有明确订阅才会自动追更；每六小时检查一次。'))+html`<div class="stack">${data.subscriptions.map(row=>html`<article class="panel"><h2>${escape(row.title_id)} · ${t('季')} ${row.season}</h2><p>${row.resolution}p · ${t(({active:'追更中',paused:'已暂停',cancelled:'已取消'})[row.state])}</p><p>${t('下次检查：')}${row.next_check_at?escape(date(row.next_check_at)):t('等待检查')}</p>${row.error_code?html`<p class="notice">${t('本次检查未完成；保留现有媒体，下次检查时重试。')} ${escape(row.error_code)}</p>`:''}${row.last_result?.air_dates_unknown?.length?html`<p>${t('播出日期未确认，暂不自动下载：')}${escape(row.last_result.air_dates_unknown.join(', '))}</p>`:''}${row.last_result&&!row.error_code?html`<p>${t('本次尚未找到的集数：')}${escape(row.last_result.missing_episodes?.join(', ')||t('无'))}</p>`:''}${row.state!=='cancelled'?html`<button data-action="subscription-state" data-id="${row.request_id}" data-revision="${row.revision}" data-state="${row.state==='active'?'paused':'active'}">${row.state==='active'?t('暂停订阅'):t('恢复订阅')}</button> <button class="secondary" data-action="subscription-state" data-id="${row.request_id}" data-revision="${row.revision}" data-state="cancelled">${t('取消订阅')}</button>`:''}</article>`).join('')||empty(t('暂无订阅'),t('在剧集详情中选择一季并明确订阅。'))}</div>`);
+  paint('#content',heading(t('订阅'),t('只有明确订阅才会自动追更；每六小时检查一次。'))+html`<div class="stack">${data.subscriptions.map(row=>html`<article class="panel"><h2>${escape(row.title_id)} · ${t('季')} ${row.season}</h2><p>${row.resolution}p · ${t(({active:'追更中',paused:'已暂停',cancelled:'已取消'})[row.state])}</p><p>${t('下次检查：')}${row.next_check_at?escape(date(row.next_check_at)):t('等待检查')}</p>${row.error_code?html`<p class="notice">${t('本次检查未完成；保留现有媒体，下次检查时重试。')} ${escape(row.error_code)}</p>`:''}${row.last_result?.air_dates_unknown?.length?html`<p>${t('播出日期未确认，暂不自动下载：')}${escape(row.last_result.air_dates_unknown.join(', '))}</p>`:''}${row.last_result&&!row.error_code?html`<p>${t('本次尚未找到的集数：')}${escape(row.last_result.missing_episodes?.join(', ')||t('无'))}</p>`:''}${row.state!=='cancelled'?html`<button data-action="subscription-state" data-id="${row.request_id}" data-revision="${row.revision}" data-state="${row.state==='active'?'paused':'active'}">${row.state==='active'?t('暂停订阅'):t('恢复订阅')}</button> <button class="secondary" data-action="subscription-state" data-id="${row.request_id}" data-revision="${row.revision}" data-state="cancelled">${t('取消订阅')}</button>`:''}</article>`).join('')||empty(t('暂无订阅'),t('在剧集详情中选择一季并明确订阅。'))}</div>`);
 }
 function consentInFlight(){return requests.busy('confirm-release')||requests.busy('season-subscribe');}
 function subscriptionDialog(){
@@ -242,14 +258,15 @@ async function submitReleasePlan(revision,p) {
 }
 function jobTable(jobs) {return html`<div class="table-wrap"><table><thead><tr><th>作品与资源</th><th>状态</th><th>下载进度</th><th>速度</th><th>提交时间</th><th></th></tr></thead><tbody>${jobs.map(job=>html`<tr><td class="title-cell"><strong>${escape(job.identity?.title||t('未识别作品'))}</strong><br><span class="muted">${escape(job.release?.name||t('字幕处理任务'))}</span></td><td data-label="状态">${badge(job.stage)}</td><td data-label="下载进度">${progress(job.progress)==null?'—':progress(job.progress)+'%'}<progress class="progress" value="${progress(job.progress)||0}" max="100" aria-label="下载进度"></progress></td><td data-label="速度">${['completed','completed_with_warnings','failed','cancelled'].includes(job.stage)||job.download_speed==null?'—':bytes(job.download_speed)+'/s'}</td><td class="muted" data-label="提交时间">${escape(date(job.created_at))}</td><td><button class="secondary" data-action="job" data-id="${job.job_id}">详情</button>${job.can_delete?html`<button class="quiet" data-action="delete-download" data-id="${job.job_id}">删除</button>`:''}</td></tr>`).join('')}</tbody></table></div>`;}
 async function jobs(append=false,quiet=false) {
-  const data=await loadData('#content',t('正在加载下载记录…'),()=>command('jobs',{after:append?state.cursor:'',limit:50}),{quiet});
-  if(!data)return;
-  if(!['jobs','history'].includes(state.page)) return;
+  if(!$('#jobs-table'))$('#content').innerHTML=heading(t('下载任务'),t('活动任务置顶，已完成与已结束记录保留在下方。'),t('<button class="secondary" data-action="refresh">刷新</button>'))+html`<div class="filters"><input id="jobs-filter" aria-label="筛选任务" placeholder="按作品或资源名筛选" value="${escape(state.jobQuery||'')}"><select id="jobs-stage" aria-label="按状态筛选"><option value="">全部状态</option>${Object.entries(stages).map(([id,label])=>html`<option value="${id}" ${state.jobStage===id?'selected':''}>${label}</option>`).join('')}</select></div><div id="jobs-table"></div><div id="jobs-more"></div>`;
+  const data=await loadData('#jobs-table',t('正在加载下载记录…'),()=>command('jobs',{after:append?state.cursor:'',limit:50}),{quiet:quiet||append});
+  if(!data||!['jobs','history'].includes(state.page))return;
   state.jobs=append?state.jobs.concat(data.jobs):data.jobs;state.cursor=data.next_cursor||'';
-  $('#content').innerHTML=heading(t('下载任务'),t('活动任务置顶，已完成与已结束记录保留在下方。'),t('<button class="secondary" data-action="refresh">刷新</button>'))+html`<div class="view-tabs"><button data-action="navigate" data-page="jobs" class="active">下载</button><button data-action="navigate" data-page="subscriptions">${t('订阅')}</button>${state.user.can_manage_media?html`<button data-action="navigate" data-page="tasks">整理与字幕</button>`:''}</div><div class="filters"><input id="jobs-filter" aria-label="筛选任务" placeholder="按作品或资源名筛选" value="${escape(state.jobQuery||'')}"><select id="jobs-stage" aria-label="按状态筛选"><option value="">全部状态</option>${Object.entries(stages).map(([id,label])=>html`<option value="${id}" ${state.jobStage===id?'selected':''}>${label}</option>`).join('')}</select></div><div id="jobs-table"></div>`+(state.cursor?t('<div class="section-title"><button class="secondary" data-action="more-jobs">加载更多记录</button></div>'):'');
+  paint('#jobs-more',state.cursor?html`<button class="secondary" data-action="more-jobs">加载更多记录</button>`:'');
   filterJobs();syncBusyControls();
 }
 function filterJobs() {
+  if($('#jobs-table')?.getAttribute('aria-busy')==='true')return;
   const query=(state.jobQuery||'').toLowerCase();
   const rows=state.jobs.filter(job=>(!state.jobStage||job.stage===state.jobStage)&&((job.identity?.title||'')+' '+(job.release?.name||'')).toLowerCase().includes(query));
   const ended=job=>['completed','completed_with_warnings','failed','cancelled'].includes(job.stage);
@@ -373,21 +390,30 @@ document.addEventListener('click',event=>{
   if(action==='release-details'){releaseDetails(button.dataset.releaseId);return;}
   if(action==='season-subscribe'){subscriptionDialog();return;}
   if(action==='retry-search'){submitForm('search');return;}if(action==='retry-releases'){act('release-refresh',searchReleases,{button});return;}
-  const selectors={catalog:'[data-action="source"],[data-action="kind"],[data-action="window"]','confirm-release':'#modal button'};
-  const key=['source','kind','window'].includes(action)?'catalog':action==='navigate'?'navigate:'+button.dataset.page:action==='job'?'open-job':action==='subtitles'?'subtitles:'+button.dataset.id:action;
+  const selectors={'confirm-release':'#modal button'};
+  if(action==='task-results-filter'){act('results-filter:'+requestKey(),()=>tasksUI.action(action,button));return;}
+  if(action==='navigate'){act('navigate:'+button.dataset.page,()=>navigate(button.dataset.page));return;}
+  if(['source','kind','window','discover-page','library-filter'].includes(action)){
+    newView();
+    if(action==='library-filter'){state.collectionKind=button.dataset.kind;act('filter:'+requests.revision,()=>libraryUI.list());}
+    else{
+      if(action==='discover-page')state.discoverPage=Number(button.dataset.value);
+      else{state.discoverPage=1;state[action]=button.dataset.value;if(state.source!=='tmdb'&&state.window==='top')state.window='day';}
+      act('filter:'+requests.revision,discover);
+    }
+    return;
+  }
+  const key=action==='job'?'open-job':action==='subtitles'?'subtitles:'+button.dataset.id:action;
   const revision=requests.revision;
   act(key,async()=>{
     if(action==='duplicate-preview')return duplicatePreview(Number(button.dataset.index));
     if(action==='duplicate-confirm'){await command('duplicate_apply',{plan_id:state.duplicatePlan,confirm:true});$('#modal').close();return duplicates();}
     if(action==='subscription-state'){await command('subscription_change',{request_id:button.dataset.id,revision:Number(button.dataset.revision),state:button.dataset.state});return subscriptions();}
     if(action==='auth-login')auth();else if(action==='auth-bootstrap')auth('bootstrap');
-    else if(action==='navigate')await navigate(button.dataset.page);
     else if(action==='logout'){await api('/api/auth/logout',{});recordRoute('#discover',true);state.user=null;state.csrf='';tasksUI.clear();state.diskScanId=null;state.diskPreview=null;sessionStorage.removeItem('media-inventory-scan');sessionStorage.removeItem('media-csrf');auth();}
     else if(action==='refresh')await render();
     else if(action==='delete-download')await previewDeletion('download_delete_preview',{job_id:button.dataset.id});
     else if(action==='delete-confirm')await applyDeletion();
-    else if(action==='discover-page'){newView();state.discoverPage=Number(button.dataset.value);await discover();window.scrollTo(0,0);}
-    else if(['source','kind','window'].includes(action)){newView();state.discoverPage=1;state[action]=button.dataset.value;if(state.source!=='tmdb'&&state.window==='top')state.window='day';await discover();}
     else if(action==='title')await title(Number(button.dataset.index));else if(action==='retry-detail')await title(state.requestedTitle);
     else if(action==='confirm-release')await confirmRelease();
     else if(action==='job')await showJob(button.dataset.id);else if(action==='more-jobs')await jobs(true);
@@ -405,6 +431,7 @@ document.addEventListener('submit',event=>{
   const values=Object.fromEntries(new FormData(form)),isSearch=form.id==='search';
   const key=isSearch?'title-search':form.id;
   const selector=isSearch?'#search button[type="submit"]':'#'+form.id+(form.id==='season-subscribe'?' button':' button[type="submit"]');
+  if(form.id==='library-filter')newView();
   const revision=requests.revision;
   act(key,async()=>{
     if(form.id==='login'){const data=await api('/api/auth/login',values);state.user=data.user;state.csrf=data.csrf;sessionStorage.setItem('media-csrf',state.csrf);await restoreRoute();}
