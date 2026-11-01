@@ -2,16 +2,24 @@
 
 The bundled Jackett web entrypoint defaults to `http://host-LAN-IP:18212`; its container port is `9117`. Inside a container, localhost refers to that container.
 
-## Add indexers
+## Website management
 
-1. Open the correct new Jackett instance rather than an old service.
-2. Choose **Add indexer**, filter by name/type, and add only sources you use and can access. Movie, TV and anime coverage differs.
-3. Public sites may require an available base URL. Configure private credentials/cookies/passkeys locally; never send them or the API key through chat.
-4. Save and **Test** each site. A configuration file alone is not evidence of availability.
-5. Use **Manual Search** against only the new site with an exact title, trying localized and original names, such as the Chinese title of Interstellar and `Interstellar`. Check title, year and category.
-6. Run `media_status` and `media_search_releases`. `configured_sites` is a configuration count; `diagnostics` describes actual per-site search outcomes.
+Administrators use **Settings / Jackett public sites**. The server filters the inventory to `public`; private and semi-private entries cannot be viewed or changed through this page. Search/filter the list by name, language or added/enabled status. Changes load only the site list, keeping filter controls available.
 
-Media reads the internal API key through a read-only configuration mount and queries sites individually. Manual key copying, Torznab feed copying and qBittorrent search plugins are unnecessary. Only downloads submitted through Media MCP receive ownership labels; manually added downloader jobs are not adopted.
+- **Add / Configure** loads supported nonsecret options and saves through Jackett's configuration API. Default settings are retained for other fields. Jackett may test as part of saving; a saved configuration is not proof of connectivity.
+- **Enable / Disable search** controls Media searches and preserves the Jackett configuration. Preferences persist in the ignored state directory and apply to subsequent searches without rebuilding.
+- **Test** runs Jackett's real indexer test and records a safe result/timestamp. Raw upstream errors, cookies and API keys are not exposed.
+- **Remove** requires explicit confirmation and a fresh configuration revision. It removes only the selected public site's Jackett configuration. Downloads and library files are retained.
+
+The cloud manages its own Jackett service. The NAS remains the source of fresh Media administrator and CSRF authorization. An execution-only NAS without a catalog bridge directs management to the cloud website. Existing LAN MCP authentication behavior is unchanged.
+
+## Private management authentication
+
+Torznab inventory/search uses the existing server-owned API key. Jackett's dashboard configuration/test/delete endpoints separately require its administrator login. Media uses a server-only session and reads `JACKETT_ADMIN_PASSWORD_FILE`, defaulting to `jackett-admin-password` beside the state database; an explicitly configured `JACKETT_ADMIN_PASSWORD` is also supported. The password file must be private (mode 0600) and ignored. Never commit it, show its contents, copy `pw.txt` into a build context, or send credentials through chat. If Jackett has no administrator password, its normal empty-password login is used; Media does not remove or change an existing password.
+
+If the management credential is absent/expired, inventory and Media search preferences remain available, while configuration/testing/removal fail explicitly. Update the private credential and retry; no credential is returned to the browser. Jackett site-specific cookies/passwords/keys are not shown or edited in this public-only page. Sources requiring such credentials retain Jackett's existing requirements.
+
+Media reads configured site files through the existing read-only mount. Manual API-key copying, Torznab feed copying and qBittorrent search plugins are unnecessary. Only downloads submitted through Media receive ownership labels; manually added downloader tasks are not adopted.
 
 ## Evidence of success
 

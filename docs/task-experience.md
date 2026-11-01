@@ -66,3 +66,7 @@ Deleted tasks retain audit but consume no pending admission. Account/global limi
 ## Stable navigation and scoped loading
 
 The application shell and task-category navigation persist across page transitions. Discovery source/type/period controls and library categories/search stay mounted while their result region loads. Download refreshes preserve the search and status controls. File-result filters load only file results. Rapid filter changes abort obsolete reads and fence late responses; confirmation and mutation controls retain their existing locks. Compact grouped selectors share mobile/desktop styling and full labels in both languages.
+
+## Retained existing library versions
+
+Download task reads refresh current processing rows even after an acquisition entered review. A read-only delivery/identity/scope check can report an existing verified physical hardlink retained because the new candidate is not better or cannot be compared. Lists show an existing-library badge, and detail shows the retained filename and exact review category. A completed subtitle stage with zero media is shown as not processed, not as a missing-subtitle failure. Existing unverified identity remains visible; quality/retry fences and persisted task states are unchanged. No media file, source bytes or queue state is changed by this presentation.

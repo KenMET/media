@@ -522,6 +522,26 @@ def create_app(accounts=None, records=None, service_factory=None):
         return {'events':await run_in_threadpool(accounts.events, user,
                     int(request.query_params.get('after', 0)), int(request.query_params.get('limit', 50)))}
 
+    async def indexer_authorize(request):
+        user=await run_in_threadpool(actor,request,True)
+        accounts.require_admin(user)
+        return {'authorized':True}
+
+    async def indexer_settings(request):
+        from media_mcp.platform.indexers import IndexerCommand, invoke_indexer
+        user=await run_in_threadpool(actor,request,request.method!='GET')
+        accounts.require_admin(user)
+        command=IndexerCommand(action='list') if request.method=='GET' else await read_input(request,IndexerCommand)
+        from media_mcp.platform.transport import provider_remote
+        provider=provider_remote()
+        if provider:
+            return await run_in_threadpool(provider.call,'/internal/provider',{
+                'operation':'jackett_admin','arguments':command.model_dump()})
+        if os.environ.get('MEDIA_EXECUTION_ONLY')=='true':
+            raise ValueError('cloud_search_only')
+        from media_mcp.adapters.jackett_admin import JackettAdmin
+        return await run_in_threadpool(invoke_indexer,JackettAdmin(),command)
+
     async def model_policy(request):
         user = await run_in_threadpool(actor, request, request.method != 'GET')
         if not user.admin:
@@ -581,7 +601,7 @@ def create_app(accounts=None, records=None, service_factory=None):
     static = Path(__file__).parent/'static'
     async def asset(request):
         name = request.path_params.get('name', 'index.html')
-        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','releases.js','library.js','tasks.js') or not (static/name).is_file():
+        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','releases.js','library.js','tasks.js','jackett.js') or not (static/name).is_file():
             raise ValueError('page_not_found')
         return FileResponse(static/name)
 
@@ -599,6 +619,8 @@ def create_app(accounts=None, records=None, service_factory=None):
         ('/api/allocations',allocation,['POST']), ('/api/events',events,['GET']),
         ('/api/auth/setup-status',setup_status,['GET']),
         ('/api/tokens',tokens,['GET','POST']), ('/api/tokens/{token_id}',revoke_token,['DELETE']),
+        ('/api/settings/jackett/authorize',indexer_authorize,['POST']),
+        ('/api/settings/jackett',indexer_settings,['GET','POST']),
         ('/api/settings/model',model_policy,['GET','POST']),
         ('/api/settings/model/options',model_options,['GET']),
         ('/api/status',status,['GET']), ('/healthz',health,['GET']),

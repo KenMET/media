@@ -44,9 +44,13 @@ class Jackett:
         config = Path(os.environ.get('JACKETT_CONFIG_FILE', '/services/jackett/Jackett/ServerConfig.json'))
         sites = sorted(p.stem for p in (config.parent / 'Indexers').glob('*.json')
                        if re.fullmatch(r'[a-zA-Z0-9_-]+', p.stem))
+        configured_count = len(sites)
+        from media_mcp.storage.indexer_settings import IndexerSettings
+        disabled = set(IndexerSettings().get()['disabled'])
+        sites = [site for site in sites if site not in disabled]
         report_progress(sites=sites)
         if not sites:
-            return {'releases': [], 'diagnostics': [{'site': None, 'status': 'no_configured_sites', 'raw_count': 0}]}
+            return {'releases': [], 'diagnostics': [{'site': None, 'status': 'no_enabled_sites' if configured_count else 'no_configured_sites', 'raw_count': 0}]}
         rows, diagnostics = [], []
         deadline = time.monotonic() + 20
         for site in sites:

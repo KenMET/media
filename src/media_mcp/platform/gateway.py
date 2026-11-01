@@ -35,7 +35,7 @@ class Empty(Input):
     pass
 
 
-def provider_call(command, tmdb, jackett):
+def provider_call(command, tmdb, jackett, indexers=None):
     args = command.arguments
     if command.operation == 'tmdb':
         path, params = args.get('path', ''), args.get('params', {})
@@ -55,6 +55,10 @@ def provider_call(command, tmdb, jackett):
             if key == 'language' and value not in ('zh-CN','en-US'):
                 raise ValueError('invalid_provider_request')
         return tmdb.get(path, **params)
+    if command.operation == 'jackett_admin':
+        from media_mcp.platform.indexers import IndexerCommand, invoke_indexer
+        from media_mcp.adapters.jackett_admin import JackettAdmin
+        return invoke_indexer(indexers or JackettAdmin(jackett), IndexerCommand.model_validate(args))
     if command.operation == 'jackett_search':
         if (set(args) != {'query','kind'} or not isinstance(args.get('query'), str)
                 or not 1 <= len(args['query']) <= 300 or args.get('kind') not in ('movie','tv',None)):
@@ -74,6 +78,8 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
     if not service_token():
         raise ValueError('control_token_not_configured')
     tmdb, jackett = tmdb or TMDB(remote=False), jackett or Jackett(remote=False)
+    from media_mcp.adapters.jackett_admin import JackettAdmin
+    indexers = JackettAdmin(jackett)
     catalog = catalog or Catalog(DatabaseClient(), tmdb=tmdb)
     budget = Budget(DatabaseClient())
     from media_mcp.platform.cloud import CloudCommands
@@ -222,10 +228,24 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
         user = await authenticate(request)
         return await run_in_threadpool(budget.call,user['id'],'metadata',catalog.detail, request.query_params.get('title_id',''))
 
+    async def indexer_settings(request):
+        from media_mcp.platform.indexers import IndexerCommand, invoke_indexer
+        if request.method=='GET':
+            user=await authenticate(request)
+            if user['role']!='admin':raise ValueError('permission_denied')
+            command=IndexerCommand(action='list')
+        else:
+            # The NAS authority checks both fresh administrator state and mutation CSRF.
+            authorization=await run_in_threadpool(relay,request,'/api/settings/jackett/authorize',b'{}')
+            envelope=json.loads(authorization.body)
+            if not envelope.get('success'):return authorization
+            command=await read_input(request,IndexerCommand)
+        return await run_in_threadpool(invoke_indexer,indexers,command)
+
     async def provider(request):
         require_service(request)
         command = await read_input(request, Command)
-        return await run_in_threadpool(provider_call, command, tmdb, jackett)
+        return await run_in_threadpool(provider_call, command, tmdb, jackett, indexers)
 
     async def health(request):
         return {'service':'media-cloud-web','status':'ok'}
@@ -234,12 +254,13 @@ def create_gateway(remote=None, catalog=None, tmdb=None, jackett=None, http_requ
     static = Path(__file__).parent/'static'
     async def asset(request):
         name = request.path_params.get('name','index.html')
-        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','releases.js','library.js','tasks.js'):
+        if name not in ('index.html','app.js','app.css','i18n.js','ux.js','releases.js','library.js','tasks.js','jackett.js'):
             raise ValueError('page_not_found')
         return FileResponse(static/name)
 
     routes = [Route(path,endpoint(fn),methods=methods) for path,fn,methods in (
         ('/healthz',health,['GET']), ('/api/discover',discover,['GET']),('/api/detail',detail,['GET']),
+        ('/api/settings/jackett',indexer_settings,['GET','POST']),
         ('/api/{path:path}',proxy,['GET','POST','PATCH','DELETE']), ('/internal/provider',provider,['POST']),
         ('/',asset,['GET']),('/assets/{name}',asset,['GET']),
     )]

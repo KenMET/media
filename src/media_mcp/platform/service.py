@@ -129,6 +129,8 @@ class PlatformService:
     def job(self, job_id):
         row = self._task(job_id)
         result = self.service.public_job(row)
+        from media_mcp.application.job_outcomes import refresh_job_outcome
+        refresh_job_outcome(self.records.db, row, result)
         result['can_delete']=(self.actor.can_download and row['state']!='deleted' and
             (self.actor.admin or row['data'].get('_platform_owner')==self.actor.id or
              self.accounts.allowed(self.actor,'task',job_id,manage=True)))
