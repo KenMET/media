@@ -2,6 +2,8 @@
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
+// Live-asset mode still intercepts every API call; no production mutations are sent.
+const origin=process.env.MEDIA_BROWSER_ASSET_ORIGIN||'http://media.test';
 (async()=>{
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  try{
@@ -11,7 +13,7 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
   page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(({user,jobId})=>{sessionStorage.setItem('media-csrf','disposable');sessionStorage.setItem('media-last-download-task:'+user,jobId);},{user,jobId});
   const hold=key=>{let release;const wait=new Promise(resolve=>release=resolve);gates.set(key,wait);return ()=>{gates.delete(key);release();};};
-  await page.route('http://media.test/**',async route=>{
+  await page.route(origin+'/**',async route=>{
    const request=route.request(),url=new URL(request.url());let data={},key=url.pathname;
    if(url.pathname.startsWith('/api/')){
     if(url.pathname==='/api/auth/setup-status')data={initialized:true};
@@ -43,13 +45,14 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
     try{await route.fulfill({status:fail?503:200,contentType:'application/json',body:JSON.stringify(fail?{success:false,error_code:'dependency_unavailable'}:{success:true,data})});}catch{}
     return;
    }
+   if(origin!=='http://media.test')return route.continue();
    const name=url.pathname==='/'?'index.html':url.pathname.replace(/^\/assets\//,'');const file=path.resolve(root,name);
    if(!file.startsWith(root+path.sep)||!fs.existsSync(file))return route.fulfill({status:404,body:''});
    await route.fulfill({contentType:({'.js':'text/javascript','.css':'text/css','.html':'text/html'})[path.extname(file)]||'text/plain',body:fs.readFileSync(file)});
   });
   const noBanner=async()=>assert.equal(await page.locator('#background-work,.background-task').count(),0);
   const noOverflow=async()=>assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),JSON.stringify(await page.evaluate(()=>({width:innerWidth,overflow:[...document.querySelectorAll('body *')].filter(el=>el.getBoundingClientRect().right>innerWidth+1).map(el=>[el.className,el.textContent.slice(0,60)])}))));
-  await page.goto('http://media.test/#discover');await page.locator('.poster-card').first().waitFor();await noBanner();
+  await page.goto(origin+'/#discover');await page.locator('.poster-card').first().waitFor();await noBanner();
   await page.evaluate(()=>{window.savedShell=document.querySelector('.layout');window.savedControls=document.querySelector('.filter-toolbar');window.savedSource=document.querySelector('[data-action=source][data-value=simkl]');});
   let release=hold('catalog:simkl:movie:week');await page.locator('[data-action=source][data-value=simkl]').click();
   await page.locator('#discover-results .spinner').waitFor();
@@ -98,7 +101,7 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
   await page.locator('.nav [data-page=discover]').click();await page.locator('.poster-card').first().waitFor();await page.locator('[data-action=language]').click();await page.locator('.poster-card').first().waitFor();
   for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:740});await noOverflow();}
   await page.setViewportSize({width:390,height:740});await page.screenshot({path:'/tmp/media-stable-discover-en.png',fullPage:true});
-  await page.goto('http://media.test/#tasks/'+jobId);await page.locator('.task-result').first().waitFor();
+  await page.goto(origin+'/#tasks/'+jobId);await page.locator('.task-result').first().waitFor();
   await page.evaluate(()=>{window.savedResultFilter=document.querySelector('[data-action=task-results-filter][data-filter=issues]');});
   release=hold('details:true');await page.locator('[data-action=task-results-filter][data-filter=issues]').click();await page.locator('#task-results .spinner').waitFor();
   assert(await page.evaluate(()=>savedResultFilter===document.activeElement));
