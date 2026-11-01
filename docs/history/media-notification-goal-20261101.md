@@ -1,6 +1,6 @@
 # Media notification aggregation and season-pack recovery: 2026-11-01
 
-Implementation and isolated validation completed; deployment evidence is added after runtime acceptance.
+Implementation, isolated regression and NAS runtime acceptance completed. Runtime code: `166b7a1`. Documentation updates do not require another image rebuild.
 
 ## Diagnosis
 
@@ -16,4 +16,21 @@ The review reused SQLite Records, existing digest functions, locks, preferred pu
 
 Serial nice-15 regression from exported staged source with the committed scheduler: 391 tests, OK with one skipped. The expanded focused suite passed fourteen tests, including actual worker deferral, fourteen-episode aggregation, season child barriers, historical suppression, movies/multiple seasons, embedded subtitle accounting, unknown-send/crash fencing, explicit processing retry rounds and retained-link/subtitle requeue behavior. All fixtures use disposable SQLite/media and injected senders; no test push was sent. Original fourteen video sources were SHA-256 fingerprinted before deployment, with existing linked mappings captured for preservation checks.
 
-Current policy: [media notifications](../media-notifications.md). Containers and live recovery are not claimed complete until the deployment checks below are recorded.
+## NAS deployment and live recovery
+
+Deployed only through `sh setup.sh local up`, using an exported committed build context that excludes unfinished FIFO work and private files. Rebuilt `media-standalone-local-control-1` and `media-standalone-local-worker-1`; both are healthy on image `sha256:b94ce2679d5eb4192f9a169aea70a74fe04b71fcfc8224b84a549d23857498d6`. Build-source and installed-package hashes match the reviewed runtime, including the committed scheduler. The NAS `.env` checksum is unchanged. This notification/worker change does not require a cloud rebuild.
+
+At a zero-running-stage checkpoint, the existing known ingestion retry was released once by advancing its next-attempt deadline under the existing mutation lock. The guard checked its unchanged delivery/source path, original processing acquisition and fourteen-episode scope, retry state, absent lease owner, known filename-validation error and absence of unknown/quota/session recovery markers. No new job or download was created, no attempt counter was reset, and downloader ownership was unchanged.
+
+The same ingestion job then finished with thirteen new mappings, one existing mapping, zero relinks and zero failures. Its original subtitle job finished successfully, and the acquisition reached `completed`. Runtime verification found:
+
+- Fourteen unique preferred hardlinks for the fourteen requested episodes.
+- Fourteen indexed ready subtitles.
+- Exactly one `media_notice`, acknowledged `delivered` by the configured external notifier.
+- Zero low-level ingestion/subtitle pushes and exactly one media-summary push after policy activation.
+- All fourteen complete original-source SHA-256 hashes and file identities unchanged.
+- All 808 previously linked mapping records unchanged.
+
+This was the real already-authorized acquisition completing after the fix, not a synthetic test push. Operational startup notices retain their existing separate policy. Runtime evidence is retained in the ignored NAS state directory; no private endpoint or credential values are included in the repository. No manual rebuild or media cleanup remains for this scope.
+
+Current policy: [media notifications](../media-notifications.md).
