@@ -432,4 +432,3 @@ setInterval(async()=>{
 },5000);
 try{const setup=await api('/api/auth/setup-status');state.canBootstrap=!setup.initialized;}catch{state.canBootstrap=false;}
 try{const data=await api('/api/auth/me');state.user=data.user;if(state.csrf)await act('initial-view',restoreRoute);else auth();}catch{auth();}
-
