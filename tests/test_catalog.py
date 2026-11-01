@@ -41,6 +41,21 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(unavailable['items'], [])
         self.assertFalse(unavailable['has_next'])
 
+    def test_old_title_snapshots_are_not_reused_after_integrity_upgrade(self):
+        for key, payload in [
+            ('pages-v1:tmdb:movie:top:1', {'items':[{'title':'Old advertising'}], 'total_pages':1}),
+            ('detail:movie:1', {'title_id':'movie:1', 'title':'Old advertising'}),
+        ]:
+            self.catalog.db.execute('INSERT INTO platform_catalog_cache(key,payload,fetched_at,attempted_at) VALUES(:key,:payload,:now,:now)',
+                                    {'key':key, 'payload':json.dumps(payload), 'now':self.now})
+        self.tmdb.get.side_effect = [
+            {'results':[{'id':1, 'title':'Clean title'}], 'total_pages':1},
+            {'id':1, 'title':'Clean title'},
+        ]
+        self.assertEqual(self.catalog.discover(window='top')['items'][0]['title'], 'Clean title')
+        self.assertEqual(self.catalog.detail('movie:1')['title'], 'Clean title')
+        self.assertEqual(self.tmdb.get.call_count, 2)
+
     def test_invalid_pages_do_not_call_provider(self):
         for page in (0, -1, 501, True, 1.5, '01', 'bad'):
             with self.subTest(page=page), self.assertRaises(ValueError):

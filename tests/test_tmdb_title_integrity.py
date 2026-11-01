@@ -41,3 +41,13 @@ class TitleIntegrityTests(unittest.TestCase):
         adapter, session = self.adapter({'results': [{'id': 1, 'title': 'dot.com'}]})
         self.assertEqual(adapter.get('movie/top_rated')['results'][0]['title'], 'dot.com')
         self.assertEqual(session.get.call_count, 1)
+
+    @patch.dict('os.environ', {'TMDB_API_KEY': 'fixture', 'MEDIA_EXECUTION_ONLY': 'false'})
+    def test_original_title_survives_an_unavailable_translation(self):
+        import requests
+        adapter, session = self.adapter()
+        session.get.side_effect = [Mock(json=Mock(return_value={
+            'id':1, 'title':'4488329.com', 'original_title':'Reliable original'})), requests.Timeout('private URL')]
+        row = adapter.get('movie/1')
+        self.assertEqual(row['title'], 'Reliable original')
+        self.assertEqual(row['original_title'], 'Reliable original')
