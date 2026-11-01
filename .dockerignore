@@ -16,3 +16,7 @@ tests/
 docs/
 build/
 dist/
+
+# Private connection credentials must never enter version control or build contexts.
+pw.txt
+**/pw.txt
