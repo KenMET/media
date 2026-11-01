@@ -228,7 +228,7 @@ class CodexMediaTriageAgent:
         if msg in ('Unlinked lower or uncertain quality','Unlinked outside requested scope'):
             return True, 'unlinked'
 
-        if msg == 'Skip hardlink':
+        if msg in ('Skip hardlink','Existing preferred hardlink retained'):
             logger.info('[MediaMap] %s ---> %s (exists)', file_path, response['hardlink_path'])
             return True, 'exists'
         if msg == 'Overwrite hardlink':

@@ -162,10 +162,12 @@ def is_video_path(file_path: str) -> bool:
 
 
 def extract_season_episode(text: str) -> tuple[Optional[int], Optional[int]]:
-    for pattern in TV_PATTERNS:
-        match = pattern.search(text)
-        if match:
-            return int(match.group("season")), int(match.group("episode"))
+    # Prefer explicit filename evidence over release-directory coverage claims.
+    for candidate in (os.path.basename(text), text):
+        for pattern in TV_PATTERNS:
+            match = pattern.search(candidate)
+            if match:
+                return int(match.group("season")), int(match.group("episode"))
     return None, None
 
 

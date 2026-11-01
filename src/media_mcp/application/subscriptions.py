@@ -123,7 +123,7 @@ class SeasonRequests:
                 row=self.records.update(row,row['state'],{**data,'requested_episodes':episodes})
                 return self.public(row)
             if result is not None:
-                row=self.records.update(row,row['state'],{**data,'last_result':result,'error_code':result.get('error_code')})
+                row=self.records.update(row,row['state'],{**data,'last_result':result,'result_run_key':run_key,'error_code':result.get('error_code')})
                 return self.public(row)
             if request is None or request.action!='plan' or request.snapshot is None or request.payload is None:
                 raise ValueError('invalid_request')
@@ -153,6 +153,6 @@ class SeasonRequests:
                 return self.service.job(previous['id'])
             plan=accept_cloud(request,self.service,season_id=request_id)
             frozen=self.service.service.records.get(plan['plan_id'],'plan')
-            self.service.service.records.update(frozen,frozen['state'],{**frozen['data'],'season_request_id':request_id,'season_infohash':hash_value})
+            self.service.service.records.update(frozen,frozen['state'],{**frozen['data'],'season_request_id':request_id,'season_infohash':hash_value,'season_run_key':run_key})
             plan['revision']+=1
             return self.service.start(plan['plan_id'],plan['revision'],key)

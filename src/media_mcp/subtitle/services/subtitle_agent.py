@@ -708,37 +708,8 @@ class SubtitleAgent:
         if test_mode or not media_links or not action_counts:
             return
 
-        display_name = self._subtitle_batch_display_name(path, media_links)
-        if len(media_links) == 1:
-            action = next(iter(action_counts))
-            detail = next(iter(detailed_action_counts or action_counts))
-            label = dependencies.subtitle_detail_label(detail)
-            if action in dependencies.HANDLED_ACTIONS:
-                content = f'{self._media_kind_label(media_links)} {display_name}: subtitles completed using {label}'
-            else:
-                content = f'{self._media_kind_label(media_links)} {display_name}: subtitles {label}'
-        else:
-            parts = dependencies.subtitle_notify_parts(detailed_action_counts or action_counts)
-            content = f'Subtitle processing [{display_name}]: ' + ', '.join(parts)
-
-        flag_notify = dependencies.mcp_direct_call_ns('notify.send_notification', title='Media subtitle notification', content=content)
-        if not flag_notify:
-            raise RuntimeError(f'MCP notification failed for subtitle path: {path}, {content}')
-
-    def _subtitle_batch_display_name(self, path: str, media_links: list[dict[str, dependencies.Any]]) -> str:
-        if len(media_links) == 1:
-            return self._media_display_name(media_links[0])
-
-        names = {
-            str(item.get('media_name') or item.get('base_title') or '').strip()
-            for item in media_links
-            if str(item.get('media_name') or item.get('base_title') or '').strip()
-        }
-        if len(names) == 1:
-            return f'{next(iter(names))} ({len(media_links)} media items)'
-
-        base = dependencies.os.path.basename(path.rstrip('/')) if path else ''
-        return base or 'media'
+        from media_mcp.runtime.media_notifications import notify_path
+        notify_path(path,media_links=media_links)
 
     def _media_display_name(self, media_link: dict[str, dependencies.Any]) -> str:
         title = (
@@ -755,14 +726,6 @@ class SubtitleAgent:
         if details:
             return f'{title} {"".join(details)}'
         return str(title)
-
-    def _media_kind_label(self, media_links: list[dict[str, dependencies.Any]]) -> str:
-        kinds = {str(item.get('media_type') or '') for item in media_links}
-        if kinds == {'movie'}:
-            return 'Movie'
-        if kinds == {'tv'}:
-            return 'Series'
-        return 'Media'
 
     def _resolve_path(self, raw_path: str) -> str:
         if dependencies.os.path.isabs(raw_path):

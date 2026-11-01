@@ -326,7 +326,7 @@ class TvBatchProcessor:
         if msg in ('Unlinked lower or uncertain quality','Unlinked outside requested scope'):
             return 'unlinked'
 
-        if msg == 'Skip hardlink':
+        if msg in ('Skip hardlink','Existing preferred hardlink retained'):
             logger.info('[MediaMap] %s ---> %s (exists)', item.file_path, normalized['hardlink_path'])
             return 'exists'
         if msg == 'Overwrite hardlink':

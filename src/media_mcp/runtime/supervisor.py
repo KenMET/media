@@ -64,6 +64,8 @@ def main():
             try:
                 from media_mcp.runtime.task_notifications import deliver
                 deliver(records)
+                from media_mcp.runtime.media_notifications import deliver as deliver_media
+                deliver_media(records)
                 from media_mcp.runtime.thread_cleanup import drain
                 drain(records)
             except Exception as exc:

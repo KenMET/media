@@ -32,3 +32,5 @@ sh setup.sh cloud
 ```
 
 Wait for a safe worker checkpoint before restarting NAS services. A Git push does not rebuild remote images. Automated coverage is in `tests/test_season_acquisition.py`, `tests/test_season_http.py`, `tests/test_preferred_versions.py` and `tests/test_duplicate_cleanup.py`; all use disposable SQLite/media. `tests/manual/acceptance_season_workflows.cjs` checks browser interaction and responsive localization with mocked APIs; it does not prove production downloads or live scheduling.
+
+Processing results are combined into one durable per-work/season or movie summary per round; see [media notifications](media-notifications.md).

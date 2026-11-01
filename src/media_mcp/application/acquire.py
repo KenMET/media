@@ -240,7 +240,8 @@ class MediaService:
             self.records.db.execute("""UPDATE media_processing_job SET state='queued',next_attempt_at=CURRENT_TIMESTAMP,
                 result_json='{"manual_retry":true}',updated_at=CURRENT_TIMESTAMP
                 WHERE delivery_key=:key AND state='needs_review'""", {'key': row['data']['delivery_hash']})
-            return self.public_job(self.records.update(row, 'processing', {**row['data'], 'error_code': None}))
+            return self.public_job(self.records.update(row, 'processing', {**row['data'], 'error_code': None,
+                'notification_round':row['data'].get('notification_round',0)+1}))
 
     def subtitles(self, media_id, idempotency_key):
         if not 8 <= len(idempotency_key) <= 128:

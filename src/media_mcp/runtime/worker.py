@@ -63,7 +63,7 @@ def run_worker(stage: str, test_mode: bool = False):
                 raise FileNotFoundError('source_path_unavailable')
             if stage == 'ingest':
                 manual_retry = bool(json.loads(job.get('result_json') or '{}').get('manual_retry'))
-                counts = full_scan_triage(triage, job['path'], test_mode=test_mode, run_subtitles=False, recheck_unlinked=manual_retry,recheck_review=manual_retry)
+                counts = full_scan_triage(triage, job['path'], test_mode=test_mode, run_subtitles=False, recheck_unlinked=manual_retry,recheck_review=manual_retry,send_notify=False)
                 result = dict(zip(('created','relinked','existed','failed'), counts))
                 attention = jobs.db.execute('''SELECT source_path,status,reason FROM media_link
                     WHERE (source_path=:path OR substr(source_path,1,LENGTH(:prefix))=:prefix)
@@ -82,7 +82,7 @@ def run_worker(stage: str, test_mode: bool = False):
                     error = 'ingest_incomplete'
             else:
                 from media_mcp.subtitle.services.subtitle_agent import SubtitleAgent
-                result = SubtitleAgent(defer_ai_usage=True).run_path_summary(job['path'], test_mode=test_mode)
+                result = SubtitleAgent(defer_ai_usage=True).run_path_summary(job['path'], test_mode=test_mode,send_notify=False)
                 if result['failed'] or result['missing']:
                     error = 'subtitle_incomplete'
                 elif result['review']:

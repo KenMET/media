@@ -24,7 +24,6 @@ from media_mcp.ingest.domain.file_utils import get_main_media, create_hardlink_w
 from media_mcp.ingest.services.triage_agent import BATCH_SIZE, CodexMediaTriageAgent
 from media_mcp.ingest.services.tv_batch_service import TvBatchProcessor
 from media_mcp.ingest.domain.canonical_path import validate_canonical_hardlink_path
-from media_mcp.ingest.domain.classifier import parse_media_filename, build_tv_group_key
 from media_mcp.ingest.domain.path_builder import MEDIA_ROOT
 from media_mcp.storage.media import (
     delete_media_links_by_keyword,
@@ -35,7 +34,6 @@ from media_mcp.storage.media import (
     upsert_media_link,
 )
 from media_mcp.adapters.dispatch import mcp_direct_call_ns
-from media_mcp.subtitle.domain.notify_summary import subtitle_notify_parts
 
 log_name = 'MediaMonitor'
 SIZE_RATIO = 10
@@ -219,21 +217,7 @@ def restore_link_from_db(file_path: str, dry_run: bool = False, recheck_unlinked
         return False, 'not_found'
     if message in ('Unlinked lower or uncertain quality','Unlinked outside requested scope'):
         return True, 'unlinked'
-    return True, 'exists' if message == 'Skip hardlink' else 'relinked'
-
-
-def _format_subtitle_notify_summary(subtitle_summary: dict | None) -> str | None:
-    if not subtitle_summary:
-        return None
-
-    action_counts = subtitle_summary.get('detailed_action_counts') or subtitle_summary.get('action_counts') or {}
-    parts = subtitle_notify_parts(action_counts, ignored_noop_actions={'exists'})
-
-    if False and not parts and int(subtitle_summary.get('media_count') or 0) <= 0:
-        return 'Subtitles: no matching media'
-    if not parts:
-        return None
-    return 'Subtitles: ' + ', '.join(parts)
+    return True, 'exists' if message in ('Skip hardlink','Existing preferred hardlink retained') else 'relinked'
 
 
 def _run_subtitle_for_batch(folder_path: str, test_mode: bool = False, dry_run: bool = False) -> dict | None:
@@ -274,92 +258,10 @@ def _attach_child_logger(child_name: str):
     child.propagate = False
 
 
-def send_batch_notify(
-    folder_path: str,
-    created: int,
-    relinked: int,
-    failed: int,
-    test_mode: bool = False,
-    summary: dict | None = None,
-    subtitle_summary: dict | None = None,
-):
-    if test_mode:
-        return
-    subtitle_text = _format_subtitle_notify_summary(subtitle_summary)
-    if created <= 0 and relinked <= 0 and failed <= 0 and not subtitle_text:
-        return
-
-    summary = summary or {}
-    media_kind = summary.get('media_kind')
-    display_name = (
-        summary.get('display_name')
-        or (os.path.basename(folder_path.rstrip('/')) if folder_path else 'media')
-    )
-    success_count = created + relinked
-    content = None
-    if created <= 0 and relinked <= 0 and failed <= 0:
-        if media_kind == 'movie':
-            content = f'Movie {display_name}\n{subtitle_text}'
-        elif media_kind == 'tv':
-            content = f'Series {display_name}\n{subtitle_text}'
-        else:
-            content = f'{display_name}\n{subtitle_text}'
-        flag_notify = mcp_direct_call_ns('notify.send_notification', title='Media ingestion notification', content=content)
-        if not flag_notify:
-            raise RuntimeError(f'MCP notification failed for: {folder_path}, {content}')
-        return
-
-    if os.path.isfile(folder_path):
-        if created > 0:
-            content = f'Ingestion completed: {display_name}'
-        elif relinked > 0:
-            content = f'Recovery completed: {display_name}'
-        else:
-            content = f'Ingestion failed (1 item; review required): {display_name}'
-    elif media_kind == 'movie' and display_name:
-        if success_count > 0:
-            content = f'Movie {display_name}: ingestion completed'
-            if failed > 0:
-                content += f'; {failed} additional items failed'
-        else:
-            content = f'Movie {display_name}: ingestion failed ({failed} items; review required)'
-    elif media_kind == 'tv' and display_name:
-        if success_count > 0:
-            content = f'Series {display_name}: ingestion completed ({success_count} episodes)'
-            if failed > 0:
-                content += f'; {failed} additional episodes failed'
-        else:
-            content = f'Series {display_name}: ingestion failed ({failed} episodes; review required)'
-    else:
-        parts = []
-        if created > 0:
-            parts.append(f'created {created}')
-        if relinked > 0:
-            parts.append(f'relinked {relinked}')
-        if failed > 0:
-            parts.append(f'failed {failed} (review required)')
-        content = f'Batch ingestion [{display_name}]: ' + ', '.join(parts)
-    if subtitle_text:
-        content = f'{content}\n{subtitle_text}'
-    flag_notify = mcp_direct_call_ns('notify.send_notification', title='Media ingestion notification', content=content)
-    if not flag_notify:
-        raise RuntimeError(f'MCP notification failed for: {folder_path}, {content}')
-
-
-def _media_link_display_name(link: dict, *, single_file: bool = False) -> str | None:
-    media_type = link.get('media_type')
-    target_path = link.get('target_path')
-    if single_file and target_path:
-        return os.path.splitext(os.path.basename(str(target_path)))[0]
-    if media_type == 'tv':
-        return (
-            link.get('base_title')
-            or link.get('media_name')
-            or (os.path.splitext(os.path.basename(str(target_path)))[0] if target_path else None)
-        )
-    if target_path:
-        return os.path.splitext(os.path.basename(str(target_path)))[0]
-    return link.get('base_title') or link.get('media_name')
+def send_batch_notify(folder_path: str, test_mode: bool = False, unresolved: int = 0):
+    if test_mode:return
+    from media_mcp.runtime.media_notifications import notify_path
+    notify_path(folder_path,unresolved=unresolved)
 
 
 def full_scan_triage(
@@ -370,10 +272,10 @@ def full_scan_triage(
     run_subtitles: bool = True,
     recheck_unlinked: bool = False,
     recheck_review: bool = True,
+    send_notify: bool = True,
 ) -> tuple[int, int, int, int]:
     batch_processor = TvBatchProcessor(media_triage.client, dry_run=dry_run)
     started_at = time.time()
-    summary = {'media_kind': None, 'display_name': None}
 
     def triage_media(file_path: str):
         logger().info('[TriageStart] source=%s', file_path)
@@ -397,31 +299,6 @@ def full_scan_triage(
         logger().error('[TriageFail] source=%s action=%s', file_path, action)
         return 'failed'
 
-    def update_summary_from_file(file_path: str):
-        nonlocal summary
-        try:
-            parsed = parse_media_filename(file_path)
-        except Exception:
-            return
-        if not summary.get('media_kind'):
-            summary['media_kind'] = parsed.media_type
-        if summary.get('media_kind') == 'tv' and not summary.get('display_name'):
-            summary['display_name'] = build_tv_group_key(file_path, parsed)
-        elif summary.get('media_kind') == 'movie' and not summary.get('display_name'):
-            summary['display_name'] = parsed.title_guess or os.path.basename(file_path)
-
-    def update_summary_from_media_link(file_path: str, *, single_file: bool = False) -> None:
-        nonlocal summary
-        link = get_media_link_by_source(MEDIA_DB, file_path)
-        if not link:
-            return
-        media_type = link.get('media_type')
-        display_name = _media_link_display_name(link, single_file=single_file)
-        if media_type:
-            summary['media_kind'] = media_type
-        if display_name:
-            summary['display_name'] = display_name
-
     def accumulate(action: str, counters: dict[str, int]):
         if action == 'created':
             counters['created'] += 1
@@ -437,17 +314,15 @@ def full_scan_triage(
     if os.path.isfile(folder_path):
         logger().info('[BatchSubmit] %s files=1 mode=single_file', folder_path)
         logger().info('[BatchFile] %s', folder_path)
-        update_summary_from_file(folder_path)
+
         action = triage_media(folder_path)
-        if action in {'created', 'relinked', 'exists', 'preview'}:
-            update_summary_from_media_link(folder_path, single_file=True)
         created = 1 if action == 'created' else 0
         relinked = 1 if action == 'relinked' else 0
         existed = 1 if action == 'exists' else 0
         failed = 1 if action in {'failed','needs_review'} else 0
         preview = 1 if action == 'preview' else 0
-        subtitle_summary = _run_subtitle_for_batch(folder_path, test_mode=test_mode, dry_run=dry_run) if run_subtitles else None
-        send_batch_notify(folder_path, created, relinked, failed, test_mode or dry_run, summary=summary, subtitle_summary=subtitle_summary)
+        if run_subtitles:_run_subtitle_for_batch(folder_path, test_mode=test_mode, dry_run=dry_run)
+        send_batch_notify(folder_path,test_mode or dry_run or not send_notify,failed)
         elapsed = time.time() - started_at
         logger().info('[BatchDone] %s created=%d relinked=%d existed=%d preview=%d failed=%d elapsed=%.2fs', folder_path, created, relinked, existed, preview, failed, elapsed)
         return created, relinked, existed, failed
@@ -460,7 +335,7 @@ def full_scan_triage(
         file_path = index.get('path')
         if file_path:
             logger().info('[BatchFile] %s', file_path)
-            update_summary_from_file(file_path)
+
     counters = {'created': 0, 'relinked': 0, 'existed': 0, 'preview': 0, 'failed': 0}
     pending_tv_files = []
 
@@ -472,8 +347,6 @@ def full_scan_triage(
         if restored:
             logger().info(f'[MediaMap] {file_path} ---> restored_from_db ({restore_action})')
             accumulate(restore_action, counters)
-            if restore_action in {'created', 'relinked', 'exists', 'preview'}:
-                update_summary_from_media_link(file_path)
             continue
         pending_tv_files.append(file_path)
 
@@ -483,8 +356,6 @@ def full_scan_triage(
     processed_tv_files = set(batch_results.keys())
     for file_path, action in batch_results.items():
         accumulate(action, counters)
-        if action in {'created', 'relinked', 'exists', 'preview'}:
-            update_summary_from_media_link(file_path)
 
     fallback_files = [file_path for file_path in pending_tv_files if file_path not in processed_tv_files]
     logger().info('[BatchFallback] path=%s ai_batch_candidates=%d batch_size=%d', folder_path, len(fallback_files), BATCH_SIZE)
@@ -498,28 +369,16 @@ def full_scan_triage(
         for file_path, action in batch_actions.items():
             batch_handled.add(file_path)
             accumulate(action, counters)
-            if action in {'created', 'relinked', 'exists', 'preview'}:
-                update_summary_from_media_link(file_path)
 
     single_files = [file_path for file_path in fallback_files if file_path not in batch_handled]
     logger().info('[BatchFallback] path=%s single_file_triage=%d', folder_path, len(single_files))
     for file_path in single_files:
         action = triage_media(file_path)
         accumulate(action, counters)
-        if action in {'created', 'relinked', 'exists', 'preview'}:
-            update_summary_from_media_link(file_path)
 
     logger().info('[BatchSubtitle] path=%s start', folder_path)
-    subtitle_summary = _run_subtitle_for_batch(folder_path, test_mode=test_mode, dry_run=dry_run) if run_subtitles else None
-    send_batch_notify(
-        folder_path,
-        counters['created'],
-        counters['relinked'],
-        counters['failed'],
-        test_mode or dry_run,
-        summary=summary,
-        subtitle_summary=subtitle_summary,
-    )
+    if run_subtitles:_run_subtitle_for_batch(folder_path, test_mode=test_mode, dry_run=dry_run)
+    send_batch_notify(folder_path,test_mode or dry_run or not send_notify,counters['failed'])
     elapsed = time.time() - started_at
     logger().info(
         '[BatchDone] %s created=%d relinked=%d existed=%d preview=%d failed=%d elapsed=%.2fs',
