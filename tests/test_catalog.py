@@ -45,6 +45,8 @@ class CatalogTests(unittest.TestCase):
         for key, payload in [
             ('pages-v1:tmdb:movie:top:1', {'items':[{'title':'Old advertising'}], 'total_pages':1}),
             ('detail:movie:1', {'title_id':'movie:1', 'title':'Old advertising'}),
+            ('titles-v2:tmdb:movie:top:1', {'items':[{'title':'Old English fallback'}], 'total_pages':1}),
+            ('detail-titles-v2:movie:1', {'title_id':'movie:1', 'title':'Old English fallback'}),
         ]:
             self.catalog.db.execute('INSERT INTO platform_catalog_cache(key,payload,fetched_at,attempted_at) VALUES(:key,:payload,:now,:now)',
                                     {'key':key, 'payload':json.dumps(payload), 'now':self.now})

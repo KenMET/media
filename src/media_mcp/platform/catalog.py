@@ -35,7 +35,7 @@ class Catalog:
     def detail(self, title_id):
         from media_mcp.config import parse_title_id
         kind, ident = parse_title_id(title_id)
-        key = 'detail-titles-v2:'+title_id
+        key = 'detail-titles-v3:'+title_id
         with self.lock:
             now = self.clock()
             cached = self.db.execute('SELECT * FROM platform_catalog_cache WHERE key=:key',
@@ -69,7 +69,7 @@ class Catalog:
             page = int(page)
         if type(page) is not int or not 1 <= page <= 500:
             raise ValueError('invalid_catalog_request')
-        key = f"{'titles-v2' if source == 'tmdb' else 'pages-v1'}:{source}:{kind}:{window}" + (f':{page}' if source == 'tmdb' else '')
+        key = f"{'titles-v3' if source == 'tmdb' else 'pages-v1'}:{source}:{kind}:{window}" + (f':{page}' if source == 'tmdb' else '')
         with self.lock:
             now = self.clock()
             cached = self.db.execute('SELECT * FROM platform_catalog_cache WHERE key=:key',

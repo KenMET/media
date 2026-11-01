@@ -2,6 +2,7 @@
 import os
 import re
 import unicodedata
+import time
 import requests
 
 
@@ -18,17 +19,20 @@ class TMDB:
             remote = provider_remote()
             if remote:
                 return remote.call('/internal/provider', {'operation':'tmdb', 'arguments':{'path':path,'params':params}})
+        try:
+            return self.clean_titles(path, params, self._request(path, params))
+        except (requests.RequestException, ValueError):
+            raise RuntimeError('tmdb_unavailable') from None
+
+    def _request(self, path, params, timeout=20):
         key = os.environ.get('TMDB_API_KEY', '').strip()
         if not key:
             raise RuntimeError('tmdb_not_configured')
-        try:
-            response = self.session.get('https://api.themoviedb.org/3/' + path,
-                params={'api_key': key, 'language': 'zh-CN', **params}, timeout=20,
-                allow_redirects=False)
-            response.raise_for_status()
-            return self.clean_titles(path, params, response.json())
-        except (requests.RequestException, ValueError):
-            raise RuntimeError('tmdb_unavailable') from None
+        response = self.session.get('https://api.themoviedb.org/3/' + path,
+            params={'api_key': key, 'language': 'zh-CN', **params}, timeout=timeout,
+            allow_redirects=False)
+        response.raise_for_status()
+        return response.json()
 
     @staticmethod
     def polluted_title(value):
@@ -41,29 +45,50 @@ class TMDB:
                     or re.search(r'\u6deb\u7247|\u9ec4\u6f2b|\u514d\u8d39\u89c2\u770b|\u5907\u7528\u7f51\u5740|\u52a0\u7fa4', text)))
 
     def clean_titles(self, path, params, payload):
-        """Repair only obvious advertising; match fallback records by exact provider ID."""
+        """Prefer clean Chinese alternatives by exact ID before original-language fallbacks."""
         fields = ('title', 'name', 'original_title', 'original_name')
         rows = payload.get('results', []) if isinstance(payload.get('results'), list) else [payload]
-        damaged = [row for row in rows if any(self.polluted_title(row.get(field)) for field in fields)]
-        if not damaged:
-            return payload
-        english = {}
-        if params.get('language') != 'en-US':
+        chinese = params.get('language', 'zh-CN') in ('zh-CN', 'zh-TW', 'zh-HK')
+        has_chinese = lambda value: isinstance(value, str) and bool(re.search(r'[\u3400-\u9fff]', value))
+        primary = lambda row: 'title' if 'title' in row else 'name'
+        damaged = lambda row: any(self.polluted_title(row.get(field)) for field in fields)
+        needs_chinese = lambda row: chinese and not has_chinese(row.get(primary(row)))
+        pending = [row for row in rows if damaged(row) or needs_chinese(row)]
+        deadline = time.monotonic() + 24
+        languages = ['zh-TW', 'zh-HK', 'en-US'] if chinese else []
+        for language in languages:
+            remaining = deadline - time.monotonic()
+            if not pending or remaining <= 0:
+                break
+            if language == params.get('language'):
+                continue
+            if language == 'en-US' and not any(damaged(row) for row in pending):
+                break
             try:
-                translated = self.get(path, **{**params, 'language': 'en-US'})
+                translated = self._request(path, {**params, 'language': language}, min(8, remaining))
                 candidates = translated.get('results', []) if isinstance(translated.get('results'), list) else [translated]
-                english = {row['id']: row for row in candidates if row.get('id') is not None}
-            except RuntimeError:
-                pass
-        for row in damaged:
-            fallback = english.get(row.get('id'), {})
+                matched = {row['id']: row for row in candidates if row.get('id') is not None}
+            except (RuntimeError, requests.RequestException, ValueError):
+                continue
+            for row in pending:
+                fallback = matched.get(row.get('id'), {})
+                for field in fields:
+                    repair = self.polluted_title(row.get(field))
+                    localize = field == primary(row) and needs_chinese(row)
+                    if not repair and not localize:
+                        continue
+                    choices = [fallback.get(field), fallback.get('title'), fallback.get('name')]
+                    clean = [value for value in choices if isinstance(value, str) and value.strip()
+                             and not self.polluted_title(value)]
+                    preferred = [value for value in clean if has_chinese(value)] if localize else clean
+                    if preferred or (repair or not row.get(field)) and clean:
+                        row[field] = (preferred or clean)[0]
+            pending = [row for row in pending if damaged(row) or needs_chinese(row)]
+        for row in rows:
             for field in fields:
-                if not self.polluted_title(row.get(field)):
-                    continue
-                candidates = [fallback.get(field), fallback.get('title'), fallback.get('name'),
-                              row.get('original_title'), row.get('original_name')]
-                row[field] = next((value for value in candidates if isinstance(value, str)
-                                   and value.strip() and not self.polluted_title(value)), None)
+                if self.polluted_title(row.get(field)):
+                    row[field] = next((row.get(name) for name in fields if isinstance(row.get(name), str)
+                                       and row[name].strip() and not self.polluted_title(row[name])), None)
         if isinstance(payload.get('results'), list):
             payload['results'] = [row for row in rows if row.get('title') or row.get('name')]
         elif not (payload.get('title') or payload.get('name')):

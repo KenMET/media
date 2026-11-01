@@ -8,7 +8,9 @@ from media_mcp.adapters.tmdb import TMDB
 class TitleIntegrityTests(unittest.TestCase):
     def adapter(self, *payloads):
         session = Mock()
-        session.get.side_effect = [Mock(json=Mock(return_value=row)) for row in payloads]
+        responses = [Mock(json=Mock(return_value=row)) for row in payloads]
+        iterator = iter(responses)
+        session.get.side_effect = lambda *args, **kwargs: next(iterator, responses[-1])
         return TMDB(session, remote=False), session
 
     @patch.dict('os.environ', {'TMDB_API_KEY': 'fixture', 'MEDIA_EXECUTION_ONLY': 'false'})
@@ -24,7 +26,7 @@ class TitleIntegrityTests(unittest.TestCase):
         self.assertEqual(rows[0]['original_title'], 'Real title')
         self.assertEqual(rows[0]['vote_average'], 9.1)
         self.assertEqual(rows[1]['title'], '\u6b63\u5e38\u4e2d\u6587')
-        self.assertEqual(session.get.call_count, 2)
+        self.assertEqual(session.get.call_count, 3)
 
     @patch.dict('os.environ', {'TMDB_API_KEY': 'fixture', 'MEDIA_EXECUTION_ONLY': 'false'})
     def test_unrecoverable_rows_are_omitted_and_unrelated_ids_never_substituted(self):
@@ -39,7 +41,7 @@ class TitleIntegrityTests(unittest.TestCase):
     @patch.dict('os.environ', {'TMDB_API_KEY': 'fixture', 'MEDIA_EXECUTION_ONLY': 'false'})
     def test_clean_names_and_legitimate_domains_do_not_trigger_fallback(self):
         adapter, session = self.adapter({'results': [{'id': 1, 'title': 'dot.com'}]})
-        self.assertEqual(adapter.get('movie/top_rated')['results'][0]['title'], 'dot.com')
+        self.assertEqual(adapter.get('movie/top_rated', language='en-US')['results'][0]['title'], 'dot.com')
         self.assertEqual(session.get.call_count, 1)
 
     @patch.dict('os.environ', {'TMDB_API_KEY': 'fixture', 'MEDIA_EXECUTION_ONLY': 'false'})
@@ -47,7 +49,28 @@ class TitleIntegrityTests(unittest.TestCase):
         import requests
         adapter, session = self.adapter()
         session.get.side_effect = [Mock(json=Mock(return_value={
-            'id':1, 'title':'4488329.com', 'original_title':'Reliable original'})), requests.Timeout('private URL')]
+            'id':1, 'title':'4488329.com', 'original_title':'Reliable original'})), requests.Timeout('private URL'), requests.Timeout('private URL'), requests.Timeout('private URL')]
         row = adapter.get('movie/1')
         self.assertEqual(row['title'], 'Reliable original')
         self.assertEqual(row['original_title'], 'Reliable original')
+
+    @patch.dict('os.environ', {'TMDB_API_KEY': 'fixture', 'MEDIA_EXECUTION_ONLY': 'false'})
+    def test_chinese_alternative_precedes_english_and_keeps_clean_simplified_names(self):
+        adapter, session = self.adapter(
+            {'results':[{'id':1,'title':'4488329.com','original_title':'Original'},
+                        {'id':2,'title':'\u539f\u6709\u4e2d\u6587'}]},
+            {'results':[{'id':2,'title':'\u5176\u4ed6\u4e2d\u6587'},
+                        {'id':1,'title':'\u4e7e\u6de8\u4e2d\u6587','original_title':'Original'}]})
+        rows = adapter.get('movie/top_rated')['results']
+        self.assertEqual(rows[0]['title'], '\u4e7e\u6de8\u4e2d\u6587')
+        self.assertEqual(rows[1]['title'], '\u539f\u6709\u4e2d\u6587')
+        self.assertEqual(session.get.call_count, 2)
+        self.assertEqual(session.get.call_args.kwargs['params']['language'], 'zh-TW')
+
+    @patch.dict('os.environ', {'TMDB_API_KEY': 'fixture', 'MEDIA_EXECUTION_ONLY': 'false'})
+    def test_clean_english_in_chinese_response_uses_available_chinese_alternative(self):
+        adapter, _ = self.adapter({'id':1,'title':'English name','original_title':'English original'},
+                                  {'id':1,'title':'\u4e2d\u6587\u540d','original_title':'English original'})
+        row = adapter.get('movie/1')
+        self.assertEqual(row['title'], '\u4e2d\u6587\u540d')
+        self.assertEqual(row['original_title'], 'English original')
