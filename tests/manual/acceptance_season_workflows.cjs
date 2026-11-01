@@ -98,6 +98,13 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
   await page.locator('.release-row').first().click();await page.getByRole('heading',{name:'Release details',exact:true}).waitFor();
   await page.screenshot({path:'/tmp/media-resource-confirmation-en.png'});
   await page.locator('#modal').getByRole('button',{name:'Cancel',exact:true}).click();
+  await page.setViewportSize({width:320,height:480});
+  await page.locator('[data-action=season-subscribe]').click();
+  const englishCancel=page.locator('#season-subscribe').getByRole('button',{name:'Cancel',exact:true});
+  assert(await englishCancel.evaluate(button=>{const r=button.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}));
+  assert(await page.locator('#season-subscribe button[type=submit]').evaluate(button=>{const r=button.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}));
+  await englishCancel.click();
+
   await page.locator('[data-action=language]').click();await page.waitForFunction(()=>document.querySelectorAll('.release-row').length===6);
 
   const count=operation=>calls.filter(call=>call.operation===operation).length;
@@ -109,6 +116,11 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
   await secondSeason.focus();await page.keyboard.press('Enter');await page.locator('#modal[open]').waitFor();
   await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.querySelector('#modal[open]'));
   assert.equal(count('plan'),0);assert.equal(count('start'),0);
+  await secondSeason.click();
+  await page.evaluate(()=>{document.querySelector('#modal [data-action=close-modal]').click();document.querySelector('[data-action=season-subscribe]').click();});
+  await page.locator('#season-subscribe').waitFor();
+  await page.locator('#season-subscribe [data-action=close-modal]').click();
+  assert.equal(count('subscription_create'),0);assert.equal(count('start'),0);
 
   // A late latest-season response must not change the resource already being reviewed.
   holdLatest=true;releaseLatest=null;await page.reload();
@@ -138,6 +150,15 @@ const root=path.resolve(__dirname,'../../src/media_mcp/platform/static');
    assert.equal(count('start'),before+1);
    assert(calls.some(call=>call.operation==='download_submission_status'&&call.arguments.idempotency_key===currentKey));
   }
+  // Returning during a confirmed submission cannot open a new, misleadingly locked consent dialog.
+  receiptMode='normal';holdStart=true;releaseStart=null;await page.goto('http://media.test/#title/tv:1');
+  await page.locator('.release-row').first().click();await page.locator('[data-action=confirm-release]').click();
+  for(let attempt=0;attempt<100&&!releaseStart;attempt++)await new Promise(resolve=>setTimeout(resolve,10));
+  assert(releaseStart);await page.goto('http://media.test/#search');await page.goto('http://media.test/#title/tv:1');
+  await page.locator('[data-action=season-subscribe]').click();assert(!await page.locator('#modal').evaluate(dialog=>dialog.open));
+  await page.locator('.release-row').first().click();assert(!await page.locator('#modal').evaluate(dialog=>dialog.open));
+  holdStart=false;releaseStart();
+  await page.waitForFunction(()=>JSON.parse(sessionStorage.getItem('media-pending-actions:'+'a'.repeat(32))||'[]').length===0);
   receiptMode='plan-denied';await page.goto('http://media.test/#title/tv:1');await page.locator('.release-row').first().click();
   const startsBeforeRejection=count('start');await page.locator('[data-action=confirm-release]').click();
   await page.locator('#toast').filter({hasText:'\u5df2\u6709\u5a92\u4f53'}).waitFor();

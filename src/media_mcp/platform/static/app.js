@@ -156,7 +156,10 @@ async function subscriptions(){
   state.subscriptions=data.subscriptions;
   paint('#content',html`<button class="quiet" data-action="navigate" data-page="jobs">← ${t('下载任务')}</button>`+heading(t('订阅'),t('只有明确订阅才会自动追更；每六小时检查一次。'))+html`<div class="stack">${data.subscriptions.map(row=>html`<article class="panel"><h2>${escape(row.title_id)} · ${t('季')} ${row.season}</h2><p>${row.resolution}p · ${t(({active:'追更中',paused:'已暂停',cancelled:'已取消'})[row.state])}</p><p>${t('下次检查：')}${row.next_check_at?escape(date(row.next_check_at)):t('等待检查')}</p>${row.error_code?html`<p class="notice">${t('本次检查未完成；保留现有媒体，下次检查时重试。')} ${escape(row.error_code)}</p>`:''}${row.last_result?.air_dates_unknown?.length?html`<p>${t('播出日期未确认，暂不自动下载：')}${escape(row.last_result.air_dates_unknown.join(', '))}</p>`:''}${row.last_result&&!row.error_code?html`<p>${t('本次尚未找到的集数：')}${escape(row.last_result.missing_episodes?.join(', ')||t('无'))}</p>`:''}${row.state!=='cancelled'?html`<button data-action="subscription-state" data-id="${row.request_id}" data-revision="${row.revision}" data-state="${row.state==='active'?'paused':'active'}">${row.state==='active'?t('暂停订阅'):t('恢复订阅')}</button> <button class="secondary" data-action="subscription-state" data-id="${row.request_id}" data-revision="${row.revision}" data-state="cancelled">${t('取消订阅')}</button>`:''}</article>`).join('')||empty(t('暂无订阅'),t('在剧集详情中选择一季并明确订阅。'))}</div>`);
 }
+function consentInFlight(){return requests.busy('confirm-release')||requests.busy('season-subscribe');}
 function subscriptionDialog(){
+  if(consentInFlight()){toast(t('正在提交…'));return;}
+  if($('#modal').open)return;
   const seasons=seriesSeasons(state.selected);
   $('#modal').classList.add('consent-dialog');$('#modal').setAttribute('aria-labelledby','subscription-dialog-title');
   $('#modal').innerHTML=html`<h2 id="subscription-dialog-title">${t('订阅')}</h2><form id="season-subscribe" class="stack"><div class="consent-dialog-scroll stack"><label>${t('季')}<select name="season">${seasons.map(season=>html`<option value="${season}">${t('第 ')}${season}${t(' 季')}</option>`).join('')}</select></label><label>${t('清晰度')}<select name="resolution"><option value="1080">1080p</option><option value="2160">2160p</option><option value="720">720p</option></select></label><p class="muted">${t('每六小时检查新集数，可随时暂停。')}</p></div><div class="dialog-actions"><button type="button" class="secondary" data-action="close-modal">${t('取消')}</button><button type="submit">${t('确认订阅')}</button></div></form>`;
@@ -198,7 +201,8 @@ function releaseTable(loading=false) {
 }
 
 function releaseDetails(id){
-  if(requests.busy('confirm-release')||$('#modal').open)return;
+  if(consentInFlight()){toast(t('正在提交…'));return;}
+  if($('#modal').open)return;
   const row=state.releases.find(item=>item.release_id===id);if(!row)return;
   state.releaseChoice={...row,title:state.selected.title,kind:state.selected.kind};
   $('#modal').classList.add('consent-dialog');$('#modal').setAttribute('aria-labelledby','release-dialog-title');
@@ -358,8 +362,9 @@ document.addEventListener('click',event=>{
   const button=event.target.closest('button[data-action]');if(!button||button.disabled)return;
   const action=button.dataset.action;
   if(action==='language'){switchLanguage();return;}
-  if(action==='close-modal'){if(requests.busy('confirm-release')||requests.busy('season-subscribe'))return;state.releaseChoice=null;$('#modal').close();return;}
+  if(action==='close-modal'){if($('#modal').classList.contains('consent-dialog')&&consentInFlight())return;state.releaseChoice=null;$('#modal').close();return;}
   if(action==='release-details'){releaseDetails(button.dataset.releaseId);return;}
+  if(action==='season-subscribe'){subscriptionDialog();return;}
   if(action==='retry-search'){submitForm('search');return;}if(action==='retry-releases'){act('release-refresh',searchReleases,{button});return;}
   const selectors={catalog:'[data-action="source"],[data-action="kind"],[data-action="window"]','confirm-release':'#modal button'};
   const key=['source','kind','window'].includes(action)?'catalog':action==='navigate'?'navigate:'+button.dataset.page:action==='job'?'open-job':action==='subtitles'?'subtitles:'+button.dataset.id:action;
@@ -367,7 +372,6 @@ document.addEventListener('click',event=>{
   act(key,async()=>{
     if(action==='duplicate-preview')return duplicatePreview(Number(button.dataset.index));
     if(action==='duplicate-confirm'){await command('duplicate_apply',{plan_id:state.duplicatePlan,confirm:true});$('#modal').close();return duplicates();}
-    if(action==='season-subscribe')return subscriptionDialog();
     if(action==='subscription-state'){await command('subscription_change',{request_id:button.dataset.id,revision:Number(button.dataset.revision),state:button.dataset.state});return subscriptions();}
     if(action==='auth-login')auth();else if(action==='auth-bootstrap')auth('bootstrap');
     else if(action==='navigate')await navigate(button.dataset.page);
@@ -417,8 +421,8 @@ document.addEventListener('change',event=>{
   if(event.target.id==='jobs-stage'){state.jobStage=event.target.value;filterJobs();}
   if(event.target.matches('[data-permission-role]')){const form=event.target.closest('form'),admin=event.target.value==='admin';for(const name of ['can_download','can_manage_media']){form.elements[name].disabled=admin;if(admin)form.elements[name].checked=true;}const help=form.querySelector('.permission-help');if(help)help.textContent=admin?t('管理员拥有全部权限。'):t('按需开启权限，无需逐个分配任务或媒体。');}
 });
-$('#modal').addEventListener('cancel',event=>{if(requests.busy('confirm-release')||requests.busy('season-subscribe')||requests.busy('create-token'))event.preventDefault();});
-$('#modal').addEventListener('close',()=>{if(!requests.busy('start'))$('#modal').innerHTML='';});
+$('#modal').addEventListener('cancel',event=>{if(($('#modal').classList.contains('consent-dialog')&&consentInFlight())||requests.busy('create-token'))event.preventDefault();});
+$('#modal').addEventListener('close',()=>{if(!$('#modal').open){state.releaseChoice=null;$('#modal').innerHTML='';$('#modal').classList.remove('consent-dialog');$('#modal').removeAttribute('aria-labelledby');}});
 async function refreshDownloads(){if(!state.user||!['jobs','job','history'].includes(state.page))return;try{if(state.page==='job')await jobDetail(true);else await jobs(false,true);await refreshStatus();}catch{if($('#worker-state'))$('#worker-state').textContent=t('连接中断 · 状态可能过期');}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshDownloads();});window.addEventListener('online',refreshDownloads);window.addEventListener('pageshow',refreshDownloads);
 setInterval(async()=>{
@@ -429,4 +433,3 @@ setInterval(async()=>{
 try{const setup=await api('/api/auth/setup-status');state.canBootstrap=!setup.initialized;}catch{state.canBootstrap=false;}
 try{const data=await api('/api/auth/me');state.user=data.user;if(state.csrf)await act('initial-view',restoreRoute);else auth();}catch{auth();}
 
-$('#modal').addEventListener('close',()=>{if(!$('#modal').open){state.releaseChoice=null;$('#modal').classList.remove('consent-dialog');$('#modal').removeAttribute('aria-labelledby');}});
