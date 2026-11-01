@@ -153,3 +153,6 @@ h1{font-size:34px;line-height:1.3;letter-spacing:-.7px;font-weight:650}h2{font-s
 dialog.consent-dialog[open]{display:flex;flex-direction:column;overflow:hidden;max-height:calc(100dvh - 32px)}.consent-dialog>h2,.consent-dialog .dialog-actions{flex-shrink:0}.consent-dialog-scroll{overflow:auto;min-height:0}.consent-dialog>.dialog-actions{margin-top:18px}
 
 #season-subscribe{display:flex;flex-direction:column;min-height:0}.consent-dialog #season-subscribe>.dialog-actions{margin-top:6px}
+
+.release-loading{display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--accent)}
+.release-loading[hidden]{display:none}

@@ -177,12 +177,15 @@ async function searchReleases(){
   const selected=state.selected,revision=requests.revision;
   state.releaseController?.abort();const controller=new AbortController();state.releaseController=controller;
   const seasons=seriesSeasons(selected);
-  $('#release-results').innerHTML=html`<div class="resource-toolbar"><h2>${t('资源')}</h2><span id="release-progress" class="muted" role="status"></span><button class="quiet" data-action="retry-releases" aria-label="${t('刷新资源')}">↻</button>${selected.kind==='tv'&&seasons.length?html`<button class="secondary" data-action="season-subscribe">${lang==='en'?'Subscribe':t('订阅')}</button>`:''}</div><div id="release-table"></div><details id="release-diagnostics" class="resource-diagnostics" hidden><summary>${t('部分来源未响应')}</summary><div></div></details>`;
+  $('#release-results').innerHTML=html`<div class="resource-toolbar"><h2>${t('资源')}</h2><span id="release-progress" class="muted" role="status"></span><button class="quiet" data-action="retry-releases" aria-label="${t('刷新资源')}">↻</button>${selected.kind==='tv'&&seasons.length?html`<button class="secondary" data-action="season-subscribe">${lang==='en'?'Subscribe':t('订阅')}</button>`:''}</div><div id="release-loading" class="release-loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><span></span></div><div id="release-table"></div><details id="release-diagnostics" class="resource-diagnostics" hidden><summary>${t('部分来源未响应')}</summary><div></div></details>`;
   syncBusyControls();
   await discoverReleases(selected,(season,signal)=>api('/api/command',{operation:'search_releases',arguments:{title_id:selected.title_id,season,episodes:null,resolution:null}},'POST',{signal}),report=>{
     if(!requests.current(revision)||state.releaseController!==controller||controller.signal.aborted||!$('#release-progress'))return;
     state.releases=report.releases;
     $('#release-progress').textContent=report.loading?t('搜索中 ')+report.finished+'/'+report.total:report.releases.length+t(' 个资源');
+    $('#release-loading').hidden=!report.loading;
+    $('#release-loading > span:last-child').textContent=t('搜索中 ')+report.finished+'/'+report.total;
+    $('#release-table').setAttribute('aria-busy',String(report.loading));
     const issues=report.reports.filter(row=>row.search_status!=='complete');
     $('#release-diagnostics').hidden=!issues.length;
     $('#release-diagnostics div').textContent=issues.map(row=>(row.season==null?'':('S'+String(row.season).padStart(2,'0')+' · '))+(row.error_code||row.search_status)).join(' / ');
@@ -196,7 +199,7 @@ function releaseTable(loading=false) {
     const group=state.selected.kind!=='tv'?'':pack?t('第 ')+row.season+t(' 季'):row.coverage_kind==='episode'?t('单集资源'):t('集数范围待核验');
     const heading=group&&group!==previous?html`<h3 class="release-group">${escape(group)}</h3>`:'';previous=group;
     return heading+html`<button type="button" class="release-row" data-action="release-details" data-release-id="${row.release_id}" aria-haspopup="dialog"><span class="release-copy"><span class="release-name" title="${escape(row.name)}">${escape(row.name)}</span><span class="release-meta"><span>${escape(row.indexer||t('未知'))}</span>${row.resolution?html`<span>${row.resolution}p</span>`:''}<span>${bytes(row.size)}</span><span title="${t('做种数')}">↑ ${row.seeders??'–'}</span></span></span></button>`;
-  }).join('')}</div>`:html`<p class="resource-empty muted">${loading?t('正在自动搜索各季资源…'):t('暂未找到可用资源，稍后刷新重试。')}</p>`;
+  }).join('')}</div>`:html`<p class="resource-empty muted">${loading?'':t('暂未找到可用资源，稍后刷新重试。')}</p>`;
   syncBusyControls();
 }
 
