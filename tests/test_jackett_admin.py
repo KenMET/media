@@ -69,6 +69,14 @@ class JackettAdminTests(unittest.TestCase):
             with self.subTest(action=action),self.assertRaisesRegex(ValueError,'jackett_public_indexer_required'):
                 self.manager.invoke(action,'private')
 
+    def test_inventory_loads_private_config_key_before_building_request(self):
+        config=self.root/'ServerConfig.json'
+        config.write_text(json.dumps({'APIKey':'lazy-fixture-key'}))
+        with patch.dict(os.environ,{'JACKETT_API_KEY':'','JACKETT_CONFIG_FILE':str(config)}):
+            manager=JackettAdmin(Jackett(remote=False),self.fake,self.settings)
+            manager.inventory()
+        self.assertEqual(self.fake.calls[0][2]['params']['apikey'],'lazy-fixture-key')
+
     def test_configuration_add_stale_edit_and_confirmed_remove(self):
         config=self.manager.invoke('configuration','available')
         self.assertEqual([field['id'] for field in config['fields']],['freeleech','mirror'])

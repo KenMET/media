@@ -55,6 +55,8 @@ class JackettAdmin:
                           timeout=15, allow_redirects=False)
 
     def inventory(self):
+        if not self.jackett.configured:
+            raise ValueError('jackett_not_configured')
         response = self._request('GET','/api/v2.0/indexers/all/results/torznab/api',
             params={'apikey':self.jackett.key,'t':'indexers'})
         try:
