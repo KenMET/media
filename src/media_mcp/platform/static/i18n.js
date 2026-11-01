@@ -10,6 +10,8 @@ const english = {
   '每六小时检查新集数，可随时暂停。':'Check for new episodes every six hours. Pause anytime.',
   '确认订阅':'Confirm subscription',
   '搜索中 ':'Searching ',
+  '正在获取中文片名…':'Loading Chinese titles…',
+  '部分片名暂无可用中文资料，已保留原名。':'Some Chinese titles are unavailable; original names are retained.',
   '任务分类':'Task categories',
   '数据来源':'Data source',
   '作品类型':'Media type',

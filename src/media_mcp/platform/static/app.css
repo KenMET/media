@@ -170,3 +170,5 @@ dialog.consent-dialog[open]{display:flex;flex-direction:column;overflow:hidden;m
 #discover-results,#library-results,#jobs-table{min-height:180px}#jobs-more{margin-top:16px}
 @media(max-width:700px){.filter-toolbar{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:9px;margin:14px 0 18px}.filter-toolbar>.filter-group:first-child{grid-column:1/-1;width:100%}.filter-toolbar>.filter-group:first-child button{flex:1;min-width:0}.filter-toolbar>.filter-group{width:100%;min-width:0}.filter-group button,.view-tabs button{font-size:12px;padding:7px 9px;min-height:38px}.filter-toolbar>.filter-group:last-child button{flex:1;padding:7px 5px}.library-toolbar .filter-group{width:100%;margin:0;gap:2px}.library-toolbar .filter-group button{flex:1;padding:7px 8px}.view-tabs{width:100%;margin-bottom:18px}}
 @media(max-width:380px){.filter-toolbar{grid-template-columns:minmax(0,1fr)}.filter-toolbar>.filter-group:nth-child(2){width:max-content}}
+
+.catalog-localization{display:flex;align-items:center;gap:8px;font-size:12px}.catalog-localization[hidden]{display:none}

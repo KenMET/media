@@ -8,7 +8,7 @@ const origin=process.env.MEDIA_BROWSER_ASSET_ORIGIN||'http://media.test';
  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
  try{
   const page=await browser.newPage({viewport:{width:390,height:740}});page.setDefaultTimeout(10000);
-  const errors=[],calls=[],gates=new Map(),failures=new Set();const user='a'.repeat(32),jobId='b'.repeat(32);
+  const errors=[],calls=[],gates=new Map(),failures=new Set();let metadataActive=0,metadataPeak=0;const user='a'.repeat(32),jobId='b'.repeat(32);
   const job={job_id:jobId,stage:'completed',identity:{title:'Existing download'},release:{name:'Existing release'},progress:1,created_at:'2026-01-01 00:00:00'};
   page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(({user,jobId})=>{sessionStorage.setItem('media-csrf','disposable');sessionStorage.setItem('media-last-download-task:'+user,jobId);},{user,jobId});
@@ -22,6 +22,10 @@ const origin=process.env.MEDIA_BROWSER_ASSET_ORIGIN||'http://media.test';
     else if(url.pathname==='/api/discover'){
      key='catalog:'+url.searchParams.get('source')+':'+url.searchParams.get('kind')+':'+url.searchParams.get('window');
      data={items:Array.from({length:8},(_,n)=>({title_id:'movie:'+n,title:key+' '+n,kind:url.searchParams.get('kind'),date:'2026-01-01'})),page:1,total_pages:2,has_next:true};
+     if(url.searchParams.get('source')==='simkl')data.items=data.items.map((item,n)=>({...item,title_id:n===6?null:item.kind+':'+(n+1),source:'simkl',rating:8.5,rating_source:'SIMKL',rank:n+1}));
+    }else if(url.pathname==='/api/detail'){
+     key='detail:'+url.searchParams.get('title_id');metadataPeak=Math.max(metadataPeak,++metadataActive);
+     data={title_id:key==='detail:movie:8'?'movie:999':url.searchParams.get('title_id'),title:'\u4e2d\u6587 '+url.searchParams.get('title_id')};
     }else if(url.pathname==='/api/command'){
      const command=request.postDataJSON();calls.push(command);key=command.operation;
      if(key==='job')data=job;
@@ -42,6 +46,7 @@ const origin=process.env.MEDIA_BROWSER_ASSET_ORIGIN||'http://media.test';
     }else throw Error('Unexpected API '+url.pathname);
     const fail=failures.delete(key);
     if(gates.has(key))await gates.get(key);
+    if(url.pathname==='/api/detail')metadataActive--;
     try{await route.fulfill({status:fail?503:200,contentType:'application/json',body:JSON.stringify(fail?{success:false,error_code:'dependency_unavailable'}:{success:true,data})});}catch{}
     return;
    }
@@ -54,13 +59,27 @@ const origin=process.env.MEDIA_BROWSER_ASSET_ORIGIN||'http://media.test';
   const noOverflow=async()=>assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),JSON.stringify(await page.evaluate(()=>({width:innerWidth,overflow:[...document.querySelectorAll('body *')].filter(el=>el.getBoundingClientRect().right>innerWidth+1).map(el=>[el.className,el.textContent.slice(0,60)])}))));
   await page.goto(origin+'/#discover');await page.locator('.poster-card').first().waitFor();await noBanner();
   await page.evaluate(()=>{window.savedShell=document.querySelector('.layout');window.savedControls=document.querySelector('.filter-toolbar');window.savedSource=document.querySelector('[data-action=source][data-value=simkl]');});
+  const releaseTitle=hold('detail:movie:1');failures.add('detail:movie:6');
   let release=hold('catalog:simkl:movie:week');await page.locator('[data-action=source][data-value=simkl]').click();
   await page.locator('#discover-results .spinner').waitFor();
   assert(await page.evaluate(()=>savedShell===document.querySelector('.layout')&&savedControls===document.querySelector('.filter-toolbar')&&savedSource===document.activeElement));
   assert.equal(await page.locator('[data-action=source][data-value=simkl]').getAttribute('aria-pressed'),'true');
-  release();await page.locator('.poster-card').first().waitFor();
+  release();await page.locator('.poster-card').first().waitFor();await page.locator('#catalog-localization .spinner').waitFor();
+  await page.evaluate(()=>window.savedSimklPoster=document.querySelector('.poster-card'));
+  assert.match(await page.locator('.poster-card').first().innerText(),/catalog:simkl/);releaseTitle();
+  await page.waitForFunction(()=>document.querySelector('.poster-card h3')?.textContent.startsWith('\u4e2d\u6587'));
+  await page.waitForFunction(()=>!document.querySelector('#catalog-localization .spinner'));
+  assert(await page.evaluate(()=>savedSimklPoster===document.querySelector('.poster-card')));
+  assert.match(await page.locator('.poster-card').first().innerText(),/SIMKL/);
+  assert.equal(await page.locator('.poster-card .score').first().innerText(),'\u2605 8.5');
+  assert.match(await page.locator('.poster-card').nth(6).innerText(),/catalog:simkl/);
+  assert.match(await page.locator('.poster-card').nth(7).innerText(),/catalog:simkl/);
+  assert.equal(metadataPeak,1);
   assert.equal(await page.locator('[data-action=window][data-value=top]').isVisible(),false);
   await page.locator('[data-action=source][data-value=tmdb]').click();await page.locator('[data-action=window][data-value=top]').waitFor();
+  const releaseLateTitle=hold('detail:movie:1');await page.locator('[data-action=source][data-value=simkl]').click();await page.locator('#catalog-localization .spinner').waitFor();
+  await page.locator('[data-action=source][data-value=tmdb]').click();await page.locator('.poster-card').first().waitFor();releaseLateTitle();await page.waitForTimeout(100);
+  assert.match(await page.locator('.poster-card').first().innerText(),/catalog:tmdb/);
   failures.add('catalog:simkl:movie:week');await page.locator('[data-action=source][data-value=simkl]').click();await page.locator('#discover-results .error-state').waitFor();
   assert(await page.evaluate(()=>savedControls===document.querySelector('.filter-toolbar')));await page.locator('#discover-results .error-state button').click();await page.locator('.poster-card').first().waitFor();
   await page.locator('[data-action=source][data-value=tmdb]').click();await page.locator('.poster-card').first().waitFor();

@@ -134,8 +134,33 @@ async function discover() {
   const data=await loadData('#discover-results',t('正在加载榜单…'),()=>api(html`/api/discover?source=${state.source}&kind=${state.kind}&window=${state.window}&page=${state.discoverPage}`),{cards:true});
   if(!data||state.page!=='discover')return;
   state.items=data.items;
-  $('#discover-results').innerHTML=html`${data.error_code?html`<div class="notice">${escape(errors[data.error_code]||data.error_code)}。${data.fetched_at?t('当前显示历史缓存，更新于 ')+escape(date(data.fetched_at)):t('尚无可用缓存；可以切换数据来源或直接搜索作品。')}</div>`:''}<div class="section-title"><h2>${state.source==='douban'?t('豆瓣热门'):state.source==='simkl'?t('SIMKL 热门'):state.window==='top'?t('TMDB 历史高分'):t('TMDB 趋势')} · ${state.kind==='tv'?t('剧集'):t('电影')}</h2><span class="muted">${data.fetched_at?escape(date(data.fetched_at))+t(' 抓取'):''}</span></div>${data.source_updated_at?t('<p class="muted">来源更新时间：')+escape(date(data.source_updated_at))+t(' · 榜单按 SIMKL 观看人数排序</p>'):''}${data.items.length?posters(data.items):empty(t('榜单暂时不可用'),t('配置或检查对应数据源后再试，媒体搜索和已有任务仍可独立使用。'),t('<button data-action="refresh">重新检查</button>'))}<nav class="tabs" aria-label="榜单分页"><button data-action="discover-page" data-value="${data.page-1}" ${data.page<=1?'disabled':''}>${t('上一页')}</button><span class="muted">${data.page} / ${data.total_pages}</span><button data-action="discover-page" data-value="${data.page+1}" ${!data.has_next?'disabled':''}>${t('下一页')}</button></nav><footer class="source-footer">TMDB 数据与海报来源：The Movie Database。This product uses the TMDB API but is not endorsed or certified by TMDB.<br><a href="https://simkl.com/movies/best-movies/most-watched/" target="_blank" rel="noopener noreferrer">SIMKL 电影榜单</a> · <a href="https://simkl.com/tv/best-shows/most-watched/" target="_blank" rel="noopener noreferrer">SIMKL 剧集榜单</a>：SIMKL 榜单与评分单独标注来源。<br>外部条目缺少 TMDB 标识时，点击后需先确认匹配的作品。</footer>`;
+  $('#discover-results').innerHTML=html`${data.error_code?html`<div class="notice">${escape(errors[data.error_code]||data.error_code)}。${data.fetched_at?t('当前显示历史缓存，更新于 ')+escape(date(data.fetched_at)):t('尚无可用缓存；可以切换数据来源或直接搜索作品。')}</div>`:''}<div class="section-title"><h2>${state.source==='douban'?t('豆瓣热门'):state.source==='simkl'?t('SIMKL 热门'):state.window==='top'?t('TMDB 历史高分'):t('TMDB 趋势')} · ${state.kind==='tv'?t('剧集'):t('电影')}</h2><span class="muted">${data.fetched_at?escape(date(data.fetched_at))+t(' 抓取'):''}</span></div>${data.source_updated_at?t('<p class="muted">来源更新时间：')+escape(date(data.source_updated_at))+t(' · 榜单按 SIMKL 观看人数排序</p>'):''}<p id="catalog-localization" class="catalog-localization muted" role="status" hidden></p>${data.items.length?posters(data.items):empty(t('榜单暂时不可用'),t('配置或检查对应数据源后再试，媒体搜索和已有任务仍可独立使用。'),t('<button data-action="refresh">重新检查</button>'))}<nav class="tabs" aria-label="榜单分页"><button data-action="discover-page" data-value="${data.page-1}" ${data.page<=1?'disabled':''}>${t('上一页')}</button><span class="muted">${data.page} / ${data.total_pages}</span><button data-action="discover-page" data-value="${data.page+1}" ${!data.has_next?'disabled':''}>${t('下一页')}</button></nav><footer class="source-footer">TMDB 数据与海报来源：The Movie Database。This product uses the TMDB API but is not endorsed or certified by TMDB.<br><a href="https://simkl.com/movies/best-movies/most-watched/" target="_blank" rel="noopener noreferrer">SIMKL 电影榜单</a> · <a href="https://simkl.com/tv/best-shows/most-watched/" target="_blank" rel="noopener noreferrer">SIMKL 剧集榜单</a>：SIMKL 榜单与评分单独标注来源。<br>外部条目缺少 TMDB 标识时，点击后需先确认匹配的作品。</footer>`;
+  if(state.source==='simkl')void localizeCatalogTitles(state.items,requests.revision);
 }
+async function localizeCatalogTitles(items,revision){
+  const active=()=>requests.current(revision)&&state.page==='discover'&&state.items===items;
+  const notice=$('#catalog-localization'),hasChinese=value=>/[\u3400-\u9fff]/.test(value);
+  const pending=items.map((item,index)=>({item,index})).filter(({item})=>
+    item.source==='simkl'&&!hasChinese(item.title)&&/^(movie|tv):[1-9][0-9]{0,11}$/.test(item.title_id)&&item.title_id.startsWith(item.kind+':'));
+  if(!pending.length)return;
+  notice.hidden=false;notice.innerHTML=html`<span class="spinner" aria-hidden="true"></span>${t('正在获取中文片名…')}`;
+  // One background metadata read leaves capacity for an interactive detail request.
+  for(const {item,index} of pending){
+    if(!active())return;
+    try{
+      const metadata=await api('/api/detail?title_id='+encodeURIComponent(item.title_id));
+      if(!active())return;
+      if(metadata.title_id!==item.title_id||typeof metadata.title!=='string'||!hasChinese(metadata.title))continue;
+      item.title=metadata.title;
+      const button=$('#discover-results [data-action=title][data-index="'+index+'"]');
+      if(button){button.querySelector('h3').textContent=item.title;button.setAttribute('aria-label',t('查看 ')+item.title);const img=button.querySelector('img');if(img)img.alt=item.title;}
+    }catch(error){if(['account_rate_limited','account_concurrency_limited'].includes(error.code))break;}
+  }
+  if(!active())return;
+  const missing=pending.some(({item})=>!hasChinese(item.title));
+  notice.hidden=!missing;notice.textContent=missing?t('部分片名暂无可用中文资料，已保留原名。'):'';
+}
+
 function searchPage() {$('#content').innerHTML=heading(t('找到你想看的作品'),t('先确认作品，再搜索资源站。'))+html`<form id="search" class="panel form-grid"><label>名称或原名<input name="query" placeholder="例如：星际穿越 / Interstellar" maxlength="200" required></label><button type="submit">搜索作品</button></form><div id="search-results">${empty(t('从一个片名开始'),t('中文名、原名都可以，电影与剧集一起按相关性展示。'))}</div>`;}
 async function search(query) {
   recordRoute('#search?'+new URLSearchParams({q:query}));
