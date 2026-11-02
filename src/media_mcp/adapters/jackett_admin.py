@@ -47,10 +47,9 @@ class JackettAdmin:
 
     def _login(self):
         password = os.environ.get('JACKETT_ADMIN_PASSWORD')
-        path = Path(os.environ.get('JACKETT_ADMIN_PASSWORD_FILE') or self.settings.path.parent/'jackett-admin-password')
         if password is None:
-            try:password=path.read_text().rstrip('\r\n')
-            except FileNotFoundError:password=''
+            path = os.environ.get('JACKETT_ADMIN_PASSWORD_FILE')
+            password = Path(path).read_text().rstrip('\r\n') if path else 'password'
         self.session.post(self.jackett.base+'/UI/Dashboard', data={'password':password},
                           timeout=15, allow_redirects=False)
 

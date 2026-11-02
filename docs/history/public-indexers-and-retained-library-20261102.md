@@ -34,3 +34,10 @@ Live authenticated acceptance used the deployed `JackettAdmin` implementation: K
 Runtime inspection confirmed the bundled cloud Jackett uses a Docker bridge with its published port bound only to loopback, rather than host networking. Its dashboard password and port mapping remain unchanged. No manual rebuild remains: existing private-state credential loading is dynamic. All completion gates above are satisfied.
 
 Primary API reference: [Jackett indexer controller](https://github.com/Jackett/Jackett/blob/master/src/Jackett.Server/Controllers/IndexerApiController.cs). Authentication follows [Jackett's dashboard login](https://github.com/Jackett/Jackett/blob/master/src/Jackett.Server/Controllers/UIController.cs).
+
+
+## Follow-up: environment-first login
+
+The user clarified that dashboard login must follow the existing `.env` convention: use configured credentials first and the deployment default when unset. The first implementation already prioritized an explicit environment password, but incorrectly used an implicit state-file/empty-password fallback. Login now prioritizes `JACKETT_ADMIN_PASSWORD` (including explicit empty), then an explicitly selected `JACKETT_ADMIN_PASSWORD_FILE`, then the deployment default. No username is required. A missing explicit file fails rather than silently falling back. An unconfigured state password file is no longer read. This changes Media's client login selection only and never resets Jackett credentials.
+
+Regression coverage checks environment/file/default precedence, explicit empty passwords and missing-file fencing. Cloud services require the updated image; NAS execution-only control continues to delegate management to the cloud and does not require rebuilding for this correction.

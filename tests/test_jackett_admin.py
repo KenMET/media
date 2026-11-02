@@ -116,6 +116,24 @@ class JackettAdminTests(unittest.TestCase):
         with patch.dict(os.environ,{},clear=False):
             self.manager.invoke('configuration','public')
 
+    def test_login_prefers_explicit_environment_then_explicit_file_then_default(self):
+        password_file=self.root/'password';password_file.write_text('file-fixture\n')
+        with patch.dict(os.environ),patch.object(self.fake,'post') as post:
+            os.environ['JACKETT_ADMIN_PASSWORD']='env-fixture'
+            self.manager._login()
+            self.assertEqual(post.call_args.kwargs['data']['password'],'env-fixture')
+            os.environ['JACKETT_ADMIN_PASSWORD']=''
+            self.manager._login()
+            self.assertEqual(post.call_args.kwargs['data']['password'],'')
+            del os.environ['JACKETT_ADMIN_PASSWORD']
+            self.manager._login()
+            self.assertEqual(post.call_args.kwargs['data']['password'],'file-fixture')
+            password_file.unlink()
+            with self.assertRaises(FileNotFoundError):self.manager._login()
+            del os.environ['JACKETT_ADMIN_PASSWORD_FILE']
+            self.manager._login()
+            self.assertEqual(post.call_args.kwargs['data']['password'],'password')
+
     def test_schema_requires_confirmation_and_rejects_paths_and_unknown_fields(self):
         from pydantic import ValidationError
         for payload in ({'action':'remove','site':'public','revision':'a'*64},
