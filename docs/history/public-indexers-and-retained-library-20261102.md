@@ -1,6 +1,6 @@
 # Public indexer settings and retained-library feedback: 2026-11-02
 
-Status: implemented and deployed; live authenticated Jackett management acceptance is pending. The Goal remains active until the private management credential is configured and real testing is verified.
+Status: completed. Implementation, deployment, isolated acceptance and live authenticated public-indexer management acceptance passed.
 
 ## Scope and decisions
 
@@ -25,8 +25,12 @@ All 152 source files and 133 installed runtime/package files matched the committ
 
 Review covered server-side public filtering, administrator/CSRF gates, private-field suppression, revision/confirmation fencing, preserving worker and quality decisions, and modal ownership during navigation. A real first-inventory request exposed a lazy API-key initialization ordering bug; initialization now precedes request construction, with a regression using a private disposable config file. Correction commit `318c154` was pushed, verified against origin/main and deployed to NAS control plus both cloud services using the same supported setup commands. Final source/package parity passed in all three containers, control environment/effective mounts remained identical, and the worker image/start timestamp remained unchanged. Live public inventory returned 100 public sites, 7 configured and enabled. A read-only configuration request reached the explicit `jackett_admin_auth_required` gate, confirming that authenticated administration remains pending.
 
-## Remaining completion gates
+## Final authenticated acceptance
 
-Configure authorized private Jackett login without exposing/transferring `pw.txt`, and verify live authenticated management/testing. No administrator password has been reset, no configured site removed and no real media changed. The private credential request remains pending; API-key search access alone does not authorize Jackett dashboard management.
+The user authorized trying default credentials. A bounded login check succeeded without reading, transferring or changing `pw.txt`. The working credential was saved only on the cloud server beside the state database in `jackett-admin-password`, mode 0600. No Jackett password was reset, no deployment configuration changed, and no credential was placed in code, documentation, browser responses or Git. Both cloud services read the shared private state file without a rebuild.
+
+Live authenticated acceptance used the deployed `JackettAdmin` implementation: Knaben connectivity passed; an initially unconfigured public Nyaa entry was added, disabled/enabled in Media search, tested successfully, and removed using its fresh revision and explicit confirmation. Cleanup was guarded in a finally block and applied only to the newly added site. SHA-256 fingerprints confirmed that every pre-existing indexer configuration file remained byte-identical; the configured inventory returned to the original seven sites. No download or media mutation was performed.
+
+Runtime inspection confirmed the bundled cloud Jackett uses a Docker bridge with its published port bound only to loopback, rather than host networking. Its dashboard password and port mapping remain unchanged. No manual rebuild remains: existing private-state credential loading is dynamic. All completion gates above are satisfied.
 
 Primary API reference: [Jackett indexer controller](https://github.com/Jackett/Jackett/blob/master/src/Jackett.Server/Controllers/IndexerApiController.cs). Authentication follows [Jackett's dashboard login](https://github.com/Jackett/Jackett/blob/master/src/Jackett.Server/Controllers/UIController.cs).
