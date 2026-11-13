@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 
 from media_mcp.subtitle.services import online_subtitles
+from media_mcp.subtitle.services import review
 from media_mcp.subtitle.services import translation
 
 class SubtitleAgent:
@@ -1947,6 +1948,9 @@ class SubtitleAgent:
 
     def _process_audio_transcription(self, media_link: dict[str, dependencies.Any], test_mode: bool=False) -> str | None:
         return translation._process_audio_transcription(self, media_link, test_mode)
+
+    def _review_online_subtitle_quality(self, media_link: dict[str, dependencies.Any], candidate_ref: str, validated) -> tuple[bool, str]:
+        return review.review_online_subtitle_quality(self, media_link, candidate_ref, validated)
 
     def _translated_target_path(self, media_link: dict[str, dependencies.Any]) -> str:
         plain_target = dependencies.shorten_sidecar_path(media_link['target_path'], '.ass')

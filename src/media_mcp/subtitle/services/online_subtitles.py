@@ -506,6 +506,27 @@ def _process_online_subtitle(
                     )
                     continue
 
+                review_ok, review_reason = self._review_online_subtitle_quality(
+                    media_link,
+                    f"{candidate.provider}:{safe_file_id}",
+                    final_validated,
+                )
+                if not review_ok:
+                    try:
+                        if status == "downloaded" and dependencies.os.path.exists(
+                            target_path
+                        ):
+                            self._remove_file(target_path)
+                    except OSError:
+                        pass
+                    dependencies.logger.warning(
+                        "Online candidate rejected after AI review: %s:%s (%s)",
+                        candidate.provider,
+                        safe_file_id,
+                        review_reason,
+                    )
+                    continue
+
                 source_id = f"provider://{candidate.provider}/{safe_file_id}"
                 metadata = self._subtitle_metadata(
                     media_link,
@@ -524,6 +545,7 @@ def _process_online_subtitle(
                     reason=(
                         f"provider={candidate.provider}; candidate={candidate.candidate_id}; "
                         f"file={safe_file_id}; score={score:.1f}; {reason}; {sync_reason}; {timing_reason}; "
+                        f"{review_reason}; "
                         f"chinese_dialogue_coverage={final_validated.profile.get('chinese_dialogue_coverage')}"
                     ),
                 )

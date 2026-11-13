@@ -144,3 +144,24 @@ def validate_online_subtitle(content: bytes, file_name: str) -> ValidatedOnlineS
 
 def validate_online_translation_source(content: bytes, file_name: str) -> ValidatedOnlineSubtitle:
     return _validate_text_subtitle_payload(content, file_name, require_chinese=False)
+
+
+def sample_subtitle_lines(
+    content: bytes,
+    extension: str,
+    limit: int,
+) -> list[dict]:
+    """Evenly sample up to ``limit`` dialogue lines for AI quality review."""
+    if limit <= 0:
+        return []
+    text, _ = _decode_text(content)
+    events = parse_text_subtitle_content(text, extension)
+    lines = [event.source_text for event in events if event.source_text.strip()]
+    if not lines:
+        return []
+    if len(lines) <= limit:
+        sampled = lines
+    else:
+        step = len(lines) / limit
+        sampled = [lines[min(len(lines) - 1, int(index * step))] for index in range(limit)]
+    return [{'id': index + 1, 'text': line} for index, line in enumerate(sampled)]

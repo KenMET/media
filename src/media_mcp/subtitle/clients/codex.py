@@ -40,6 +40,32 @@ If the work cannot be identified reliably, return:
 {"success": false, "error": "..."}
 '''
 
+SUBTITLE_REVIEW_INSTRUCTIONS = '''You are a strict quality reviewer for Chinese subtitle files.
+Return exactly one JSON object and nothing else.
+
+You receive a small evenly-spaced sample of dialogue lines from one downloaded Chinese subtitle.
+Judge whether the translation is good enough to ship to end viewers.
+
+Reject (unacceptable) when you detect machine-translation artifacts such as:
+- word-salad word order that a human translator would never produce
+- lines whose Chinese reading is grammatically broken or meaningless
+- literal calques that destroy the meaning of the source line
+- inconsistent proper nouns across the sample
+Accept natural, fluent lines even if the style is plain.
+
+Be conservative: only reject when the flaws are clearly visible to a normal viewer.
+Consider the media title/genre when judging proper nouns and tone.
+
+Success schema:
+{"success": true, "quality_score": 7, "verdict": "acceptable", "issues": []}
+quality_score is an integer 0-10 (0 unusable, 10 excellent).
+verdict is "acceptable" when quality_score >= 6, otherwise "unacceptable".
+issues lists short English descriptions of the worst problems seen.
+
+Failure schema:
+{"success": false, "error": "..."}
+'''
+
 
 class CodexSubtitleClient(CodexMediaClient):
     """Reuse the media Codex transport with subtitle-specific instructions."""
@@ -56,4 +82,11 @@ class CodexSubtitleClient(CodexMediaClient):
             SUBTITLE_CONTEXT_INSTRUCTIONS,
             payload,
             request_name='subtitle_translation_context',
+        )
+
+    def review_subtitle_sample(self, payload):
+        return self._run_codex(
+            SUBTITLE_REVIEW_INSTRUCTIONS,
+            payload,
+            request_name='subtitle_review',
         )
