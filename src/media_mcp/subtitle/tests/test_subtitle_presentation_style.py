@@ -46,6 +46,53 @@ class StripTrailingPunctuationTest(unittest.TestCase):
         self.assertEqual(strip_trailing_punctuation('第一行。\n\n第三行，'), '第一行\n\n第三行')
 
 
+class ApplySrtAdversarialTest(unittest.TestCase):
+    ASS = (
+        '[Script Info]\nTitle: t\n\n[Events]\n'
+        'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
+        'Dialogue: 0,0:00:01.00,0:00:02.00,Chinese,,0,0,0,,台词。\n'
+    )
+
+    def test_ass_content_never_touched_when_extension_given(self):
+        content = self.ASS.encode('utf-8')
+        self.assertEqual(content, apply_srt_presentation_style(content, '.ass'))
+        self.assertEqual(content, apply_srt_presentation_style(content, '.ssa'))
+
+    def test_extension_case_insensitive(self):
+        srt = '1\n00:00:01,000 --> 00:00:02,000\n台词。\n'.encode('utf-8')
+        result = apply_srt_presentation_style(srt, '.SRT').decode('utf-8')
+        self.assertIn('台词\n', result)
+
+    def test_crlf_and_bom_preserved(self):
+        raw = '\ufeff1\r\n00:00:01,000 --> 00:00:02,000\r\n台词。\r\n'.encode('utf-8')
+        result = apply_srt_presentation_style(raw, '.srt')
+        self.assertTrue(result.startswith(b'\xef\xbb\xbf'))
+        self.assertNotIn(b'\r\n', result)  # CRLF normalized to LF, BOM kept
+        self.assertIn('台词'.encode('utf-8'), result)
+
+    def test_gb18030_roundtrip(self):
+        raw = '1\n00:00:01,000 --> 00:00:02,000\n海豚湾的传说。\n'.encode('gb18030')
+        result = apply_srt_presentation_style(raw, '.srt')
+        self.assertEqual(raw[:6], result[:6])
+        self.assertNotIn('。'.encode('gb18030'), result)
+
+    def test_vtt_dot_milliseconds(self):
+        raw = (
+            'WEBVTT\n\n'
+            '00:00:01.000 --> 00:00:02.000\n'
+            '台词。\n'
+        ).encode('utf-8')
+        result = apply_srt_presentation_style(raw, '.vtt').decode('utf-8')
+        self.assertIn('WEBVTT', result)
+        self.assertIn('00:00:01.000 --> 00:00:02.000', result)
+        self.assertIn('台词\n', result)
+
+    def test_no_extension_keeps_legacy_behavior(self):
+        srt = '1\n00:00:01,000 --> 00:00:02,000\n台词。\n'.encode('utf-8')
+        result = apply_srt_presentation_style(srt).decode('utf-8')
+        self.assertIn('台词\n', result)
+
+
 class ApplySrtPresentationStyleTest(unittest.TestCase):
     def test_rewrites_text_lines_only(self):
         srt = (

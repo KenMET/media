@@ -450,7 +450,7 @@ def _process_online_subtitle(
                             if dependencies.ENABLE_SUBTITLE_TAIL_PUNCTUATION_STRIP:
                                 try:
                                     install_content = dependencies.apply_srt_presentation_style(
-                                        install_content
+                                        install_content, validated.extension
                                     )
                                 except ValueError:
                                     pass

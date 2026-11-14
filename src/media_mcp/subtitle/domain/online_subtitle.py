@@ -153,13 +153,22 @@ _SRT_TIMESTAMP = re.compile(
     r'\d{1,2}:\d{2}:\d{2}[,.]\d{1,3} *--> *\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}'
 )
 
+# Line-based tail-punctuation stripping only understands cue-per-block text
+# formats; ASS/SSA Dialogue lines must never pass through it.
+PRESENTATION_STYLE_EXTENSIONS = {'.srt', '.vtt'}
 
-def apply_srt_presentation_style(content: bytes) -> bytes:
+
+def apply_srt_presentation_style(content: bytes, extension: str | None = None) -> bytes:
     """Strip sentence-final punctuation from SRT dialogue lines before install.
 
     Cue indices and timestamps are left untouched; only text lines are
-    rewritten via :func:`strip_trailing_punctuation`.
+    rewritten via :func:`strip_trailing_punctuation`. When ``extension`` is
+    given, anything outside :data:`PRESENTATION_STYLE_EXTENSIONS` is returned
+    byte-for-byte unchanged so ASS/SSA payloads can never be mangled.
     """
+    if extension is not None and extension.lower() not in PRESENTATION_STYLE_EXTENSIONS:
+        return content
+    had_bom = content.startswith(b'\xef\xbb\xbf')
     text, encoding = _decode_text(content)
     styled_lines: list[str] = []
     for line in text.splitlines():
@@ -170,7 +179,7 @@ def apply_srt_presentation_style(content: bytes) -> bytes:
     styled = '\n'.join(styled_lines)
     if text.endswith('\n'):
         styled += '\n'
-    if encoding.endswith('-sig') and not text.startswith('\ufeff'):
+    if encoding.endswith('-sig') and not had_bom:
         # utf-8-sig re-encoding would add a BOM the source never had.
         encoding = encoding[:-4]
     return styled.encode(encoding)
