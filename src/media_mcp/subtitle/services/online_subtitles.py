@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 
 from media_mcp.subtitle.services import dependencies
+from media_mcp.subtitle.services import review_cache
 
 
 def _download_online_translation_source(
@@ -347,6 +348,15 @@ def _process_online_subtitle(
             total_candidates += len(candidates)
             ranked = self._rank_online_candidates(media_link, candidates)
             total_qualified += len(ranked)
+            ranked, cached_rejections = review_cache.filter_rejected_candidates(
+                media_link.get("target_path"), ranked
+            )
+            if cached_rejections:
+                dependencies.logger.info(
+                    "Online provider %s: skipped %d candidate(s) with cached review rejections",
+                    provider_name,
+                    cached_rejections,
+                )
             attempt_ranked = ranked[
                 : max(1, dependencies.ONLINE_CANDIDATES_PER_PROVIDER)
             ]
@@ -520,6 +530,12 @@ def _process_online_subtitle(
                     final_validated,
                 )
                 if not review_ok:
+                    review_cache.record_rejection(
+                        media_link.get("target_path"),
+                        str(candidate.provider),
+                        candidate.file_id,
+                        review_reason,
+                    )
                     try:
                         if status == "downloaded" and dependencies.os.path.exists(
                             target_path

@@ -53,6 +53,7 @@ def run_worker(stage: str, test_mode: bool = False):
         error = None
         result = {}
         review_required = False
+        retry_delay_seconds = None
         try:
             from media_mcp.config import contained
             path = contained(job['path'])
@@ -85,6 +86,11 @@ def run_worker(stage: str, test_mode: bool = False):
                 result = SubtitleAgent(defer_ai_usage=True).run_path_summary(job['path'], test_mode=test_mode,send_notify=False)
                 if result['failed'] or result['missing']:
                     error = 'subtitle_incomplete'
+                    blocked_until = result.get('provider_blocked_until')
+                    if blocked_until:
+                        # A provider rate-limit/quota reset is scheduled; retry
+                        # shortly after recovery instead of the generic backoff.
+                        retry_delay_seconds = max(60, int(blocked_until - time.time()) + 300)
                 elif result['review']:
                     review_required = True
                     error = 'subtitle_requires_review'
@@ -96,5 +102,11 @@ def run_worker(stage: str, test_mode: bool = False):
             done.set()
             thread.join(timeout=2)
         expected_identity.reset(token)
-        jobs.finish(job, error=error, result=json.dumps(result, ensure_ascii=False), review_required=review_required)
+        jobs.finish(
+            job,
+            error=error,
+            result=json.dumps(result, ensure_ascii=False),
+            review_required=review_required,
+            retry_delay_seconds=retry_delay_seconds,
+        )
         heartbeat(stage)

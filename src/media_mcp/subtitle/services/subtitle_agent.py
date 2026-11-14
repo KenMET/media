@@ -161,7 +161,16 @@ class SubtitleAgent:
             'media_count': len(media_links),
             'sidecar_count': len(subtitle_candidates),
             'content_verifications': self._content_verifications,
+            'provider_blocked_until': self._max_provider_blocked_until(),
         }
+
+    def _max_provider_blocked_until(self) -> float | None:
+        blocked = getattr(self, '_provider_blocked_until', None) or {}
+        if not blocked:
+            return None
+        now = dependencies.time.time()
+        future = [retry_at for retry_at in blocked.values() if retry_at > now]
+        return max(future) if future else None
 
     def run_path(self, raw_path: str, test_mode: bool = False) -> tuple[int, int, int, int]:
         summary = self.run_path_summary(raw_path, test_mode=test_mode, send_notify=True)

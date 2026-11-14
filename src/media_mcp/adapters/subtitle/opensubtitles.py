@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 
@@ -90,6 +92,44 @@ def _optional_float(value: Any) -> float | None:
         return float(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+# Any rate-limit signal claiming recovery beyond this horizon is untrustworthy.
+_MAX_RETRY_HORIZON_SECONDS = 48 * 3600
+# Download quotas reset daily; a claim of full recovery sooner than this is a
+# misparsed signal (observed: 'RateLimit-Reset: 1' style headers producing
+# +1s retry_at and a retry storm burning quota-gated requests).
+_MIN_QUOTA_RETRY_SECONDS = 10 * 60
+_UTC_TIMESTAMP_IN_TEXT = re.compile(
+    r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\s*(UTC|GMT))?'
+)
+
+
+def _parse_utc_timestamp(value: str) -> float | None:
+    raw = str(value or '').strip()
+    if not raw:
+        return None
+    if raw.upper().endswith(' UTC') or raw.upper().endswith(' GMT'):
+        raw = raw[:-4].strip() + '+00:00'
+    elif raw.endswith('Z'):
+        raw = raw[:-1] + '+00:00'
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    else:
+        parsed = parsed.astimezone(timezone.utc)
+    return parsed.timestamp()
+
+
+def _plausible_retry_at(candidate: float | None, now: float) -> float | None:
+    if candidate is None:
+        return None
+    if now < candidate <= now + _MAX_RETRY_HORIZON_SECONDS:
+        return candidate
+    return None
 
 
 class OpenSubtitlesProvider:
@@ -181,12 +221,16 @@ class OpenSubtitlesProvider:
         retry_after = str(response.headers.get('Retry-After') or '').strip()
         if retry_after:
             try:
-                return now + max(1, int(float(retry_after)))
+                seconds = max(1, int(float(retry_after)))
             except ValueError:
                 try:
-                    return max(now + 1, parsedate_to_datetime(retry_after).timestamp())
+                    candidate = parsedate_to_datetime(retry_after).timestamp()
                 except (TypeError, ValueError, OverflowError):
-                    pass
+                    candidate = None
+                if (trusted := _plausible_retry_at(candidate, now)) is not None:
+                    return trusted
+            else:
+                return min(now + seconds, now + _MAX_RETRY_HORIZON_SECONDS)
         for name in (
             'RateLimit-Reset',
             'X-RateLimit-Reset',
@@ -198,9 +242,62 @@ class OpenSubtitlesProvider:
             try:
                 parsed = float(value)
             except ValueError:
-                continue
-            return parsed if parsed > now else now + max(1, parsed)
+                parsed = None
+            candidate = None
+            if parsed is not None and 0 < parsed <= _MAX_RETRY_HORIZON_SECONDS:
+                candidate = now + parsed  # relative-seconds semantics
+            elif parsed is not None:
+                candidate = parsed  # absolute epoch semantics
+            else:
+                candidate = _parse_utc_timestamp(value)
+            if (trusted := _plausible_retry_at(candidate, now)) is not None:
+                return trusted
         return now + default_seconds
+
+    def _quota_reset_at_from_payload(
+        self, payload: dict[str, Any]
+    ) -> float | None:
+        for key in ('reset_time_utc', 'reset_time'):
+            raw = payload.get(key)
+            if not raw:
+                continue
+            candidate = _parse_utc_timestamp(str(raw))
+            if candidate is not None:
+                return candidate
+        return None
+
+    def _determine_blocked_until(
+        self,
+        response,
+        payload: dict[str, Any] | None,
+        message: str,
+        *,
+        quota_exhausted: bool,
+        default_seconds: int,
+    ) -> float:
+        now = time.time()
+        blocked_until = self._retry_at_from_headers(response, default_seconds)
+        if quota_exhausted:
+            # The response body carries the authoritative daily reset time
+            # (e.g. reset_time_utc=2026-11-14 23:59:59 UTC); prefer it.
+            payload = payload or {}
+            if not isinstance(payload, dict):
+                payload = {}
+            body_reset = _plausible_retry_at(
+                self._quota_reset_at_from_payload(payload), now
+            )
+            if body_reset is not None:
+                return body_reset
+            if blocked_until < now + _MIN_QUOTA_RETRY_SECONDS:
+                # Quotas reset daily; a near-term header claim is misparsed.
+                for match in _UTC_TIMESTAMP_IN_TEXT.finditer(message or ''):
+                    candidate = _parse_utc_timestamp(
+                        f'{match.group(1)} {match.group(2)}+00:00'
+                    )
+                    if (trusted := _plausible_retry_at(candidate, now)) is not None:
+                        return trusted
+                return now + default_seconds
+        return min(blocked_until, now + _MAX_RETRY_HORIZON_SECONDS)
 
     def _response_message(self, response) -> str:
         try:
@@ -228,9 +325,12 @@ class OpenSubtitlesProvider:
         )
         if remaining is None or remaining > 0:
             return
-        self._blocked_until = self._retry_at_from_headers(
+        self._blocked_until = self._determine_blocked_until(
             response,
-            self.default_quota_seconds,
+            payload,
+            str(payload.get('message') or ''),
+            quota_exhausted=True,
+            default_seconds=self.default_quota_seconds,
         )
         reset_time = str(
             payload.get('reset_time_utc')
@@ -257,7 +357,20 @@ class OpenSubtitlesProvider:
         default_seconds = (
             self.default_quota_seconds if quota_exhausted else self.default_throttle_seconds
         )
-        self._blocked_until = self._retry_at_from_headers(response, default_seconds)
+        response_payload: dict[str, Any] = {}
+        try:
+            candidate_payload = response.json()
+            if isinstance(candidate_payload, dict):
+                response_payload = candidate_payload
+        except (ValueError, TypeError):
+            response_payload = {}
+        self._blocked_until = self._determine_blocked_until(
+            response,
+            response_payload,
+            message,
+            quota_exhausted=quota_exhausted,
+            default_seconds=default_seconds,
+        )
         kind = 'download quota exhausted' if quota_exhausted else 'request throttled'
         self._blocked_reason = (
             f'OpenSubtitles {kind} during {operation}'
