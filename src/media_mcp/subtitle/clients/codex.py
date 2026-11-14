@@ -66,6 +66,32 @@ Failure schema:
 {"success": false, "error": "..."}
 '''
 
+SUBTITLE_TRANSLATION_REVIEW_INSTRUCTIONS = '''You are a strict subtitle translation reviewer.
+Return exactly one JSON object and nothing else.
+
+You receive an evenly-spaced sample of source/translation pairs from one AI-translated
+subtitle. Judge whether the Chinese rendering is good enough to ship to end viewers.
+
+Reject (unacceptable) when you detect:
+- mistranslations that change the meaning of the source line
+- lines whose Chinese is ungrammatical, unnatural, or reads like a literal calque
+- omitted meaning: the translation covers clearly less than the source line
+- inconsistent proper nouns or terminology across the sample
+Accept natural, fluent renderings even if the style is plain.
+
+Be conservative: only reject when the flaws are clearly visible to a normal viewer.
+For every issue, quote the offending pair id so a retry can target the fix.
+
+Success schema:
+{"success": true, "quality_score": 8, "verdict": "acceptable", "issues": ["pair 13: 'whale song' translated as '鲸鱼吹'"]}
+quality_score is an integer 0-10 (0 unusable, 10 excellent).
+verdict is "acceptable" when quality_score >= 7, otherwise "unacceptable".
+issues lists short English descriptions with pair ids of the worst problems seen.
+
+Failure schema:
+{"success": false, "error": "..."}
+'''
+
 
 class CodexSubtitleClient(CodexMediaClient):
     """Reuse the media Codex transport with subtitle-specific instructions."""
@@ -89,4 +115,11 @@ class CodexSubtitleClient(CodexMediaClient):
             SUBTITLE_REVIEW_INSTRUCTIONS,
             payload,
             request_name='subtitle_review',
+        )
+
+    def review_translated_pairs(self, payload):
+        return self._run_codex(
+            SUBTITLE_TRANSLATION_REVIEW_INSTRUCTIONS,
+            payload,
+            request_name='subtitle_translation_review',
         )

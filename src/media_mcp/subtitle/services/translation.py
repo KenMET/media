@@ -5,6 +5,48 @@ from __future__ import annotations
 from media_mcp.subtitle.services import dependencies
 
 
+def _review_translations_with_retry(
+    self,
+    media_link: dict[str, dependencies.Any],
+    events: list,
+    media_context: dict[str, dependencies.Any],
+    translate_fn,
+) -> list[str]:
+    """Translate, then let the model review its own rendering and retry.
+
+    When the reviewer rejects the translation, one retry is issued with the
+    reviewer's quoted issues injected into the media context so the model can
+    target the fixes. The final translation is returned either way.
+    """
+    from media_mcp.subtitle.services import review
+
+    translations = translate_fn(media_context)
+    accepted, reason = review.review_model_translation(self, media_link, events, translations)
+    retries = dependencies.TRANSLATION_AI_REVIEW_RETRIES
+    while not accepted and retries > 0:
+        retries -= 1
+        feedback = (
+            reason.split("translation_ai_review_issues=", 1)[1]
+            if "translation_ai_review_issues=" in reason
+            else reason
+        )
+        retry_context = dict(media_context)
+        retry_context["quality_feedback"] = (
+            "A previous translation attempt was rejected by the reviewer. "
+            f"Fix these issues without changing meaning: {feedback}"
+        )
+        dependencies.logger.info(
+            "Translation: media=%s retrying with reviewer feedback (retries_left=%d)",
+            self._media_display_name(media_link),
+            retries,
+        )
+        translations = translate_fn(retry_context)
+        accepted, reason = review.review_model_translation(
+            self, media_link, events, translations
+        )
+    return translations
+
+
 def _process_text_translation(
     self,
     media_link: dict[str, dependencies.Any],
@@ -495,19 +537,25 @@ def _process_text_translation(
                     "Translation: media=%s context unavailable; continuing without guide",
                     media_label,
                 )
-        translations = dependencies.translate_events(
+        translations = _review_translations_with_retry(
+            self,
+            media_link,
             events,
-            lambda payload: self._call_ai_with_usage_retry(
-                lambda: self.client.translate_subtitle_batch(payload),
-                media_label=media_label,
-                operation="subtitle_translate",
-            ),
             media_context,
-            source_language,
-            max_events=dependencies.TRANSLATION_BATCH_EVENTS,
-            max_characters=dependencies.TRANSLATION_BATCH_CHARACTERS,
-            max_tokens=dependencies.TRANSLATION_BATCH_TOKENS,
-            incomplete_retries=dependencies.TRANSLATION_INCOMPLETE_RETRIES,
+            lambda ctx: dependencies.translate_events(
+                events,
+                lambda payload: self._call_ai_with_usage_retry(
+                    lambda: self.client.translate_subtitle_batch(payload),
+                    media_label=media_label,
+                    operation="subtitle_translate",
+                ),
+                ctx,
+                source_language,
+                max_events=dependencies.TRANSLATION_BATCH_EVENTS,
+                max_characters=dependencies.TRANSLATION_BATCH_CHARACTERS,
+                max_tokens=dependencies.TRANSLATION_BATCH_TOKENS,
+                incomplete_retries=dependencies.TRANSLATION_INCOMPLETE_RETRIES,
+            ),
         )
         if chinese_only_output:
             content = dependencies.render_chinese_ass(
@@ -676,19 +724,25 @@ def _process_audio_transcription(
             len(result.events),
             float(translation_profile["events_per_minute"]),
         )
-        translations = dependencies.translate_events(
+        translations = _review_translations_with_retry(
+            self,
+            media_link,
             result.events,
-            lambda payload: self._call_ai_with_usage_retry(
-                lambda: self.client.translate_subtitle_batch(payload),
-                media_label=self._media_display_name(media_link),
-                operation="audio_asr_translate",
-            ),
             self._candidate_video_payload(media_link),
-            language,
-            max_events=dependencies.TRANSLATION_BATCH_EVENTS,
-            max_characters=dependencies.TRANSLATION_BATCH_CHARACTERS,
-            max_tokens=dependencies.TRANSLATION_BATCH_TOKENS,
-            incomplete_retries=dependencies.TRANSLATION_INCOMPLETE_RETRIES,
+            lambda ctx: dependencies.translate_events(
+                result.events,
+                lambda payload: self._call_ai_with_usage_retry(
+                    lambda: self.client.translate_subtitle_batch(payload),
+                    media_label=self._media_display_name(media_link),
+                    operation="audio_asr_translate",
+                ),
+                ctx,
+                language,
+                max_events=dependencies.TRANSLATION_BATCH_EVENTS,
+                max_characters=dependencies.TRANSLATION_BATCH_CHARACTERS,
+                max_tokens=dependencies.TRANSLATION_BATCH_TOKENS,
+                incomplete_retries=dependencies.TRANSLATION_INCOMPLETE_RETRIES,
+            ),
         )
         content = dependencies.render_bilingual_ass(
             result.events,

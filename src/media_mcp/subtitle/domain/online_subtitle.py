@@ -176,6 +176,29 @@ def apply_srt_presentation_style(content: bytes) -> bytes:
     return styled.encode(encoding)
 
 
+def sample_translation_pairs(
+    events: list,
+    translations: list[str],
+    limit: int,
+) -> list[dict]:
+    """Evenly sample up to ``limit`` source/translation pairs for review."""
+    if limit <= 0:
+        return []
+    pairs = [
+        {'id': event.index, 'source': event.source_text, 'zh': translation}
+        for event, translation in zip(events, translations)
+        if event.source_text.strip() and translation and translation.strip()
+    ]
+    if not pairs:
+        return []
+    if len(pairs) <= limit:
+        sampled = pairs
+    else:
+        step = len(pairs) / limit
+        sampled = [pairs[min(len(pairs) - 1, int(index * step))] for index in range(limit)]
+    return sampled
+
+
 def sample_subtitle_lines(
     content: bytes,
     extension: str,

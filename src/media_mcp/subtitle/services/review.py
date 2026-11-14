@@ -101,3 +101,88 @@ def review_online_subtitle_quality(
     if issues_text:
         reason = f"{reason}; ai_review_issues={issues_text}"
     return False, reason
+
+
+def review_model_translation(
+    self,
+    media_link: dict[str, dependencies.Any],
+    events: list,
+    translations: list[str],
+) -> tuple[bool, str]:
+    """Return (accepted, reason) after reviewing the model's own translation.
+
+    Sampled source/translation pairs are sent to the subtitle model for a
+    second-pass quality verdict. Fail-open: without a usable verdict the
+    translation is accepted so the pipeline never blocks on the reviewer.
+    """
+    if not dependencies.ENABLE_TRANSLATION_AI_REVIEW:
+        return True, "translation_ai_review=disabled"
+    if getattr(self, "disable_agent", False):
+        return True, "translation_ai_review=skipped:agent_disabled"
+    sample = dependencies.sample_translation_pairs(
+        events,
+        translations,
+        dependencies.TRANSLATION_AI_REVIEW_SAMPLE_LINES,
+    )
+    if len(sample) < MIN_SAMPLE_LINES_FOR_REVIEW:
+        return True, "translation_ai_review=skipped:sample_too_small"
+    if self.client is None:
+        from media_mcp.subtitle.clients.codex import CodexSubtitleClient
+
+        self.client = CodexSubtitleClient()
+    media_label = self._media_display_name(media_link)
+    payload = {
+        "media": self._translation_media_context(media_link),
+        "pairs": sample,
+    }
+    try:
+        result = self._call_ai_with_usage_retry(
+            lambda: self.client.review_translated_pairs(payload),
+            media_label=media_label,
+            operation="subtitle_translation_review",
+        )
+    except Exception as exc:
+        dependencies.logger.warning(
+            "Translation AI review unavailable %s (%s); accepting translation",
+            media_label,
+            self._redact_sensitive_text(str(exc)),
+        )
+        return True, "translation_ai_review=unavailable"
+    if not isinstance(result, dict) or not result.get("success"):
+        dependencies.logger.warning(
+            "Translation AI review inconclusive %s; accepting translation",
+            media_label,
+        )
+        return True, "translation_ai_review=inconclusive"
+    try:
+        score = float(result.get("quality_score"))
+    except (TypeError, ValueError):
+        dependencies.logger.warning(
+            "Translation AI review missing score %s; accepting translation",
+            media_label,
+        )
+        return True, "translation_ai_review=inconclusive"
+    issues = result.get("issues") or []
+    if not isinstance(issues, list):
+        issues = []
+    issues_text = ";".join(str(item)[:120] for item in issues[:5])
+    min_score = dependencies.TRANSLATION_AI_REVIEW_MIN_SCORE
+    if score >= min_score:
+        dependencies.logger.info(
+            "Translation AI review passed %s score=%.1f min=%.1f",
+            media_label,
+            score,
+            min_score,
+        )
+        return True, f"translation_ai_review=passed; translation_ai_review_score={score:g}"
+    dependencies.logger.warning(
+        "Translation AI review rejected %s score=%.1f min=%.1f issues=%s",
+        media_label,
+        score,
+        min_score,
+        issues_text or "-",
+    )
+    reason = f"translation_ai_review=rejected; translation_ai_review_score={score:g}"
+    if issues_text:
+        reason = f"{reason}; translation_ai_review_issues={issues_text}"
+    return False, reason
