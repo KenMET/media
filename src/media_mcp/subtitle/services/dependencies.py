@@ -38,6 +38,7 @@ from media_mcp.subtitle.domain.path_builder import (
     shorten_sidecar_path,
 )
 from media_mcp.subtitle.domain.online_subtitle import (
+    apply_srt_presentation_style,
     sample_subtitle_lines,
     validate_online_subtitle,
     validate_online_translation_source,
@@ -198,6 +199,9 @@ ONLINE_SUBTITLE_AI_REVIEW_SAMPLE_LINES = int(
 ONLINE_SUBTITLE_AI_REVIEW_MIN_SCORE = float(
     os.environ.get("SUBTITLE_AI_REVIEW_MIN_SCORE", "6.0")
 )
+ENABLE_SUBTITLE_TAIL_PUNCTUATION_STRIP = os.environ.get(
+    "SUBTITLE_STRIP_TAIL_PUNCTUATION", "true"
+).lower() in {"1", "true", "yes", "on"}
 TRANSLATION_FALLBACK_LANGUAGE = "en"
 TRANSLATION_ANY_FALLBACK_LANGUAGES = (
     "ja",
@@ -342,6 +346,7 @@ __all__ = [
     "translation_detail_key",
     "unquote",
     "upsert_media_subtitle",
+    "apply_srt_presentation_style",
     "validate_online_subtitle",
     "validate_online_translation_source",
     "validate_subtitle_result",

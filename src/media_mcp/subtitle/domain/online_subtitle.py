@@ -12,7 +12,10 @@ import re
 from dataclasses import dataclass
 
 from media_mcp.subtitle.domain.subtitle_file import analyze_subtitle_sample
-from media_mcp.subtitle.domain.translation import parse_text_subtitle_content
+from media_mcp.subtitle.domain.translation import (
+    parse_text_subtitle_content,
+    strip_trailing_punctuation,
+)
 
 
 MAX_SUBTITLE_BYTES = 10 * 1024 * 1024
@@ -144,6 +147,33 @@ def validate_online_subtitle(content: bytes, file_name: str) -> ValidatedOnlineS
 
 def validate_online_translation_source(content: bytes, file_name: str) -> ValidatedOnlineSubtitle:
     return _validate_text_subtitle_payload(content, file_name, require_chinese=False)
+
+
+_SRT_TIMESTAMP = re.compile(
+    r'\d{1,2}:\d{2}:\d{2}[,.]\d{1,3} *--> *\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}'
+)
+
+
+def apply_srt_presentation_style(content: bytes) -> bytes:
+    """Strip sentence-final punctuation from SRT dialogue lines before install.
+
+    Cue indices and timestamps are left untouched; only text lines are
+    rewritten via :func:`strip_trailing_punctuation`.
+    """
+    text, encoding = _decode_text(content)
+    styled_lines: list[str] = []
+    for line in text.splitlines():
+        if line.strip().isdigit() or _SRT_TIMESTAMP.search(line):
+            styled_lines.append(line)
+        else:
+            styled_lines.append(strip_trailing_punctuation(line))
+    styled = '\n'.join(styled_lines)
+    if text.endswith('\n'):
+        styled += '\n'
+    if encoding.endswith('-sig') and not text.startswith('\ufeff'):
+        # utf-8-sig re-encoding would add a BOM the source never had.
+        encoding = encoding[:-4]
+    return styled.encode(encoding)
 
 
 def sample_subtitle_lines(

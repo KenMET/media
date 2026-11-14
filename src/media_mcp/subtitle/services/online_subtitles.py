@@ -446,8 +446,16 @@ def _process_online_subtitle(
                         )
                         with tempfile.TemporaryDirectory(prefix='.subtitle-',dir=dependencies.os.path.dirname(target_path)) as staging:
                             temporary_path=dependencies.os.path.join(staging,'download.part')
+                            install_content = validated.content
+                            if dependencies.ENABLE_SUBTITLE_TAIL_PUNCTUATION_STRIP:
+                                try:
+                                    install_content = dependencies.apply_srt_presentation_style(
+                                        install_content
+                                    )
+                                except ValueError:
+                                    pass
                             with open(temporary_path, "xb") as handle:
-                                handle.write(validated.content)
+                                handle.write(install_content)
                             self._replace_file(temporary_path, target_path)
                         status = "downloaded"
                     except OSError as exc:

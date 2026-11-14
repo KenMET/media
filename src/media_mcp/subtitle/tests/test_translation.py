@@ -54,9 +54,8 @@ class SubtitleTranslationTest(unittest.TestCase):
         self.assertIn('Style: Chinese,Arial,54', rendered)
         self.assertIn('Style: Source,Arial,40', rendered)
         self.assertIn('Dialogue: 0,0:00:01.00,0:00:03.50,Chinese', rendered)
-        self.assertIn('\u4f60\u597d，\u7ea6\u7ff0。', rendered)
-        self.assertIn(r'\N{\rSource}Hello, John.', rendered)
-        self.assertIn('Hello, John.', rendered)
+        self.assertIn('\u4f60\u597d\uff0c\u7ea6\u7ff0\\N{\\rSource}Hello, John', rendered)
+        self.assertIn('\u4f60\u5728\u54ea\u91cc？', rendered)
 
     def test_parse_ass_dialogue(self):
         path = self._temporary_subtitle(

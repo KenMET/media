@@ -515,6 +515,7 @@ def _process_text_translation(
                 translations,
                 chinese_font_size=dependencies.CHINESE_FONT_SIZE,
                 bottom_margin=dependencies.SUBTITLE_BOTTOM_MARGIN,
+                strip_tail_punctuation=dependencies.ENABLE_SUBTITLE_TAIL_PUNCTUATION_STRIP,
             )
         else:
             content = dependencies.render_bilingual_ass(
@@ -523,6 +524,7 @@ def _process_text_translation(
                 chinese_font_size=dependencies.CHINESE_FONT_SIZE,
                 source_font_size=dependencies.SOURCE_FONT_SIZE,
                 bottom_margin=dependencies.SUBTITLE_BOTTOM_MARGIN,
+                strip_tail_punctuation=dependencies.ENABLE_SUBTITLE_TAIL_PUNCTUATION_STRIP,
             )
         dependencies.write_text_atomic(target_subtitle, content)
         self._invalidate_path_cache(target_subtitle)
@@ -694,6 +696,7 @@ def _process_audio_transcription(
             chinese_font_size=dependencies.CHINESE_FONT_SIZE,
             source_font_size=dependencies.SOURCE_FONT_SIZE,
             bottom_margin=dependencies.SUBTITLE_BOTTOM_MARGIN,
+            strip_tail_punctuation=dependencies.ENABLE_SUBTITLE_TAIL_PUNCTUATION_STRIP,
         )
         dependencies.write_text_atomic(target_subtitle, content)
         self._invalidate_path_cache(target_subtitle)
