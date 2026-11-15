@@ -143,7 +143,7 @@ class OpenSubtitlesProvider:
         self.api_key = os.environ.get('OPENSUBTITLES_API_KEY', '').strip()
         self.user_agent = os.environ.get(
             'OPENSUBTITLES_USER_AGENT',
-            'KenMET/1.0 (subtitle fetcher)',
+            'KenMET/1.0',
         ).strip()
         self.username = os.environ.get('OPENSUBTITLES_USERNAME', '').strip()
         self.password = os.environ.get('OPENSUBTITLES_PASSWORD', '').strip()
