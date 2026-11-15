@@ -93,8 +93,17 @@ class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
     """Adversarial cases: untrusted rate-limit headers must not shorten cooldowns."""
 
     def setUp(self):
+        # Isolate from any ambient persisted breaker state: the provider
+        # loads state in __init__, so the env var must be patched before
+        # construction (blanking rate_limit_state_file afterwards is too late).
+        env_patcher = patch.dict(
+            'os.environ',
+            {'OPENSUBTITLES_RATE_LIMIT_STATE_FILE': ''},
+            clear=False,
+        )
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
         self.provider = OpenSubtitlesProvider()
-        self.provider.rate_limit_state_file = ''
 
     def test_malicious_reset_header_cannot_override_body_reset_time(self):
         # Observed incident: 'RateLimit-Reset: 1' produced a +1s retry_at and
@@ -213,8 +222,17 @@ class OpenSubtitlesQuotaMisjudgmentGuardTest(unittest.TestCase):
     as authoritative quota exhaustion."""
 
     def setUp(self):
+        # Isolate from any ambient persisted breaker state: the provider
+        # loads state in __init__, so the env var must be patched before
+        # construction (blanking rate_limit_state_file afterwards is too late).
+        env_patcher = patch.dict(
+            'os.environ',
+            {'OPENSUBTITLES_RATE_LIMIT_STATE_FILE': ''},
+            clear=False,
+        )
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
         self.provider = OpenSubtitlesProvider()
-        self.provider.rate_limit_state_file = ''
 
     def test_html_error_page_is_never_quota(self):
         # Observed 2026-11-15: 503 HTML page while account quota was 2/20.
