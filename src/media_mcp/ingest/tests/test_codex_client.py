@@ -80,6 +80,57 @@ class CodexClientTest(unittest.TestCase):
         with self.assertRaises(json.JSONDecodeError):
             CodexMediaClient._parse_json_response('not json')
 
+    def _session(self, wait_turn_results):
+        from unittest.mock import Mock
+        session = Mock()
+
+        def rpc(method, params):
+            if method == 'thread/start':
+                return {'thread': {'id': 'test-thread'}}
+            if method == 'turn/start':
+                return {'turn': {'id': 'test-turn'}}
+            return {'data': []}
+
+        session.rpc.side_effect = rpc
+        session.wait_turn.side_effect = list(wait_turn_results)
+        return session
+
+    def test_response_limit_retries_on_fresh_session(self):
+        from media_mcp.adapters.codex import CodexError
+        client = CodexMediaClient(bearer_token='test', max_retries=2, retry_backoff_seconds=0)
+        first = self._session([CodexError('response_limit')])
+        second = self._session(['{"success": true}'])
+        with patch.object(client, '_connect', side_effect=[first, second]):
+            result = client.classify({'title': 'fixture'})
+        self.assertEqual({'success': True}, result)
+        # The first session got as far as submitting the turn before dying.
+        first_methods = [call.args[0] for call in first.rpc.call_args_list]
+        self.assertIn('turn/start', first_methods)
+        # Second attempt ran on a brand-new session (fresh thread, not resumed).
+        methods = [call.args[0] for call in second.rpc.call_args_list]
+        self.assertIn('thread/start', methods)
+        self.assertNotIn('thread/resume', methods)
+
+    def test_response_limit_raises_after_exhausting_retries(self):
+        from media_mcp.adapters.codex import CodexError
+        client = CodexMediaClient(bearer_token='test', max_retries=1, retry_backoff_seconds=0)
+        sessions = [self._session([CodexError('response_limit')]) for _ in range(2)]
+        with patch.object(client, '_connect', side_effect=sessions):
+            with self.assertRaises(CodexError) as ctx:
+                client.classify({'title': 'fixture'})
+        self.assertEqual('response_limit', ctx.exception.code)
+        self.assertEqual(2, len(sessions))
+
+    def test_other_submitted_errors_still_fail_fast(self):
+        from media_mcp.adapters.codex import CodexError
+        client = CodexMediaClient(bearer_token='test', max_retries=2, retry_backoff_seconds=0)
+        only = self._session([CodexError('turn_failed', terminal_observed=True)])
+        with patch.object(client, '_connect', side_effect=[only]) as connect:
+            with self.assertRaises(CodexError) as ctx:
+                client.classify({'title': 'fixture'})
+        self.assertNotEqual('response_limit', ctx.exception.code)
+        self.assertEqual(1, connect.call_count)
+
 
 if __name__ == '__main__':
     unittest.main()

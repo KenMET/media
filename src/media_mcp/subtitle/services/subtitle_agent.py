@@ -389,7 +389,7 @@ class SubtitleAgent:
             if extension not in dependencies.SUBTITLE_EXTENSIONS:
                 continue
             subtitle_stem = dependencies.os.path.splitext(name)[0]
-            if subtitle_stem != base_name and not subtitle_stem.startswith(f'{base_name}.'):
+            if subtitle_stem != base_name and not subtitle_stem.startswith(f'{base_name}.') and not subtitle_stem.startswith(f'.{base_name}.'):
                 continue
             absolute = dependencies.os.path.abspath(path)
             if absolute in existing_paths:
@@ -1506,6 +1506,7 @@ class SubtitleAgent:
         source_path = dependencies.shorten_sidecar_path(
             media_link['target_path'],
             f'.subtitle-translation-source-{stream.stream_index}{stream.extension}',
+            hidden=True,
         )
         flag, reason = dependencies.extract_embedded_subtitle(video_path, stream, source_path)
         if not flag:
@@ -1665,6 +1666,7 @@ class SubtitleAgent:
         source_path = dependencies.shorten_sidecar_path(
             media_link['target_path'],
             f'.subtitle-translation-source-{stream.stream_index}.ocr.srt',
+            hidden=True,
         )
         ok, reason = dependencies.ocr_embedded_pgs_to_srt(
             video_path,

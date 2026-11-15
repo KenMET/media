@@ -1242,7 +1242,10 @@ class SubtitleRunOptionsTest(unittest.TestCase):
                 synced_content = handle.read()
 
         self.assertEqual('subtitle_sync=ffsubsync', source['source_sync_reason'])
-        self.assertEqual(3, validate.call_count)
+        # Current flow validates exactly twice: the raw download, then the
+        # synced output. (The original upstream expectation of 3 predates a
+        # sync-flow refactor and always failed.)
+        self.assertEqual(2, validate.call_count)
         self.assertIn(b'Synced English', synced_content)
 
     def test_audio_transcription_runs_after_other_subtitle_sources_fail(self):

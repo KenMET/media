@@ -79,6 +79,16 @@ def _quota_response(headers=None, payload=None, status=406):
     return response
 
 
+def _future_reset_utc():
+    """Return (display_string, epoch) for a UTC reset ~24h+ in the future."""
+    from datetime import datetime, timedelta, timezone
+    moment = datetime.now(timezone.utc) + timedelta(days=1)
+    display = moment.strftime('%Y-%m-%d') + ' 23:59:59 UTC'
+    naive = datetime.strptime(moment.strftime('%Y-%m-%d') + ' 23:59:59', '%Y-%m-%d %H:%M:%S')
+    epoch = time.mktime(naive.timetuple()) - time.timezone
+    return display, epoch
+
+
 class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
     """Adversarial cases: untrusted rate-limit headers must not shorten cooldowns."""
 
@@ -89,11 +99,12 @@ class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
     def test_malicious_reset_header_cannot_override_body_reset_time(self):
         # Observed incident: 'RateLimit-Reset: 1' produced a +1s retry_at and
         # a retry storm. The body reset_time_utc is authoritative.
+        reset_display, reset_epoch = _future_reset_utc()
         response = _quota_response(
             headers={'RateLimit-Reset': '1'},
             payload={
-                'reset_time_utc': '2026-11-14 23:59:59 UTC',
-                'message': 'Your quota will be renewed (2026-11-14 23:59:59 UTC)',
+                'reset_time_utc': reset_display,
+                'message': f'Your quota will be renewed ({reset_display})',
             },
         )
         blocked = self.provider._determine_blocked_until(
@@ -103,13 +114,10 @@ class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
             quota_exhausted=True,
             default_seconds=86400,
         )
-        self.assertAlmostEqual(
-            blocked,
-            time.mktime(time.strptime('2026-11-14 23:59:59', '%Y-%m-%d %H:%M:%S')) - time.timezone,
-            delta=5,
-        )
+        self.assertAlmostEqual(blocked, reset_epoch, delta=5)
 
     def test_malicious_reset_header_falls_back_to_message_timestamp(self):
+        reset_display, reset_epoch = _future_reset_utc()
         response = _quota_response(
             headers={'RateLimit-Reset': '1'},
             payload={},
@@ -117,12 +125,11 @@ class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
         blocked = self.provider._determine_blocked_until(
             response,
             {},
-            'renewed in 15 hours (2026-11-14 23:59:59 UTC)',
+            f'renewed in 15 hours ({reset_display})',
             quota_exhausted=True,
             default_seconds=86400,
         )
-        expected = time.mktime(time.strptime('2026-11-14 23:59:59', '%Y-%m-%d %H:%M:%S')) - time.timezone
-        self.assertAlmostEqual(blocked, expected, delta=5)
+        self.assertAlmostEqual(blocked, reset_epoch, delta=5)
 
     def test_unparseable_signals_fall_back_to_default_cooldown(self):
         response = _quota_response(headers={'RateLimit-Reset': 'garbage'}, payload=None)
@@ -180,9 +187,10 @@ class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
         self.assertLessEqual(blocked, before + 48 * 3600 + 5)
 
     def test_end_to_end_check_rate_limit_uses_body_reset_time(self):
+        reset_display, reset_epoch = _future_reset_utc()
         response = _quota_response(
             headers={'RateLimit-Reset': '1'},
-            payload={'reset_time_utc': '2026-11-14 23:59:59 UTC'},
+            payload={'reset_time_utc': reset_display},
         )
         with patch.dict(
             'os.environ',
@@ -193,8 +201,7 @@ class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
             provider.rate_limit_state_file = ''
             with self.assertRaises(ProviderTemporarilyUnavailable) as raised:
                 provider._check_rate_limit(response, 'download')
-        expected = time.mktime(time.strptime('2026-11-14 23:59:59', '%Y-%m-%d %H:%M:%S')) - time.timezone
-        self.assertAlmostEqual(raised.exception.retry_at or 0, expected, delta=5)
+        self.assertAlmostEqual(raised.exception.retry_at or 0, reset_epoch, delta=5)
 
 
 if __name__ == '__main__':

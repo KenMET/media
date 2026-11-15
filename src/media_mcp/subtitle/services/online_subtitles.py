@@ -187,6 +187,7 @@ def _download_online_translation_source(
                 source_path = dependencies.shorten_sidecar_path(
                     media_link["target_path"],
                     f".subtitle-translation-source.{candidate.provider}.{safe_language}{validated.extension}",
+                    hidden=True,
                 )
                 temporary_path = f"{source_path}.part"
                 try:
