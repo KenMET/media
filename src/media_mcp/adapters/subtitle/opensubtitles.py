@@ -143,7 +143,7 @@ class OpenSubtitlesProvider:
         self.api_key = os.environ.get('OPENSUBTITLES_API_KEY', '').strip()
         self.user_agent = os.environ.get(
             'OPENSUBTITLES_USER_AGENT',
-            'phantom_slayer v1.0',
+            'KenMET/1.0 (subtitle fetcher)',
         ).strip()
         self.username = os.environ.get('OPENSUBTITLES_USERNAME', '').strip()
         self.password = os.environ.get('OPENSUBTITLES_PASSWORD', '').strip()
@@ -343,13 +343,25 @@ class OpenSubtitlesProvider:
         self._save_rate_limit_state()
 
     def _check_rate_limit(self, response, operation: str) -> None:
+        # Gateway/error pages (HTML) are transient outages or soft blocks,
+        # never authoritative quota signals; their embedded reset countdown
+        # text must not trigger a day-long cooldown.
+        content_type = str(response.headers.get('Content-Type') or '').lower()
+        if 'text/html' in content_type:
+            return
         message = self._response_message(response)
         lowered = message.lower()
         quota_exhausted = (
-            response.status_code == 406
+            # 406 is OpenSubtitles' quota-status code; any quota mention on a
+            # 406 JSON body is authoritative (observed: "Your quota will be
+            # renewed in ... (UTC)"). But 406 with other messages (e.g.
+            # "Invalid file_id") is a caller error, not quota exhaustion.
+            (response.status_code == 406 and 'quota' in lowered)
             or 'download limit' in lowered
             or 'download quota' in lowered
-            or 'quota' in lowered
+            or 'quota exhausted' in lowered
+            or 'quota limit' in lowered
+            or 'quota will be renewed' in lowered
         )
         throttled = response.status_code == 429 or 'throttle limit' in lowered
         if not quota_exhausted and not throttled:

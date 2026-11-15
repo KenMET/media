@@ -189,8 +189,11 @@ class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
     def test_end_to_end_check_rate_limit_uses_body_reset_time(self):
         reset_display, reset_epoch = _future_reset_utc()
         response = _quota_response(
-            headers={'RateLimit-Reset': '1'},
-            payload={'reset_time_utc': reset_display},
+            headers={'RateLimit-Reset': '1', 'Content-Type': 'application/json'},
+            payload={
+                'reset_time_utc': reset_display,
+                'message': f'Your quota will be renewed ({reset_display})',
+            },
         )
         with patch.dict(
             'os.environ',
@@ -202,6 +205,67 @@ class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
             with self.assertRaises(ProviderTemporarilyUnavailable) as raised:
                 provider._check_rate_limit(response, 'download')
         self.assertAlmostEqual(raised.exception.retry_at or 0, reset_epoch, delta=5)
+
+
+class OpenSubtitlesQuotaMisjudgmentGuardTest(unittest.TestCase):
+    """The gateway serves HTML error pages with misleading quota countdown
+    text for transient outages and soft blocks; these must never be read
+    as authoritative quota exhaustion."""
+
+    def setUp(self):
+        self.provider = OpenSubtitlesProvider()
+        self.provider.rate_limit_state_file = ''
+
+    def test_html_error_page_is_never_quota(self):
+        # Observed 2026-11-15: 503 HTML page while account quota was 2/20.
+        response = Mock(status_code=503, headers={'Content-Type': 'text/html'})
+        response.json.side_effect = ValueError('no json')
+        response.text = '<html>Your quota will be renewed (2026-12-31 23:59:59 UTC)</html>'
+        self.provider._check_rate_limit(response, 'download')
+        self.assertEqual(0.0, self.provider._blocked_until)
+
+    def test_406_with_non_quota_message_is_not_quota(self):
+        # Observed: 406 {"message": "Invalid file_id"} is a caller bug,
+        # not quota exhaustion.
+        response = _quota_response(
+            headers={'Content-Type': 'application/json'},
+            payload={'message': 'Invalid file_id'},
+            status=406,
+        )
+        self.provider._check_rate_limit(response, 'download')
+        self.assertEqual(0.0, self.provider._blocked_until)
+
+    def test_plain_quota_word_without_exhaustion_phrase_is_not_quota(self):
+        # On non-406 responses a bare "quota" mention is not authoritative.
+        response = _quota_response(
+            headers={'Content-Type': 'application/json'},
+            payload={'message': 'check your quota status page'},
+            status=200,
+        )
+        self.provider._check_rate_limit(response, 'download')
+        self.assertEqual(0.0, self.provider._blocked_until)
+
+    def test_authoritative_json_quota_message_still_triggers_cooldown(self):
+        reset_display, _ = _future_reset_utc()
+        response = _quota_response(
+            headers={'Content-Type': 'application/json'},
+            payload={'message': f'Your quota will be renewed ({reset_display})',
+                     'reset_time_utc': reset_display},
+            status=406,
+        )
+        with self.assertRaises(ProviderTemporarilyUnavailable):
+            self.provider._check_rate_limit(response, 'download')
+
+    def test_json_throttle_message_still_triggers_short_cooldown(self):
+        before = time.time()
+        response = _quota_response(
+            headers={'Content-Type': 'application/json', 'Retry-After': '30'},
+            payload={'message': 'throttle limit reached, slow down'},
+            status=429,
+        )
+        with self.assertRaises(ProviderTemporarilyUnavailable) as raised:
+            self.provider._check_rate_limit(response, 'search')
+        self.assertLess(raised.exception.retry_at - before, 120)
 
 
 if __name__ == '__main__':
