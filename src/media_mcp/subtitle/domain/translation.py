@@ -506,6 +506,33 @@ def _ass_text(value: str) -> str:
     return r'\N'.join(line.strip() for line in value.splitlines() if line.strip())
 
 
+# Sentence-final punctuation removed from dialogue lines for on-screen style.
+# Question/exclamation marks and ellipses carry emotion or continuation cues
+# and are deliberately kept.
+SUBTITLE_TAIL_PUNCTUATION = '。，、；：,.；'
+
+
+def strip_trailing_punctuation(text: str) -> str:
+    """Strip sentence-final punctuation from every line of dialogue text.
+
+    A leading ``{\\an8}`` position tag is preserved, and any line that would
+    become empty after stripping is left untouched so lone punctuation or
+    ellipsis-only lines survive.
+    """
+    stripped_lines: list[str] = []
+    for line in text.splitlines():
+        match = re.match(r'^(\{\\an8\})?(.*?)([ \t]*)$', line)
+        if not match:
+            stripped_lines.append(line)
+            continue
+        tag, body, tail = match.groups()
+        stripped = body.rstrip()
+        while stripped and stripped[-1] in SUBTITLE_TAIL_PUNCTUATION:
+            stripped = stripped[:-1].rstrip()
+        stripped_lines.append(f'{tag or ""}{stripped}{tail}' if stripped else line)
+    return '\n'.join(stripped_lines)
+
+
 def render_bilingual_ass(
     events: list[SubtitleEvent],
     translations: list[str],
@@ -513,6 +540,7 @@ def render_bilingual_ass(
     chinese_font_size: int = 68,
     source_font_size: int = 46,
     bottom_margin: int = 18,
+    strip_tail_punctuation: bool = True,
 ) -> str:
     if len(events) != len(translations):
         raise SubtitleTranslationError('event and translation counts do not match')
@@ -536,10 +564,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for event, chinese in zip(events, translations):
         start = _ass_time(event.start_seconds)
         end = _ass_time(event.end_seconds)
+        if strip_tail_punctuation:
+            chinese = strip_trailing_punctuation(chinese)
+            source_text = strip_trailing_punctuation(event.source_text)
+        else:
+            source_text = event.source_text
         bilingual_text = (
             f'{_ass_text(chinese)}'
             rf'\N{{\rSource}}'
-            f'{_ass_text(event.source_text)}'
+            f'{_ass_text(source_text)}'
         )
         dialogue.append(f'Dialogue: 0,{start},{end},Chinese,,0,0,0,,{bilingual_text}')
     return header + '\n'.join(dialogue) + '\n'
@@ -551,6 +584,7 @@ def render_chinese_ass(
     *,
     chinese_font_size: int = 68,
     bottom_margin: int = 18,
+    strip_tail_punctuation: bool = True,
 ) -> str:
     if len(events) != len(translations):
         raise SubtitleTranslationError('event and translation counts do not match')
@@ -573,6 +607,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     for event, chinese in zip(events, translations):
         start = _ass_time(event.start_seconds)
         end = _ass_time(event.end_seconds)
+        if strip_tail_punctuation:
+            chinese = strip_trailing_punctuation(chinese)
         dialogue.append(f'Dialogue: 0,{start},{end},Chinese,,0,0,0,,{_ass_text(chinese)}')
     return header + '\n'.join(dialogue) + '\n'
 

@@ -38,6 +38,9 @@ from media_mcp.subtitle.domain.path_builder import (
     shorten_sidecar_path,
 )
 from media_mcp.subtitle.domain.online_subtitle import (
+    apply_srt_presentation_style,
+    sample_subtitle_lines,
+    sample_translation_pairs,
     validate_online_subtitle,
     validate_online_translation_source,
 )
@@ -188,6 +191,30 @@ ONLINE_SUBTITLE_MAX_END_OVERRUN_SECONDS = float(
 ONLINE_SUBTITLE_MAX_END_OVERRUN_RATIO = float(
     os.environ.get("ONLINE_SUBTITLE_MAX_END_OVERRUN_RATIO", "0.08")
 )
+ENABLE_ONLINE_SUBTITLE_AI_REVIEW = os.environ.get(
+    "SUBTITLE_ENABLE_ONLINE_AI_REVIEW", "true"
+).lower() in {"1", "true", "yes", "on"}
+ONLINE_SUBTITLE_AI_REVIEW_SAMPLE_LINES = int(
+    os.environ.get("SUBTITLE_AI_REVIEW_SAMPLE_LINES", "24")
+)
+ONLINE_SUBTITLE_AI_REVIEW_MIN_SCORE = float(
+    os.environ.get("SUBTITLE_AI_REVIEW_MIN_SCORE", "6.0")
+)
+ENABLE_SUBTITLE_TAIL_PUNCTUATION_STRIP = os.environ.get(
+    "SUBTITLE_STRIP_TAIL_PUNCTUATION", "true"
+).lower() in {"1", "true", "yes", "on"}
+ENABLE_TRANSLATION_AI_REVIEW = os.environ.get(
+    "SUBTITLE_ENABLE_TRANSLATION_AI_REVIEW", "true"
+).lower() in {"1", "true", "yes", "on"}
+TRANSLATION_AI_REVIEW_MIN_SCORE = float(
+    os.environ.get("SUBTITLE_TRANSLATION_AI_REVIEW_MIN_SCORE", "7.0")
+)
+TRANSLATION_AI_REVIEW_RETRIES = int(
+    os.environ.get("SUBTITLE_TRANSLATION_AI_REVIEW_RETRIES", "1")
+)
+TRANSLATION_AI_REVIEW_SAMPLE_LINES = int(
+    os.environ.get("SUBTITLE_TRANSLATION_AI_REVIEW_SAMPLE_LINES", "24")
+)
 TRANSLATION_FALLBACK_LANGUAGE = "en"
 TRANSLATION_ANY_FALLBACK_LANGUAGES = (
     "ja",
@@ -332,6 +359,8 @@ __all__ = [
     "translation_detail_key",
     "unquote",
     "upsert_media_subtitle",
+    "apply_srt_presentation_style",
+    "sample_translation_pairs",
     "validate_online_subtitle",
     "validate_online_translation_source",
     "validate_subtitle_result",

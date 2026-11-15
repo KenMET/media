@@ -12,7 +12,10 @@ import re
 from dataclasses import dataclass
 
 from media_mcp.subtitle.domain.subtitle_file import analyze_subtitle_sample
-from media_mcp.subtitle.domain.translation import parse_text_subtitle_content
+from media_mcp.subtitle.domain.translation import (
+    parse_text_subtitle_content,
+    strip_trailing_punctuation,
+)
 
 
 MAX_SUBTITLE_BYTES = 10 * 1024 * 1024
@@ -144,3 +147,83 @@ def validate_online_subtitle(content: bytes, file_name: str) -> ValidatedOnlineS
 
 def validate_online_translation_source(content: bytes, file_name: str) -> ValidatedOnlineSubtitle:
     return _validate_text_subtitle_payload(content, file_name, require_chinese=False)
+
+
+_SRT_TIMESTAMP = re.compile(
+    r'\d{1,2}:\d{2}:\d{2}[,.]\d{1,3} *--> *\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}'
+)
+
+# Line-based tail-punctuation stripping only understands cue-per-block text
+# formats; ASS/SSA Dialogue lines must never pass through it.
+PRESENTATION_STYLE_EXTENSIONS = {'.srt', '.vtt'}
+
+
+def apply_srt_presentation_style(content: bytes, extension: str | None = None) -> bytes:
+    """Strip sentence-final punctuation from SRT dialogue lines before install.
+
+    Cue indices and timestamps are left untouched; only text lines are
+    rewritten via :func:`strip_trailing_punctuation`. When ``extension`` is
+    given, anything outside :data:`PRESENTATION_STYLE_EXTENSIONS` is returned
+    byte-for-byte unchanged so ASS/SSA payloads can never be mangled.
+    """
+    if extension is not None and extension.lower() not in PRESENTATION_STYLE_EXTENSIONS:
+        return content
+    had_bom = content.startswith(b'\xef\xbb\xbf')
+    text, encoding = _decode_text(content)
+    styled_lines: list[str] = []
+    for line in text.splitlines():
+        if line.strip().isdigit() or _SRT_TIMESTAMP.search(line):
+            styled_lines.append(line)
+        else:
+            styled_lines.append(strip_trailing_punctuation(line))
+    styled = '\n'.join(styled_lines)
+    if text.endswith('\n'):
+        styled += '\n'
+    if encoding.endswith('-sig') and not had_bom:
+        # utf-8-sig re-encoding would add a BOM the source never had.
+        encoding = encoding[:-4]
+    return styled.encode(encoding)
+
+
+def sample_translation_pairs(
+    events: list,
+    translations: list[str],
+    limit: int,
+) -> list[dict]:
+    """Evenly sample up to ``limit`` source/translation pairs for review."""
+    if limit <= 0:
+        return []
+    pairs = [
+        {'id': event.index, 'source': event.source_text, 'zh': translation}
+        for event, translation in zip(events, translations)
+        if event.source_text.strip() and translation and translation.strip()
+    ]
+    if not pairs:
+        return []
+    if len(pairs) <= limit:
+        sampled = pairs
+    else:
+        step = len(pairs) / limit
+        sampled = [pairs[min(len(pairs) - 1, int(index * step))] for index in range(limit)]
+    return sampled
+
+
+def sample_subtitle_lines(
+    content: bytes,
+    extension: str,
+    limit: int,
+) -> list[dict]:
+    """Evenly sample up to ``limit`` dialogue lines for AI quality review."""
+    if limit <= 0:
+        return []
+    text, _ = _decode_text(content)
+    events = parse_text_subtitle_content(text, extension)
+    lines = [event.source_text for event in events if event.source_text.strip()]
+    if not lines:
+        return []
+    if len(lines) <= limit:
+        sampled = lines
+    else:
+        step = len(lines) / limit
+        sampled = [lines[min(len(lines) - 1, int(index * step))] for index in range(limit)]
+    return [{'id': index + 1, 'text': line} for index, line in enumerate(sampled)]

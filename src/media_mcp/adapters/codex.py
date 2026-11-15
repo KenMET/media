@@ -364,7 +364,13 @@ class CodexClient:
                     code = 'app_server_unreachable' if phase == 'app_server_connect' else 'model_connection_lost'
                 terminal = isinstance(exc, CodexError) and exc.terminal_observed
                 unknown = submitted and not completed and not terminal
-                if submitted or session is not None or code in ('token_rejected', 'token_missing', 'login_required') or attempt == self.max_retries:
+                # response_limit (runaway model stream) is a clean failure:
+                # nothing usable was returned and no quota was consumed, so
+                # retrying on a fresh session is safe unlike other submitted
+                # turns whose outcome is unknown.
+                if code == 'response_limit' and attempt < self.max_retries:
+                    pass
+                elif submitted or session is not None or code in ('token_rejected', 'token_missing', 'login_required') or attempt == self.max_retries:
                     raise CodexError(code, outcome_unknown=unknown,
                                      terminal_observed=terminal, phase=phase) from None
                 delay = self.retry_backoff_seconds * (attempt + 1)

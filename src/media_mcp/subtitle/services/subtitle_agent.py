@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 
 from media_mcp.subtitle.services import online_subtitles
+from media_mcp.subtitle.services import review
 from media_mcp.subtitle.services import translation
 
 class SubtitleAgent:
@@ -160,7 +161,16 @@ class SubtitleAgent:
             'media_count': len(media_links),
             'sidecar_count': len(subtitle_candidates),
             'content_verifications': self._content_verifications,
+            'provider_blocked_until': self._max_provider_blocked_until(),
         }
+
+    def _max_provider_blocked_until(self) -> float | None:
+        blocked = getattr(self, '_provider_blocked_until', None) or {}
+        if not blocked:
+            return None
+        now = dependencies.time.time()
+        future = [retry_at for retry_at in blocked.values() if retry_at > now]
+        return max(future) if future else None
 
     def run_path(self, raw_path: str, test_mode: bool = False) -> tuple[int, int, int, int]:
         summary = self.run_path_summary(raw_path, test_mode=test_mode, send_notify=True)
@@ -379,7 +389,7 @@ class SubtitleAgent:
             if extension not in dependencies.SUBTITLE_EXTENSIONS:
                 continue
             subtitle_stem = dependencies.os.path.splitext(name)[0]
-            if subtitle_stem != base_name and not subtitle_stem.startswith(f'{base_name}.'):
+            if subtitle_stem != base_name and not subtitle_stem.startswith(f'{base_name}.') and not subtitle_stem.startswith(f'.{base_name}.'):
                 continue
             absolute = dependencies.os.path.abspath(path)
             if absolute in existing_paths:
@@ -1496,6 +1506,7 @@ class SubtitleAgent:
         source_path = dependencies.shorten_sidecar_path(
             media_link['target_path'],
             f'.subtitle-translation-source-{stream.stream_index}{stream.extension}',
+            hidden=True,
         )
         flag, reason = dependencies.extract_embedded_subtitle(video_path, stream, source_path)
         if not flag:
@@ -1655,6 +1666,7 @@ class SubtitleAgent:
         source_path = dependencies.shorten_sidecar_path(
             media_link['target_path'],
             f'.subtitle-translation-source-{stream.stream_index}.ocr.srt',
+            hidden=True,
         )
         ok, reason = dependencies.ocr_embedded_pgs_to_srt(
             video_path,
@@ -1947,6 +1959,9 @@ class SubtitleAgent:
 
     def _process_audio_transcription(self, media_link: dict[str, dependencies.Any], test_mode: bool=False) -> str | None:
         return translation._process_audio_transcription(self, media_link, test_mode)
+
+    def _review_online_subtitle_quality(self, media_link: dict[str, dependencies.Any], candidate_ref: str, validated) -> tuple[bool, str]:
+        return review.review_online_subtitle_quality(self, media_link, candidate_ref, validated)
 
     def _translated_target_path(self, media_link: dict[str, dependencies.Any]) -> str:
         plain_target = dependencies.shorten_sidecar_path(media_link['target_path'], '.ass')

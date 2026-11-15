@@ -70,5 +70,221 @@ class OpenSubtitlesRateLimitTest(unittest.TestCase):
             provider._ensure_available()
 
 
+def _quota_response(headers=None, payload=None, status=406):
+    response = Mock(status_code=status, headers=headers or {})
+    if payload is None:
+        response.json.side_effect = ValueError('no body')
+    else:
+        response.json.return_value = payload
+    return response
+
+
+def _future_reset_utc():
+    """Return (display_string, epoch) for a UTC reset ~24h+ in the future."""
+    from datetime import datetime, timedelta, timezone
+    moment = datetime.now(timezone.utc) + timedelta(days=1)
+    display = moment.strftime('%Y-%m-%d') + ' 23:59:59 UTC'
+    naive = datetime.strptime(moment.strftime('%Y-%m-%d') + ' 23:59:59', '%Y-%m-%d %H:%M:%S')
+    epoch = time.mktime(naive.timetuple()) - time.timezone
+    return display, epoch
+
+
+class OpenSubtitlesQuotaResetSignalTest(unittest.TestCase):
+    """Adversarial cases: untrusted rate-limit headers must not shorten cooldowns."""
+
+    def setUp(self):
+        # Isolate from any ambient persisted breaker state: the provider
+        # loads state in __init__, so the env var must be patched before
+        # construction (blanking rate_limit_state_file afterwards is too late).
+        env_patcher = patch.dict(
+            'os.environ',
+            {'OPENSUBTITLES_RATE_LIMIT_STATE_FILE': ''},
+            clear=False,
+        )
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
+        self.provider = OpenSubtitlesProvider()
+
+    def test_malicious_reset_header_cannot_override_body_reset_time(self):
+        # Observed incident: 'RateLimit-Reset: 1' produced a +1s retry_at and
+        # a retry storm. The body reset_time_utc is authoritative.
+        reset_display, reset_epoch = _future_reset_utc()
+        response = _quota_response(
+            headers={'RateLimit-Reset': '1'},
+            payload={
+                'reset_time_utc': reset_display,
+                'message': f'Your quota will be renewed ({reset_display})',
+            },
+        )
+        blocked = self.provider._determine_blocked_until(
+            response,
+            response.json.return_value,
+            response.json.return_value['message'],
+            quota_exhausted=True,
+            default_seconds=86400,
+        )
+        self.assertAlmostEqual(blocked, reset_epoch, delta=5)
+
+    def test_malicious_reset_header_falls_back_to_message_timestamp(self):
+        reset_display, reset_epoch = _future_reset_utc()
+        response = _quota_response(
+            headers={'RateLimit-Reset': '1'},
+            payload={},
+        )
+        blocked = self.provider._determine_blocked_until(
+            response,
+            {},
+            f'renewed in 15 hours ({reset_display})',
+            quota_exhausted=True,
+            default_seconds=86400,
+        )
+        self.assertAlmostEqual(blocked, reset_epoch, delta=5)
+
+    def test_unparseable_signals_fall_back_to_default_cooldown(self):
+        response = _quota_response(headers={'RateLimit-Reset': 'garbage'}, payload=None)
+        before = time.time()
+        blocked = self.provider._determine_blocked_until(
+            response, None, '', quota_exhausted=True, default_seconds=86400,
+        )
+        self.assertGreaterEqual(blocked, before + 86400 - 5)
+
+    def test_near_term_reset_claim_rejected_for_quota(self):
+        # A daily quota cannot recover in minutes; such claims are misparsed.
+        response = _quota_response(
+            headers={'Retry-After': '60'},
+            payload={'reset_time_utc': '2020-01-01 00:00:00 UTC'},
+        )
+        before = time.time()
+        blocked = self.provider._determine_blocked_until(
+            response, {'reset_time_utc': '2020-01-01 00:00:00 UTC'}, 'no timestamp',
+            quota_exhausted=True, default_seconds=86400,
+        )
+        self.assertGreaterEqual(blocked, before + 86400 - 5)
+
+    def test_throttle_retry_after_stays_short(self):
+        # Transient throttling must not be inflated to quota-scale cooldowns.
+        response = _quota_response(headers={'Retry-After': '30'}, payload={}, status=429)
+        before = time.time()
+        blocked = self.provider._determine_blocked_until(
+            response, {}, '', quota_exhausted=False, default_seconds=900,
+        )
+        self.assertAlmostEqual(blocked, before + 30, delta=3)
+
+    def test_absolute_epoch_header_accepted_within_horizon(self):
+        response = _quota_response(
+            headers={'X-RateLimit-Reset': str(time.time() + 7200)}, payload={}, status=429,
+        )
+        before = time.time()
+        blocked = self.provider._determine_blocked_until(
+            response, {}, '', quota_exhausted=False, default_seconds=900,
+        )
+        self.assertAlmostEqual(blocked, before + 7200, delta=5)
+
+    def test_far_future_signals_capped_at_horizon(self):
+        response = _quota_response(
+            headers={'RateLimit-Reset': str(time.time() + 999 * 86400)},
+            payload={'reset_time_utc': '2099-01-01 00:00:00 UTC'},
+        )
+        before = time.time()
+        blocked = self.provider._determine_blocked_until(
+            response,
+            {'reset_time_utc': '2099-01-01 00:00:00 UTC'},
+            '',
+            quota_exhausted=True,
+            default_seconds=86400,
+        )
+        self.assertLessEqual(blocked, before + 48 * 3600 + 5)
+
+    def test_end_to_end_check_rate_limit_uses_body_reset_time(self):
+        reset_display, reset_epoch = _future_reset_utc()
+        response = _quota_response(
+            headers={'RateLimit-Reset': '1', 'Content-Type': 'application/json'},
+            payload={
+                'reset_time_utc': reset_display,
+                'message': f'Your quota will be renewed ({reset_display})',
+            },
+        )
+        with patch.dict(
+            'os.environ',
+            {'OPENSUBTITLES_RATE_LIMIT_STATE_FILE': ''},
+            clear=False,
+        ):
+            provider = OpenSubtitlesProvider()
+            provider.rate_limit_state_file = ''
+            with self.assertRaises(ProviderTemporarilyUnavailable) as raised:
+                provider._check_rate_limit(response, 'download')
+        self.assertAlmostEqual(raised.exception.retry_at or 0, reset_epoch, delta=5)
+
+
+class OpenSubtitlesQuotaMisjudgmentGuardTest(unittest.TestCase):
+    """The gateway serves HTML error pages with misleading quota countdown
+    text for transient outages and soft blocks; these must never be read
+    as authoritative quota exhaustion."""
+
+    def setUp(self):
+        # Isolate from any ambient persisted breaker state: the provider
+        # loads state in __init__, so the env var must be patched before
+        # construction (blanking rate_limit_state_file afterwards is too late).
+        env_patcher = patch.dict(
+            'os.environ',
+            {'OPENSUBTITLES_RATE_LIMIT_STATE_FILE': ''},
+            clear=False,
+        )
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
+        self.provider = OpenSubtitlesProvider()
+
+    def test_html_error_page_is_never_quota(self):
+        # Observed 2026-11-15: 503 HTML page while account quota was 2/20.
+        response = Mock(status_code=503, headers={'Content-Type': 'text/html'})
+        response.json.side_effect = ValueError('no json')
+        response.text = '<html>Your quota will be renewed (2026-12-31 23:59:59 UTC)</html>'
+        self.provider._check_rate_limit(response, 'download')
+        self.assertEqual(0.0, self.provider._blocked_until)
+
+    def test_406_with_non_quota_message_is_not_quota(self):
+        # Observed: 406 {"message": "Invalid file_id"} is a caller bug,
+        # not quota exhaustion.
+        response = _quota_response(
+            headers={'Content-Type': 'application/json'},
+            payload={'message': 'Invalid file_id'},
+            status=406,
+        )
+        self.provider._check_rate_limit(response, 'download')
+        self.assertEqual(0.0, self.provider._blocked_until)
+
+    def test_plain_quota_word_without_exhaustion_phrase_is_not_quota(self):
+        # On non-406 responses a bare "quota" mention is not authoritative.
+        response = _quota_response(
+            headers={'Content-Type': 'application/json'},
+            payload={'message': 'check your quota status page'},
+            status=200,
+        )
+        self.provider._check_rate_limit(response, 'download')
+        self.assertEqual(0.0, self.provider._blocked_until)
+
+    def test_authoritative_json_quota_message_still_triggers_cooldown(self):
+        reset_display, _ = _future_reset_utc()
+        response = _quota_response(
+            headers={'Content-Type': 'application/json'},
+            payload={'message': f'Your quota will be renewed ({reset_display})',
+                     'reset_time_utc': reset_display},
+            status=406,
+        )
+        with self.assertRaises(ProviderTemporarilyUnavailable):
+            self.provider._check_rate_limit(response, 'download')
+
+    def test_json_throttle_message_still_triggers_short_cooldown(self):
+        before = time.time()
+        response = _quota_response(
+            headers={'Content-Type': 'application/json', 'Retry-After': '30'},
+            payload={'message': 'throttle limit reached, slow down'},
+            status=429,
+        )
+        with self.assertRaises(ProviderTemporarilyUnavailable) as raised:
+            self.provider._check_rate_limit(response, 'search')
+        self.assertLess(raised.exception.retry_at - before, 120)
+
+
 if __name__ == '__main__':
     unittest.main()

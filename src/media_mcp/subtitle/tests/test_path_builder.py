@@ -30,6 +30,37 @@ class SubtitlePathBuilderTest(unittest.TestCase):
         self.assertLessEqual(len(os.path.basename(sidecar).encode('utf-8')), MAX_FILENAME_BYTES)
         self.assertTrue(sidecar.endswith('.zh-CN-bilingual.ass'))
 
+    def test_hidden_flag_dot_prefixes_translation_source(self):
+        video_path = '/data/media_hub/movie/Joker (2019) - 2019.mkv'
+
+        visible = shorten_sidecar_path(video_path, '.subtitle-translation-source.subdl.en.srt')
+        hidden = shorten_sidecar_path(video_path, '.subtitle-translation-source.subdl.en.srt', hidden=True)
+
+        self.assertFalse(os.path.basename(visible).startswith('.'))
+        self.assertTrue(os.path.basename(hidden).startswith('.'))
+        self.assertEqual('.' + os.path.basename(visible), os.path.basename(hidden))
+        self.assertEqual(os.path.dirname(visible), os.path.dirname(hidden))
+
+    def test_hidden_flag_survives_long_name_truncation(self):
+        video_path = os.path.join('/library', f'{"\u957f\u6807\u9898" * 80} - S01E01 - 2024.mkv')
+
+        hidden = shorten_sidecar_path(
+            video_path, '.subtitle-translation-source.opensubtitles.en.srt', hidden=True
+        )
+
+        name = os.path.basename(hidden)
+        self.assertTrue(name.startswith('.'))
+        self.assertTrue(name.endswith('.subtitle-translation-source.opensubtitles.en.srt'))
+
+    def test_hidden_flag_is_idempotent(self):
+        video_path = '/library/Movie - 2020.mkv'
+
+        hidden = shorten_sidecar_path(video_path, '.subtitle-translation-source.ocr.srt', hidden=True)
+
+        again = shorten_sidecar_path(video_path, '.subtitle-translation-source.ocr.srt', hidden=True)
+        self.assertEqual(hidden, again)
+        self.assertEqual(1, os.path.basename(again).count('.subtitle-translation-source.ocr.srt'))
+
 
 if __name__ == '__main__':
     unittest.main()

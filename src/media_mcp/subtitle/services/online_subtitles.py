@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 
 from media_mcp.subtitle.services import dependencies
+from media_mcp.subtitle.services import review_cache
 
 
 def _download_online_translation_source(
@@ -186,6 +187,7 @@ def _download_online_translation_source(
                 source_path = dependencies.shorten_sidecar_path(
                     media_link["target_path"],
                     f".subtitle-translation-source.{candidate.provider}.{safe_language}{validated.extension}",
+                    hidden=True,
                 )
                 temporary_path = f"{source_path}.part"
                 try:
@@ -347,6 +349,15 @@ def _process_online_subtitle(
             total_candidates += len(candidates)
             ranked = self._rank_online_candidates(media_link, candidates)
             total_qualified += len(ranked)
+            ranked, cached_rejections = review_cache.filter_rejected_candidates(
+                media_link.get("target_path"), ranked
+            )
+            if cached_rejections:
+                dependencies.logger.info(
+                    "Online provider %s: skipped %d candidate(s) with cached review rejections",
+                    provider_name,
+                    cached_rejections,
+                )
             attempt_ranked = ranked[
                 : max(1, dependencies.ONLINE_CANDIDATES_PER_PROVIDER)
             ]
@@ -446,8 +457,16 @@ def _process_online_subtitle(
                         )
                         with tempfile.TemporaryDirectory(prefix='.subtitle-',dir=dependencies.os.path.dirname(target_path)) as staging:
                             temporary_path=dependencies.os.path.join(staging,'download.part')
+                            install_content = validated.content
+                            if dependencies.ENABLE_SUBTITLE_TAIL_PUNCTUATION_STRIP:
+                                try:
+                                    install_content = dependencies.apply_srt_presentation_style(
+                                        install_content, validated.extension
+                                    )
+                                except ValueError:
+                                    pass
                             with open(temporary_path, "xb") as handle:
-                                handle.write(validated.content)
+                                handle.write(install_content)
                             self._replace_file(temporary_path, target_path)
                         status = "downloaded"
                     except OSError as exc:
@@ -506,6 +525,33 @@ def _process_online_subtitle(
                     )
                     continue
 
+                review_ok, review_reason = self._review_online_subtitle_quality(
+                    media_link,
+                    f"{candidate.provider}:{safe_file_id}",
+                    final_validated,
+                )
+                if not review_ok:
+                    review_cache.record_rejection(
+                        media_link.get("target_path"),
+                        str(candidate.provider),
+                        candidate.file_id,
+                        review_reason,
+                    )
+                    try:
+                        if status == "downloaded" and dependencies.os.path.exists(
+                            target_path
+                        ):
+                            self._remove_file(target_path)
+                    except OSError:
+                        pass
+                    dependencies.logger.warning(
+                        "Online candidate rejected after AI review: %s:%s (%s)",
+                        candidate.provider,
+                        safe_file_id,
+                        review_reason,
+                    )
+                    continue
+
                 source_id = f"provider://{candidate.provider}/{safe_file_id}"
                 metadata = self._subtitle_metadata(
                     media_link,
@@ -524,6 +570,7 @@ def _process_online_subtitle(
                     reason=(
                         f"provider={candidate.provider}; candidate={candidate.candidate_id}; "
                         f"file={safe_file_id}; score={score:.1f}; {reason}; {sync_reason}; {timing_reason}; "
+                        f"{review_reason}; "
                         f"chinese_dialogue_coverage={final_validated.profile.get('chinese_dialogue_coverage')}"
                     ),
                 )

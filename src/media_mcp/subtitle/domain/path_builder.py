@@ -19,6 +19,7 @@ def shorten_sidecar_path(
     matched_video_target_path: str,
     sidecar_suffix: str,
     *,
+    hidden: bool = False,
     max_bytes: int = MAX_FILENAME_BYTES,
 ) -> str:
     directory = os.path.dirname(matched_video_target_path)
@@ -42,6 +43,10 @@ def shorten_sidecar_path(
             except UnicodeDecodeError:
                 stem_bytes = stem_bytes[:-1]
         filename = f'{shortened_stem}{suffix}'
+    if hidden and not filename.startswith('.'):
+        # Dot-prefix keeps intermediate files (translation sources, OCR dumps)
+        # out of SMB player listings while remaining valid sidecars for scans.
+        filename = f'.{filename}'
     return _join_like_input(directory, filename)
 
 
